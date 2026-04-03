@@ -14,7 +14,7 @@ id = "98dd2527afed40d3a7f00d859fa3d547"
 [vars]
 SITE_DOMAIN     = "cloudpress.cloud-in.co.kr"
 ADMIN_EMAIL     = "choichoi3227@gmail.com"
-INSTAWP_API_KEY = ""
+INSTAWP_API_KEY = "kX5XUQsqI7DGGsEtDDN6o7e1Hv6C4L7S0mFYI7OD"
 CF_API_TOKEN    = ""
 CF_ZONE_ID      = ""
 CF_ACCOUNT_ID   = ""
