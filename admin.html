@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>어드민 패널 — CloudPress</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:opsz,wght@9..40,400;9..40,500&display=swap" rel="stylesheet"/>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{--bg:#06060c;--surface:#0d0d18;--surface2:#131320;--surface3:#181828;--border:rgba(255,255,255,.06);--border2:rgba(255,255,255,.1);--text:#f0f0f5;--muted:rgba(240,240,245,.45);--accent:#f97316;--accent2:#ec4899;--success:#22c55e;--warning:#eab308;--error:#ef4444;--info:#6366f1;--font-head:'Syne',sans-serif;--font-body:'DM Sans',sans-serif;--sw:220px}
+    html,body{height:100%;font-family:var(--font-body);background:var(--bg);color:var(--text);overflow-x:hidden}
+    .wrap{display:flex;min-height:100vh}
+    /* Sidebar */
+    .aside{width:var(--sw);flex-shrink:0;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;position:fixed;top:0;left:0;height:100vh;z-index:100;transition:transform .2s}
+    .aside-logo{padding:20px 18px;display:flex;align-items:center;gap:8px;font-family:var(--font-head);font-size:.95rem;font-weight:700;border-bottom:1px solid var(--border);text-decoration:none;color:var(--text)}
+    .aside-logo .badge-admin{font-size:.6rem;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;padding:2px 7px;border-radius:10px;margin-left:4px;font-weight:700;letter-spacing:.04em}
+    .aside-nav{flex:1;padding:12px 10px;overflow-y:auto}
+    .nav-section{margin-bottom:20px}
+    .nav-label{font-size:.68rem;font-weight:700;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;padding:0 8px;margin-bottom:5px}
+    .nav-item{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:8px;color:var(--muted);font-size:.85rem;font-weight:500;cursor:pointer;transition:all .15s;border:none;background:none;width:100%;text-align:left;text-decoration:none}
+    .nav-item svg{flex-shrink:0;opacity:.7}
+    .nav-item:hover,.nav-item.active{background:var(--surface2);color:var(--text)}
+    .nav-item.active{background:rgba(249,115,22,.1);color:var(--accent)}
+    .nav-item.active svg,.nav-item:hover svg{opacity:1}
+    .nav-item.danger:hover{background:rgba(239,68,68,.1);color:var(--error)}
+    .aside-user{padding:14px 16px;border-top:1px solid var(--border);display:flex;align-items:center;gap:10px}
+    .av{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent2));display:flex;align-items:center;justify-content:center;font-family:var(--font-head);font-size:.82rem;font-weight:700;flex-shrink:0}
+    /* Main */
+    .main{flex:1;margin-left:var(--sw);min-width:0}
+    .topbar{height:56px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 24px;position:sticky;top:0;z-index:50}
+    .topbar-title{font-family:var(--font-head);font-size:.95rem;font-weight:700}
+    .content{padding:24px}
+    /* Stats */
+    .stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px}
+    .stat-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px 20px}
+    .stat-icon{width:38px;height:38px;border-radius:9px;display:flex;align-items:center;justify-content:center;margin-bottom:12px}
+    .stat-val{font-family:var(--font-head);font-size:1.5rem;font-weight:800;margin-bottom:2px}
+    .stat-lbl{font-size:.78rem;color:var(--muted)}
+    /* Table */
+    .tbl-wrap{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+    table{width:100%;border-collapse:collapse}
+    th{padding:11px 16px;text-align:left;font-size:.75rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border)}
+    td{padding:12px 16px;font-size:.85rem;border-bottom:1px solid var(--border)}
+    tr:last-child td{border-bottom:none}
+    tr:hover td{background:rgba(255,255,255,.02)}
+    /* Search bar */
+    .search-bar{display:flex;gap:10px;margin-bottom:16px;align-items:center;flex-wrap:wrap}
+    .search-input{flex:1;min-width:200px;padding:9px 13px;background:var(--surface);border:1px solid var(--border2);border-radius:8px;color:var(--text);font-family:var(--font-body);font-size:.88rem;outline:none}
+    .search-input:focus{border-color:var(--accent)}
+    /* Buttons */
+    .btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:8px;font-family:var(--font-body);font-size:.85rem;font-weight:600;cursor:pointer;transition:all .15s;border:none;text-decoration:none}
+    .btn-primary{background:linear-gradient(135deg,var(--accent),#e86209);color:#fff}
+    .btn-ghost{background:var(--surface2);border:1px solid var(--border2);color:var(--text)}
+    .btn-ghost:hover{border-color:var(--accent);color:var(--accent)}
+    .btn-danger{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.2);color:var(--error)}
+    .btn-success{background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.2);color:var(--success)}
+    .btn-sm{padding:5px 11px;font-size:.78rem;border-radius:6px}
+    /* Badge */
+    .badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:20px;font-size:.72rem;font-weight:600}
+    .status-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+    /* Section header */
+    .section-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+    .section-hd h2{font-family:var(--font-head);font-size:1rem;font-weight:700}
+    /* Modal */
+    .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:200;display:flex;align-items:center;justify-content:center;padding:20px;opacity:0;pointer-events:none;transition:opacity .2s}
+    .modal-bg.open{opacity:1;pointer-events:all}
+    .modal{background:var(--surface);border:1px solid var(--border2);border-radius:16px;padding:30px;width:100%;max-width:480px}
+    .modal h3{font-family:var(--font-head);font-size:1rem;font-weight:700;margin-bottom:18px}
+    .field{margin-bottom:14px}
+    .field label{display:block;font-size:.8rem;color:var(--muted);margin-bottom:5px;font-weight:500}
+    .field input,.field select,.field textarea{width:100%;padding:9px 12px;background:var(--bg);border:1px solid var(--border2);border-radius:8px;color:var(--text);font-family:var(--font-body);font-size:.88rem;outline:none;transition:border-color .2s}
+    .field input:focus,.field select:focus,.field textarea:focus{border-color:var(--accent)}
+    .field textarea{resize:vertical;min-height:80px}
+    /* Chart */
+    .chart-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px}
+    .chart-title{font-family:var(--font-head);font-size:.9rem;font-weight:700;margin-bottom:14px}
+    /* Pagination */
+    .pager{display:flex;align-items:center;justify-content:flex-end;gap:6px;margin-top:12px}
+    .page-btn{padding:5px 11px;border-radius:6px;font-size:.8rem;cursor:pointer;background:var(--surface2);border:1px solid var(--border);color:var(--muted);transition:all .15s}
+    .page-btn.active,.page-btn:hover{border-color:var(--accent);color:var(--accent)}
+    /* Toast */
+    .cp-toast{position:fixed;bottom:24px;right:24px;padding:12px 20px;border-radius:10px;font-size:.88rem;font-weight:500;color:#fff;opacity:0;transform:translateY(8px);transition:all .3s;pointer-events:none;z-index:9999}
+    .cp-toast.show{opacity:1;transform:none}
+    .cp-toast.success{background:#22c55e}.cp-toast.error{background:#ef4444}.cp-toast.info{background:#6366f1}.cp-toast.warning{background:#f59e0b}
+    /* Mobile */
+    @media(max-width:900px){.stat-grid{grid-template-columns:repeat(2,1fr)}.main{margin-left:0}}
+    @media(max-width:600px){.stat-grid{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <!-- ASIDE -->
+  <aside class="aside" id="aside">
+    <a href="/admin.html" class="aside-logo">
+      <svg width="20" height="20" viewBox="0 0 28 28" fill="none"><path d="M14 2L26 8V20L14 26L2 20V8L14 2Z" stroke="currentColor" stroke-width="1.5"/><path d="M14 8L20 11V17L14 20L8 17V11L14 8Z" fill="currentColor" opacity=".5"/><circle cx="14" cy="14" r="2.2" fill="currentColor"/></svg>
+      CloudPress<span class="badge-admin">ADMIN</span>
+    </a>
+    <nav class="aside-nav">
+      <div class="nav-section">
+        <div class="nav-label">대시보드</div>
+        <button class="nav-item active" id="nav-overview" onclick="showSection('overview')">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="14" y="3" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="3" y="14" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="14" y="14" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/></svg>
+          개요
+        </button>
+        <button class="nav-item" id="nav-traffic" onclick="showSection('traffic')">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M22 12h-4l-3 9L9 3l-3 9H2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          트래픽
+        </button>
+      </div>
+      <div class="nav-section">
+        <div class="nav-label">관리</div>
+        <button class="nav-item" id="nav-users" onclick="showSection('users')">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="9" cy="7" r="4" stroke="currentColor" stroke-width="1.5"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M16 3.13a4 4 0 0 1 0 7.75" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M21 21v-2a4 4 0 0 0-3-3.87" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          사용자 관리
+        </button>
+        <button class="nav-item" id="nav-sites" onclick="showSection('sites')">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><rect x="2" y="3" width="20" height="14" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M8 21h8M12 17v4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          사이트 관리
+        </button>
+        <button class="nav-item" id="nav-notices" onclick="showSection('notices')">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" stroke="currentColor" stroke-width="1.5"/><path d="M13.73 21a2 2 0 0 1-3.46 0" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          공지 관리
+        </button>
+      </div>
+      <div class="nav-section">
+        <div class="nav-label">매출</div>
+        <button class="nav-item" id="nav-revenue" onclick="showSection('revenue')">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><line x1="12" y1="1" x2="12" y2="23" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          매출 관리
+        </button>
+      </div>
+      <div class="nav-section">
+        <div class="nav-label">시스템</div>
+        <button class="nav-item" id="nav-settings" onclick="showSection('settings')">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.5"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" stroke="currentColor" stroke-width="1.5"/></svg>
+          설정
+        </button>
+        <a href="/dashboard.html" class="nav-item"><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" stroke="currentColor" stroke-width="1.5"/><polyline points="9 22 9 12 15 12 15 22" stroke="currentColor" stroke-width="1.5"/></svg>일반 대시보드</a>
+        <button class="nav-item danger" onclick="CP.logout()"><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><polyline points="16 17 21 12 16 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="21" y1="12" x2="9" y2="12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>로그아웃</button>
+      </div>
+    </nav>
+    <div class="aside-user">
+      <div class="av" id="adminAv">A</div>
+      <div><div style="font-size:.84rem;font-weight:600" id="adminName">—</div><div style="font-size:.72rem;color:var(--accent)">어드민</div></div>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <div class="main">
+    <div class="topbar">
+      <div style="display:flex;align-items:center;gap:12px">
+        <span class="topbar-title" id="pageTitle">개요</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="font-size:.8rem;color:var(--muted)" id="lastRefresh"></span>
+        <button class="btn btn-ghost btn-sm" onclick="refreshCurrent()">새로고침</button>
+      </div>
+    </div>
+    <div class="content" id="mainContent">
+      <div style="color:var(--muted);padding:20px 0">로딩 중...</div>
+    </div>
+  </div>
+</div>
+
+<!-- User edit modal -->
+<div class="modal-bg" id="userModal">
+  <div class="modal">
+    <h3>사용자 수정</h3>
+    <input type="hidden" id="editUserId"/>
+    <div class="field"><label>이름</label><input type="text" id="editUserName"/></div>
+    <div class="field"><label>역할</label>
+      <select id="editUserRole"><option value="user">일반</option><option value="manager">매니저</option><option value="admin">어드민</option></select>
+    </div>
+    <div class="field"><label>플랜</label>
+      <select id="editUserPlan"><option value="free">무료</option><option value="starter">스타터</option><option value="pro">프로</option><option value="enterprise">엔터프라이즈</option></select>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:18px">
+      <button class="btn btn-ghost" style="flex:1" onclick="closeModal('userModal')">취소</button>
+      <button class="btn btn-primary" style="flex:1" onclick="saveUser()">저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- Notice edit modal -->
+<div class="modal-bg" id="noticeModal">
+  <div class="modal">
+    <h3 id="noticeMTitle">공지 작성</h3>
+    <input type="hidden" id="editNoticeId"/>
+    <div class="field"><label>제목</label><input type="text" id="editNoticeTitle" placeholder="공지 제목"/></div>
+    <div class="field"><label>내용</label><textarea id="editNoticeContent" placeholder="공지 내용"></textarea></div>
+    <div class="field"><label>유형</label>
+      <select id="editNoticeType"><option value="info">일반</option><option value="warning">경고</option><option value="success">성공</option><option value="error">오류</option></select>
+    </div>
+    <div class="field"><label>활성화</label>
+      <select id="editNoticeActive"><option value="1">활성</option><option value="0">비활성</option></select>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:18px">
+      <button class="btn btn-ghost" style="flex:1" onclick="closeModal('noticeModal')">취소</button>
+      <button class="btn btn-primary" style="flex:1" onclick="saveNotice()">저장</button>
+    </div>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+<script>
+let currentSection='overview';
+let statsData=null;
+let charts={};
+
+function esc(s){return CP.escHtml(s);}
+function setErr(msg){document.getElementById('mainContent').innerHTML=`<div style="color:var(--error);padding:20px 0;font-size:.9rem">⚠️ ${esc(msg||'데이터를 불러오지 못했습니다.')}</div>`;}
+function closeModal(id){document.getElementById(id).classList.remove('open')}
+
+async function init(){
+  const user=await CP.requireAdmin();
+  if(!user)return;
+  document.getElementById('adminAv').textContent=user.name[0].toUpperCase();
+  document.getElementById('adminName').textContent=user.name;
+  showSection('overview');
+}
+
+function showSection(sec){
+  currentSection=sec;
+  document.querySelectorAll('.nav-item').forEach(el=>el.classList.remove('active'));
+  const nav=document.getElementById('nav-'+sec);
+  if(nav)nav.classList.add('active');
+  document.getElementById('lastRefresh').textContent='업데이트: '+new Date().toLocaleTimeString('ko-KR');
+
+  const titles={overview:'개요',traffic:'트래픽',users:'사용자 관리',sites:'사이트 관리',notices:'공지 관리',revenue:'매출 관리',settings:'시스템 설정'};
+  document.getElementById('pageTitle').textContent=titles[sec]||sec;
+
+  const fn={overview:loadOverview,traffic:loadTraffic,users:loadUsers,sites:loadAdminSites,notices:loadNotices,revenue:loadRevenue,settings:loadSettings};
+  if(fn[sec]) fn[sec]();
+}
+
+function refreshCurrent(){showSection(currentSection);}
+
+/* ── OVERVIEW ── */
+async function loadOverview(){
+  const d=await CP.adminStats();
+  if(!d.ok){document.getElementById('mainContent').innerHTML='<div style="color:var(--error)">데이터 로딩 실패</div>';return}
+  statsData=d;
+
+  document.getElementById('mainContent').innerHTML=`
+    <div class="stat-grid">
+      <div class="stat-card"><div class="stat-icon" style="background:rgba(249,115,22,.1)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="9" cy="7" r="4" stroke="#f97316" stroke-width="1.5"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2" stroke="#f97316" stroke-width="1.5" stroke-linecap="round"/><path d="M16 3.13a4 4 0 0 1 0 7.75M21 21v-2a4 4 0 0 0-3-3.87" stroke="#f97316" stroke-width="1.5" stroke-linecap="round"/></svg></div><div class="stat-val">${d.users.toLocaleString()}</div><div class="stat-lbl">전체 사용자</div></div>
+      <div class="stat-card"><div class="stat-icon" style="background:rgba(99,102,241,.1)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="2" y="3" width="20" height="14" rx="2" stroke="#6366f1" stroke-width="1.5"/><path d="M8 21h8M12 17v4" stroke="#6366f1" stroke-width="1.5" stroke-linecap="round"/></svg></div><div class="stat-val">${d.sites.toLocaleString()}</div><div class="stat-lbl">전체 사이트 <span style="font-size:.8rem;color:var(--success)">${d.activeSites} 활성</span></div></div>
+      <div class="stat-card"><div class="stat-icon" style="background:rgba(34,197,94,.1)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><line x1="12" y1="1" x2="12" y2="23" stroke="#22c55e" stroke-width="1.5" stroke-linecap="round"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" stroke="#22c55e" stroke-width="1.5" stroke-linecap="round"/></svg></div><div class="stat-val">₩${(d.revenueMonth/10000).toFixed(1)}만</div><div class="stat-lbl">이번달 매출</div></div>
+      <div class="stat-card"><div class="stat-icon" style="background:rgba(236,72,153,.1)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M22 12h-4l-3 9L9 3l-3 9H2" stroke="#ec4899" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div class="stat-val">${d.sitesToday}</div><div class="stat-lbl">오늘 신규 사이트</div></div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:22px">
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px;text-align:center">
+        <div style="font-family:var(--font-head);font-size:1.2rem;font-weight:700">${d.sitesToday}</div>
+        <div style="font-size:.75rem;color:var(--muted);margin-top:2px">오늘</div>
+      </div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px;text-align:center">
+        <div style="font-family:var(--font-head);font-size:1.2rem;font-weight:700">${d.sitesWeek}</div>
+        <div style="font-size:.75rem;color:var(--muted);margin-top:2px">이번 주</div>
+      </div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px;text-align:center">
+        <div style="font-family:var(--font-head);font-size:1.2rem;font-weight:700">${d.sitesMonth}</div>
+        <div style="font-size:.75rem;color:var(--muted);margin-top:2px">이번 달</div>
+      </div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px;text-align:center">
+        <div style="font-family:var(--font-head);font-size:1.2rem;font-weight:700">${d.sitesYear}</div>
+        <div style="font-size:.75rem;color:var(--muted);margin-top:2px">올해</div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:22px">
+      <div class="chart-card"><div class="chart-title">일별 사이트 개설 (최근 30일)</div><canvas id="chartSites" height="80"></canvas></div>
+      <div class="chart-card"><div class="chart-title">최근 결제</div>
+        ${d.recentPayments.length?d.recentPayments.slice(0,5).map(p=>`
+          <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:.8rem">
+            <div><div style="font-weight:600">${esc(p.name)}</div><div style="color:var(--muted);font-size:.73rem">${CP.planInfo(p.plan).name}</div></div>
+            <div style="text-align:right"><div style="color:var(--success);font-weight:600">+₩${p.amount.toLocaleString()}</div><div style="color:var(--muted);font-size:.72rem">${CP.formatDate(p.created_at)}</div></div>
+          </div>`).join(''):'<div style="color:var(--muted);font-size:.83rem">결제 없음</div>'}
+      </div>
+    </div>`;
+
+  // Chart
+  if(charts.sites) charts.sites.destroy();
+  const ds=d.dailySites||[];
+  const ctx=document.getElementById('chartSites').getContext('2d');
+  charts.sites=new Chart(ctx,{type:'bar',data:{labels:ds.map(r=>r.d),datasets:[{label:'사이트',data:ds.map(r=>r.c),backgroundColor:'rgba(249,115,22,.6)',borderRadius:4}]},options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,grid:{color:'rgba(255,255,255,.05)'},ticks:{color:'rgba(240,240,245,.45)'}},x:{grid:{display:false},ticks:{color:'rgba(240,240,245,.45)',maxRotation:45,font:{size:10}}}}}});
+}
+
+/* ── TRAFFIC ── */
+async function loadTraffic(){
+  try{
+  const d=await CP.adminStats();
+  if(!d.ok){setErr(d.error);return;}
+  document.getElementById('mainContent').innerHTML=`
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div class="chart-card">
+        <div class="chart-title">국가별 방문</div>
+        ${d.countryStats.length?`<canvas id="chartCountry" height="160"></canvas>`:'<div style="color:var(--muted);font-size:.85rem">데이터 없음</div>'}
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">기기 유형</div>
+        ${d.deviceStats.length?`<canvas id="chartDevice" height="160"></canvas>`:'<div style="color:var(--muted);font-size:.85rem">데이터 없음</div>'}
+      </div>
+    </div>`;
+  if(d.countryStats.length){
+    if(charts.country) charts.country.destroy();
+    charts.country=new Chart(document.getElementById('chartCountry').getContext('2d'),{type:'bar',data:{labels:d.countryStats.map(r=>r.country||'Unknown'),datasets:[{label:'방문',data:d.countryStats.map(r=>r.cnt),backgroundColor:'rgba(99,102,241,.6)',borderRadius:4}]},options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,grid:{color:'rgba(255,255,255,.05)'},ticks:{color:'rgba(240,240,245,.45)'}},x:{grid:{display:false},ticks:{color:'rgba(240,240,245,.45)'}}}}});
+  }
+  if(d.deviceStats.length){
+    if(charts.device) charts.device.destroy();
+    const devColors={'desktop':'rgba(249,115,22,.7)','mobile':'rgba(99,102,241,.7)','tablet':'rgba(34,197,94,.7)'};
+    charts.device=new Chart(document.getElementById('chartDevice').getContext('2d'),{type:'doughnut',data:{labels:d.deviceStats.map(r=>r.device),datasets:[{data:d.deviceStats.map(r=>r.cnt),backgroundColor:d.deviceStats.map(r=>devColors[r.device]||'rgba(107,114,128,.7)'),borderWidth:0}]},options:{plugins:{legend:{labels:{color:'rgba(240,240,245,.7)',font:{family:'DM Sans'}}}}}});
+  }
+  }catch(e){setErr(e.message);}
+}
+
+/* ── USERS ── */
+let userPage=1,userQ='';
+async function loadUsers(){
+  const d=await CP.adminUsers(userQ,userPage);
+  if(!d.ok){document.getElementById('mainContent').innerHTML='<div style="color:var(--error)">로딩 실패</div>';return}
+  document.getElementById('mainContent').innerHTML=`
+    <div class="search-bar">
+      <input class="search-input" id="userSearch" placeholder="이름 또는 이메일 검색" value="${esc(userQ)}" onkeydown="if(event.key==='Enter'){userQ=this.value;userPage=1;loadUsers()}"/>
+      <button class="btn btn-ghost" onclick="userQ=document.getElementById('userSearch').value;userPage=1;loadUsers()">검색</button>
+      <span style="font-size:.82rem;color:var(--muted)">총 ${d.total}명</span>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>이름</th><th>이메일</th><th>역할</th><th>플랜</th><th>사이트</th><th>가입일</th><th>작업</th></tr></thead>
+        <tbody>${d.users.map(u=>{
+          const role=CP.roleName(u.role);
+          const plan=CP.planInfo(u.plan);
+          return `<tr>
+            <td><strong>${esc(u.name)}</strong></td>
+            <td style="color:var(--muted)">${esc(u.email)}</td>
+            <td><span class="badge" style="background:${u.role==='admin'?'rgba(249,115,22,.1)':u.role==='manager'?'rgba(99,102,241,.1)':'rgba(107,114,128,.1)};color:${u.role==='admin'?'var(--accent)':u.role==='manager'?'var(--info)':'var(--muted)'}">${role}</span></td>
+            <td><span class="badge" style="background:${plan.color}18;color:${plan.color}">${plan.name}</span></td>
+            <td>${u.site_count}</td>
+            <td style="color:var(--muted)">${CP.formatDate(u.created_at)}</td>
+            <td><button class="btn btn-ghost btn-sm" onclick="openUserEdit('${u.id}','${esc(u.name)}','${u.role}','${u.plan}')">수정</button> <button class="btn btn-danger btn-sm" onclick="deleteUser('${u.id}','${esc(u.name)}')">삭제</button></td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table>
+    </div>
+    ${renderPager(d.page,d.pages,'userPage','loadUsers')}`;
+}
+
+function openUserEdit(id,name,role,plan){
+  document.getElementById('editUserId').value=id;
+  document.getElementById('editUserName').value=name;
+  document.getElementById('editUserRole').value=role;
+  document.getElementById('editUserPlan').value=plan;
+  document.getElementById('userModal').classList.add('open');
+}
+
+async function saveUser(){
+  const id=document.getElementById('editUserId').value;
+  const r=await CP.adminUpdateUser({id,name:document.getElementById('editUserName').value,role:document.getElementById('editUserRole').value,plan:document.getElementById('editUserPlan').value});
+  closeModal('userModal');
+  if(r.ok){showToast('수정 완료','success');loadUsers();}else showToast(r.error||'실패','error');
+}
+
+async function deleteUser(id,name){
+  if(!confirm(`"${name}" 사용자를 삭제하시겠습니까?`))return;
+  const r=await CP.adminDeleteUser(id);
+  if(r.ok){showToast('삭제 완료','success');loadUsers();}else showToast(r.error||'실패','error');
+}
+
+/* ── SITES ── */
+let sitePage=1,siteQ='';
+async function loadAdminSites(){
+  try{
+  const d=await CP.adminSites(siteQ,sitePage);
+  if(!d.ok){setErr(d.error);return;}
+  document.getElementById('mainContent').innerHTML=`
+    <div class="search-bar">
+      <input class="search-input" id="siteSearch" placeholder="사이트 이름 또는 서브도메인" value="${esc(siteQ)}" onkeydown="if(event.key==='Enter'){siteQ=this.value;sitePage=1;loadAdminSites()}"/>
+      <button class="btn btn-ghost" onclick="siteQ=document.getElementById('siteSearch').value;sitePage=1;loadAdminSites()">검색</button>
+      <span style="font-size:.82rem;color:var(--muted)">총 ${d.total}개</span>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>사이트명</th><th>서브도메인</th><th>소유자</th><th>상태</th><th>개설일</th><th>작업</th></tr></thead>
+        <tbody>${d.sites.map(s=>{
+          const st=CP.statusBadge(s.status);
+          const url=s.wp_url||`https://${s.subdomain}.cloudpress.site`;
+          return `<tr>
+            <td><strong>${esc(s.name)}</strong></td>
+            <td style="font-family:monospace;font-size:.8rem;color:var(--muted)">${esc(s.subdomain)}</td>
+            <td><div>${esc(s.user_name)}</div><div style="font-size:.75rem;color:var(--muted)">${esc(s.user_email)}</div></td>
+            <td><span class="badge" style="background:${st.color}18;color:${st.color}"><span class="status-dot" style="background:${st.color}"></span>${st.label}</span></td>
+            <td style="color:var(--muted)">${CP.formatDate(s.created_at)}</td>
+            <td><a href="${url}" target="_blank" class="btn btn-ghost btn-sm">방문</a> ${s.wp_admin_url?`<a href="${s.wp_admin_url}" target="_blank" class="btn btn-success btn-sm">WP</a>`:''} <button class="btn btn-danger btn-sm" onclick="deleteSiteAdmin('${s.id}','${esc(s.name)}')">삭제</button></td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table>
+    </div>
+    ${renderPager(d.page,d.pages,'sitePage','loadAdminSites')}`;
+}
+
+async function deleteSiteAdmin(id,name){
+  if(!confirm(`"${name}" 사이트를 삭제하시겠습니까?`))return;
+  const r=await CP.adminDeleteSite(id);
+  if(r.ok){showToast('삭제 완료','success');loadAdminSites();}else showToast(r.error||'실패','error');
+}
+
+/* ── NOTICES ── */
+async function loadNotices(){
+  try{
+  const d=await CP.adminNotices();
+  if(!d.ok){setErr(d.error);return;}
+  document.getElementById('mainContent').innerHTML=`
+    <div class="section-hd">
+      <h2>공지 목록</h2>
+      <button class="btn btn-primary" onclick="openNoticeCreate()">+ 공지 작성</button>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>제목</th><th>유형</th><th>상태</th><th>작성일</th><th>작업</th></tr></thead>
+        <tbody>${d.notices.map(n=>{
+          const types={info:'일반',warning:'경고',success:'성공',error:'오류'};
+          const colors={info:'var(--info)',warning:'var(--warning)',success:'var(--success)',error:'var(--error)'};
+          return `<tr>
+            <td><strong>${esc(n.title)}</strong><div style="font-size:.78rem;color:var(--muted);margin-top:2px">${esc(n.content.slice(0,60))}${n.content.length>60?'...':''}</div></td>
+            <td><span class="badge" style="background:${colors[n.type]||'var(--info)'}18;color:${colors[n.type]||'var(--info)'}">${types[n.type]||n.type}</span></td>
+            <td><span class="badge" style="background:${n.is_active?'rgba(34,197,94,.1)':'rgba(107,114,128,.1)'};color:${n.is_active?'var(--success)':'var(--muted)'}">${n.is_active?'활성':'비활성'}</span></td>
+            <td style="color:var(--muted)">${CP.formatDate(n.created_at)}</td>
+            <td><button class="btn btn-ghost btn-sm" onclick="openNoticeEdit('${n.id}','${esc(n.title)}','${esc(n.content.replace(/'/g,"&#39;"))}','${n.type}',${n.is_active})">수정</button> <button class="btn btn-danger btn-sm" onclick="deleteNotice('${n.id}')">삭제</button></td>
+          </tr>`;
+        }).join('')||'<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:24px">공지 없음</td></tr>'}</tbody>
+      </table>
+    </div>`;
+  }catch(e){setErr(e.message);}
+}
+
+function openNoticeCreate(){
+  document.getElementById('editNoticeId').value='';
+  document.getElementById('editNoticeTitle').value='';
+  document.getElementById('editNoticeContent').value='';
+  document.getElementById('editNoticeType').value='info';
+  document.getElementById('editNoticeActive').value='1';
+  document.getElementById('noticeMTitle').textContent='공지 작성';
+  document.getElementById('noticeModal').classList.add('open');
+}
+
+function openNoticeEdit(id,title,content,type,active){
+  document.getElementById('editNoticeId').value=id;
+  document.getElementById('editNoticeTitle').value=title;
+  document.getElementById('editNoticeContent').value=content;
+  document.getElementById('editNoticeType').value=type;
+  document.getElementById('editNoticeActive').value=active?'1':'0';
+  document.getElementById('noticeMTitle').textContent='공지 수정';
+  document.getElementById('noticeModal').classList.add('open');
+}
+
+async function saveNotice(){
+  const id=document.getElementById('editNoticeId').value;
+  const payload={
+    title:document.getElementById('editNoticeTitle').value,
+    content:document.getElementById('editNoticeContent').value,
+    type:document.getElementById('editNoticeType').value,
+    is_active:document.getElementById('editNoticeActive').value==='1'?1:0,
+  };
+  let r;
+  if(id){payload.id=id;r=await CP.adminUpdateNotice(payload);}
+  else r=await CP.adminCreateNotice(payload);
+  closeModal('noticeModal');
+  if(r.ok){showToast(id?'수정 완료':'작성 완료','success');loadNotices();}else showToast(r.error||'실패','error');
+}
+
+async function deleteNotice(id){
+  if(!confirm('공지를 삭제하시겠습니까?'))return;
+  const r=await CP.adminDeleteNotice(id);
+  if(r.ok){showToast('삭제 완료','success');loadNotices();}else showToast(r.error||'실패','error');
+}
+
+/* ── REVENUE ── */
+let revPage=1;
+async function loadRevenue(){
+  try{
+  const d=await CP.adminRevenue(revPage);
+  if(!d.ok){setErr(d.error);return;}
+  const planColors={starter:'#6366f1',pro:'#f97316',enterprise:'#ec4899'};
+  document.getElementById('mainContent').innerHTML=`
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px">
+      ${(d.byPlan||[]).map(p=>`<div class="stat-card"><div style="font-size:.8rem;color:var(--muted);margin-bottom:4px">${CP.planInfo(p.plan).name} 플랜</div><div style="font-family:var(--font-head);font-size:1.2rem;font-weight:800;color:${planColors[p.plan]||'var(--text)'}">₩${p.total.toLocaleString()}</div><div style="font-size:.78rem;color:var(--muted)">${p.cnt}건</div></div>`).join('')}
+    </div>
+    <div class="section-hd"><h2>결제 내역</h2><span style="font-size:.83rem;color:var(--muted)">총 ${d.total}건</span></div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>주문번호</th><th>사용자</th><th>플랜</th><th>금액</th><th>결제수단</th><th>일시</th></tr></thead>
+        <tbody>${(d.payments||[]).map(p=>`<tr>
+          <td style="font-family:monospace;font-size:.78rem;color:var(--muted)">${esc(p.order_id.slice(0,20))}</td>
+          <td><div>${esc(p.user_name)}</div><div style="font-size:.75rem;color:var(--muted)">${esc(p.user_email)}</div></td>
+          <td><span class="badge" style="background:${planColors[p.plan]||'var(--muted)'}18;color:${planColors[p.plan]||'var(--muted)'}">${CP.planInfo(p.plan).name}</span></td>
+          <td style="color:var(--success);font-weight:700">₩${p.amount.toLocaleString()}</td>
+          <td style="color:var(--muted)">${esc(p.card_company||p.method||'—')}</td>
+          <td style="color:var(--muted)">${CP.formatDate(p.created_at)}</td>
+        </tr>`).join('')||'<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px">결제 내역 없음</td></tr>'}</tbody>
+      </table>
+    </div>
+    ${renderPager(d.page,d.pages,'revPage','loadRevenue')}`;
+  }catch(e){setErr(e.message);}
+}
+
+/* ── SETTINGS ── */
+async function loadSettings(){
+  try{
+  const d=await CP.adminSettings();
+  if(!d.ok){setErr(d.error);return;}
+  const s=d.settings||{};
+  const iwpOk=s.instawp_api_configured==='1';
+  const cfOk=s.cf_api_configured==='1';
+  document.getElementById('mainContent').innerHTML=`
+    <div style="max-width:640px">
+      <div class="section-card" style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:22px;margin-bottom:14px">
+        <div class="section-title" style="font-family:var(--font-head);font-size:.95rem;font-weight:700;margin-bottom:16px">요금제 가격 (원/월)</div>
+        <div class="field"><label>스타터 플랜</label><input type="number" id="cfgStarterPrice" value="${s.plan_starter_price||9900}"/></div>
+        <div class="field"><label>프로 플랜</label><input type="number" id="cfgProPrice" value="${s.plan_pro_price||29900}"/></div>
+        <div class="field"><label>엔터프라이즈 플랜</label><input type="number" id="cfgEntPrice" value="${s.plan_enterprise_price||99000}"/></div>
+        <div class="field"><label>스타터 최대 사이트 수</label><input type="number" id="cfgStarterSites" value="${s.plan_starter_sites||3}"/></div>
+        <div class="field"><label>프로 최대 사이트 수</label><input type="number" id="cfgProSites" value="${s.plan_pro_sites||10}"/></div>
+      </div>
+      <div class="section-card" style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:22px;margin-bottom:14px">
+        <div class="section-title" style="font-family:var(--font-head);font-size:.95rem;font-weight:700;margin-bottom:16px">
+          InstaWP API 설정
+          <span style="font-size:.72rem;font-weight:500;margin-left:8px;padding:2px 8px;border-radius:10px;background:${iwpOk?'rgba(34,197,94,.1)':'rgba(239,68,68,.1)'};color:${iwpOk?'var(--success)':'var(--error)'}">${iwpOk?'✓ 연결됨':'✗ 미설정'}</span>
+        </div>
+        <div style="font-size:.8rem;color:var(--muted);margin-bottom:12px">⚠️ 보안상 API 키는 Cloudflare Pages → Settings → Environment Variables에 <strong>INSTAWP_API_KEY</strong>로 저장하세요. 여기서 저장해도 wrangler.toml이 우선합니다.</div>
+        <div class="field"><label>InstaWP API Key (참고용)</label><input type="password" id="cfgInstawpKey" value="" placeholder="app.instawp.io → Settings → API Tokens에서 발급"/></div>
+      </div>
+      <div class="section-card" style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:22px;margin-bottom:14px">
+        <div class="section-title" style="font-family:var(--font-head);font-size:.95rem;font-weight:700;margin-bottom:16px">
+          Toss 결제 설정
+        </div>
+        <div class="field"><label>클라이언트 키</label><input type="text" id="cfgTossClient" value="${esc(s.toss_client_key||'')}" placeholder="test_ck_..."/></div>
+        <div class="field"><label>시크릿 키</label><input type="password" id="cfgTossSecret" value="${esc(s.toss_secret_key||'')}" placeholder="test_sk_..."/></div>
+      </div>
+      <div class="section-card" style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:22px;margin-bottom:14px">
+        <div class="section-title" style="font-family:var(--font-head);font-size:.95rem;font-weight:700;margin-bottom:16px">
+          Cloudflare CDN 설정
+          <span style="font-size:.72rem;font-weight:500;margin-left:8px;padding:2px 8px;border-radius:10px;background:${cfOk?'rgba(34,197,94,.1)':'rgba(107,114,128,.1)'};color:${cfOk?'var(--success)':'var(--muted)'}">${cfOk?'✓ 연결됨':'미설정 (선택)'}</span>
+        </div>
+        <div style="font-size:.8rem;color:var(--muted);margin-bottom:10px">설정 시 사이트 생성 시 자동으로 CDN이 연결되어 트래픽이 무제한에 가깝게 처리됩니다. CF_API_TOKEN, CF_ZONE_ID를 wrangler.toml에 추가하세요.</div>
+      </div>
+      <button class="btn btn-primary" onclick="saveSettings()">설정 저장</button>
+    </div>`;
+  }catch(e){setErr(e.message);}
+}
+
+async function saveSettings(){
+  const settings={
+    plan_starter_price:    document.getElementById('cfgStarterPrice').value,
+    plan_pro_price:        document.getElementById('cfgProPrice').value,
+    plan_enterprise_price: document.getElementById('cfgEntPrice').value,
+    plan_starter_sites:    document.getElementById('cfgStarterSites').value,
+    plan_pro_sites:        document.getElementById('cfgProSites').value,
+    toss_client_key:       document.getElementById('cfgTossClient').value,
+    toss_secret_key:       document.getElementById('cfgTossSecret').value,
+    instawp_api_key:       document.getElementById('cfgInstawpKey').value,
+  };
+  // 빈 값은 저장 안 함
+  Object.keys(settings).forEach(k=>{ if(!settings[k]) delete settings[k]; });
+  const r=await CP.adminSaveSettings(settings);
+  if(r.ok) showToast('설정 저장 완료','success');
+  else showToast(r.error||'저장 실패','error');
+}
+
+/* Pagination helper */
+function renderPager(page,pages,pageVar,loadFn){
+  if(!pages||pages<=1) return '';
+  let btns='';
+  for(let i=1;i<=pages;i++) btns+=`<button class="page-btn${i===page?' active':''}" onclick="${pageVar}=${i};${loadFn}()">${i}</button>`;
+  return `<div class="pager">${btns}</div>`;
+}
+
+/* Section card style for settings */
+document.head.insertAdjacentHTML('beforeend',`<style>.section-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:22px;margin-bottom:14px}.section-title{font-family:var(--font-head);font-size:.95rem;font-weight:700;margin-bottom:16px}</style>`);
+
+init();
+</script>
+</body>
+</html>

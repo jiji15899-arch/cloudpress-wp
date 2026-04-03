@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>결제 실패 — CloudPress</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:opsz,wght@9..40,400;9..40,500&display=swap" rel="stylesheet"/>
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{--bg:#08080e;--surface:#0f0f18;--border2:rgba(255,255,255,.12);--text:#f0f0f5;--muted:rgba(240,240,245,.45);--accent:#f97316;--error:#ef4444;--font-head:'Syne',sans-serif;--font-body:'DM Sans',sans-serif}
+    body{font-family:var(--font-body);background:var(--bg);color:var(--text);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+    .card{background:var(--surface);border:1px solid var(--border2);border-radius:20px;padding:48px 40px;max-width:440px;width:100%;text-align:center}
+    .icon{width:80px;height:80px;border-radius:50%;background:rgba(239,68,68,.1);border:2px solid rgba(239,68,68,.2);display:flex;align-items:center;justify-content:center;margin:0 auto 24px}
+    h1{font-family:var(--font-head);font-size:1.3rem;font-weight:700;margin-bottom:10px}
+    p{color:var(--muted);font-size:.88rem;margin-bottom:24px;line-height:1.6}
+    .reason{background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.15);border-radius:8px;padding:12px 16px;font-size:.84rem;color:var(--error);margin-bottom:24px}
+    .btn{display:inline-block;padding:12px 28px;background:linear-gradient(135deg,var(--accent),#e86209);border:none;border-radius:10px;color:#fff;font-family:var(--font-head);font-size:.92rem;font-weight:700;cursor:pointer;text-decoration:none}
+  </style>
+</head>
+<body>
+<div class="card">
+  <div class="icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="#ef4444" stroke-width="1.5"/><line x1="15" y1="9" x2="9" y2="15" stroke="#ef4444" stroke-width="1.5" stroke-linecap="round"/><line x1="9" y1="9" x2="15" y2="15" stroke="#ef4444" stroke-width="1.5" stroke-linecap="round"/></svg></div>
+  <h1>결제가 취소되었습니다</h1>
+  <p>결제 도중 취소되었거나 오류가 발생했습니다.</p>
+  <div class="reason" id="reason"></div>
+  <a href="/pricing.html" class="btn">다시 시도</a>
+</div>
+<script>
+const p=new URLSearchParams(location.search);
+const msg=p.get('message')||p.get('msg')||'알 수 없는 오류';
+const code=p.get('code')||'';
+document.getElementById('reason').textContent=(code?`[${code}] `:'')+decodeURIComponent(msg);
+</script>
+</body>
+</html>

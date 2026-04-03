@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CloudPress — 클라우드플레어 기반 WordPress 호스팅</title>
+  <meta name="description" content="Cloudflare Pages 기반 고성능 WordPress 호스팅. 8GB RAM, 무제한 트래픽, 20GB 스토리지, 자동 DDoS 방어." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <div class="cursor" id="cursor"></div>
+  <div class="cursor-follower" id="cursorFollower"></div>
+  <div class="noise"></div>
+
+  <!-- HEADER -->
+  <header class="header" id="header">
+    <div class="container header-inner">
+      <a href="#" class="logo">
+        <svg width="26" height="26" viewBox="0 0 28 28" fill="none">
+          <path d="M14 2L26 8V20L14 26L2 20V8L14 2Z" stroke="currentColor" stroke-width="1.5"/>
+          <path d="M14 8L20 11V17L14 20L8 17V11L14 8Z" fill="currentColor" opacity="0.5"/>
+          <circle cx="14" cy="14" r="2.2" fill="currentColor"/>
+        </svg>
+        CloudPress
+      </a>
+      <nav class="nav" id="nav">
+        <a href="#features">기능</a>
+        <a href="#specs">스펙</a>
+        <a href="#pricing">요금제</a>
+        <a href="#faq">FAQ</a>
+      </nav>
+      <div class="header-actions">
+        <a href="/auth.html" class="btn ghost sm">로그인</a>
+        <a href="/auth.html?tab=signup" class="btn primary sm">시작하기</a>
+      </div>
+      <button class="burger" id="burger" aria-label="메뉴">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </header>
+
+  <!-- HERO -->
+  <section class="hero" id="hero">
+    <div class="hero-bg">
+      <div class="grid-overlay"></div>
+      <div class="orb orb1"></div>
+      <div class="orb orb2"></div>
+      <div class="orb orb3"></div>
+    </div>
+    <div class="container hero-inner">
+      <div class="badge reveal">
+        <span class="badge-dot"></span>
+        Cloudflare 글로벌 네트워크 기반
+      </div>
+      <h1 class="hero-title reveal d1">
+        WordPress 호스팅의<br>
+        <span class="grad">새로운 기준</span>
+      </h1>
+      <p class="hero-sub reveal d2">
+        Cloudflare Pages의 강력한 인프라 위에서<br>
+        8GB RAM · 무제한 트래픽 · 자동 DDoS 방어를 경험하세요.
+      </p>
+      <div class="hero-cta reveal d3">
+        <a href="/auth.html?tab=signup" class="btn primary lg">
+          무료로 시작하기
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8H13M13 8L9 4M13 8L9 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </a>
+        <a href="#features" class="btn outline lg">기능 살펴보기</a>
+      </div>
+      <div class="hero-stats reveal d4">
+        <div class="stat">
+          <div class="stat-num"><span class="count" data-target="99.99" data-dec="2">0</span>%</div>
+          <div class="stat-lbl">업타임 SLA</div>
+        </div>
+        <div class="stat-divider"></div>
+        <div class="stat">
+          <div class="stat-num"><span class="count" data-target="300" data-dec="0">0</span>+</div>
+          <div class="stat-lbl">글로벌 엣지 노드</div>
+        </div>
+        <div class="stat-divider"></div>
+        <div class="stat">
+          <div class="stat-num">0<span style="font-size:0.5em;opacity:.7">ms</span></div>
+          <div class="stat-lbl">DDoS 방어 레이턴시</div>
+        </div>
+      </div>
+    </div>
+    <div class="scroll-cue">
+      <div class="scroll-line"></div>
+      <span>스크롤</span>
+    </div>
+  </section>
+
+  <!-- TICKER -->
+  <div class="ticker" aria-hidden="true">
+    <div class="ticker-track">
+      <span>Cloudflare Pages</span><span class="dot">✦</span>
+      <span>8GB DDR5 RAM</span><span class="dot">✦</span>
+      <span>무제한 트래픽</span><span class="dot">✦</span>
+      <span>20GB NVMe SSD</span><span class="dot">✦</span>
+      <span>자동 DDoS 방어</span><span class="dot">✦</span>
+      <span>무료 SSL 인증서</span><span class="dot">✦</span>
+      <span>WordPress 최적화</span><span class="dot">✦</span>
+      <span>글로벌 CDN 300+</span><span class="dot">✦</span>
+      <span>원클릭 설치</span><span class="dot">✦</span>
+      <span>일일 자동 백업</span><span class="dot">✦</span>
+      <span>Cloudflare Pages</span><span class="dot">✦</span>
+      <span>8GB DDR5 RAM</span><span class="dot">✦</span>
+      <span>무제한 트래픽</span><span class="dot">✦</span>
+      <span>20GB NVMe SSD</span><span class="dot">✦</span>
+      <span>자동 DDoS 방어</span><span class="dot">✦</span>
+      <span>무료 SSL 인증서</span><span class="dot">✦</span>
+      <span>WordPress 최적화</span><span class="dot">✦</span>
+      <span>글로벌 CDN 300+</span><span class="dot">✦</span>
+      <span>원클릭 설치</span><span class="dot">✦</span>
+      <span>일일 자동 백업</span><span class="dot">✦</span>
+    </div>
+  </div>
+
+  <!-- FEATURES -->
+  <section class="section" id="features">
+    <div class="container">
+      <div class="sec-head reveal">
+        <span class="tag">핵심 기능</span>
+        <h2 class="sec-title">모든 것이 포함되어 있습니다</h2>
+        <p class="sec-sub">엔터프라이즈급 인프라를 개인 요금으로. 복잡한 설정 없이 바로 시작하세요.</p>
+      </div>
+      <div class="feat-grid">
+        <div class="fcard wide reveal">
+          <div class="fcard-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><rect x="2" y="6" width="20" height="13" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M2 10h20" stroke="currentColor" stroke-width="1.5"/><circle cx="5" cy="8" r=".8" fill="currentColor"/><circle cx="8" cy="8" r=".8" fill="currentColor"/><path d="M5 13.5h4M5 16.5h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          </div>
+          <h3>8GB DDR5 RAM</h3>
+          <p>고성능 메모리로 WordPress와 플러그인들이 쾌적하게 동작합니다. 트래픽 스파이크에도 끄떡없는 넉넉한 메모리.</p>
+          <div class="ram-bars">
+            <div class="bar" style="--h:60%"></div>
+            <div class="bar" style="--h:82%"></div>
+            <div class="bar" style="--h:48%"></div>
+            <div class="bar" style="--h:91%"></div>
+            <div class="bar" style="--h:70%"></div>
+            <div class="bar" style="--h:55%"></div>
+            <div class="bar" style="--h:87%"></div>
+            <div class="bar" style="--h:42%"></div>
+          </div>
+          <p class="ram-lbl">사용 가능: <strong>8,192 MB</strong></p>
+        </div>
+        <div class="fcard reveal d1">
+          <div class="fcard-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.5"/><path d="M3 12h18M12 3c-2 2.5-3 5.5-3 9s1 6.5 3 9M12 3c2 2.5 3 5.5 3 9s-1 6.5-3 9" stroke="currentColor" stroke-width="1.5"/></svg>
+          </div>
+          <h3>무제한 트래픽</h3>
+          <p>방문자 수 제한 없음. 바이럴이 와도 추가 요금 없이 안정적으로 서비스됩니다.</p>
+          <svg class="wave-svg" viewBox="0 0 200 50" preserveAspectRatio="none"><path class="wave-path" d="M0,25 C30,5 60,45 90,25 C120,5 150,45 180,25 C190,18 196,22 200,25" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+        </div>
+        <div class="fcard accent reveal d2">
+          <div class="fcard-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" stroke="currentColor" stroke-width="1.5"/><path d="M9 12l2 2 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          </div>
+          <h3>자동 DDoS 방어</h3>
+          <p>Cloudflare Magic Transit이 수 Tbps 공격을 자동 차단. 0ms 레이턴시 페널티.</p>
+          <div class="shield-status"><span class="s-dot"></span>실시간 보호 중</div>
+        </div>
+        <div class="fcard reveal">
+          <div class="fcard-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="14" y="3" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="3" y="14" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="14" y="14" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/></svg>
+          </div>
+          <h3>20GB NVMe SSD</h3>
+          <p>초고속 스토리지로 DB 쿼리와 파일 I/O가 눈에 띄게 빨라집니다.</p>
+        </div>
+        <div class="fcard reveal d1">
+          <div class="fcard-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M12 2L2 7l10 5 10-5-10-5z" stroke="currentColor" stroke-width="1.5"/><path d="M2 17l10 5 10-5M2 12l10 5 10-5" stroke="currentColor" stroke-width="1.5"/></svg>
+          </div>
+          <h3>글로벌 CDN</h3>
+          <p>전 세계 300+ Cloudflare 엣지 서버에서 콘텐츠가 배포. 어디서나 빠른 속도.</p>
+        </div>
+        <div class="fcard reveal d2">
+          <div class="fcard-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.5"/><path d="M12 6v6l4 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          </div>
+          <h3>일일 자동 백업</h3>
+          <p>매일 전체 백업 생성. 30일치 보관, 원클릭 복원 지원.</p>
+        </div>
+        <div class="fcard reveal">
+          <div class="fcard-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><rect x="3" y="11" width="18" height="11" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M7 11V7a5 5 0 0 1 10 0v4" stroke="currentColor" stroke-width="1.5"/></svg>
+          </div>
+          <h3>무료 SSL/TLS</h3>
+          <p>Cloudflare Universal SSL로 HTTPS 자동 활성화. 인증서 갱신도 자동.</p>
+        </div>
+        <div class="fcard reveal d1">
+          <div class="fcard-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+          <h3>자동 스케일링</h3>
+          <p>트래픽 변화에 따라 리소스가 자동으로 조절. 최적 성능 유지.</p>
+        </div>
+        <div class="fcard reveal d2">
+          <div class="fcard-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" stroke="currentColor" stroke-width="1.5"/><polyline points="16 6 12 2 8 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="12" y1="2" x2="12" y2="15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          </div>
+          <h3>원클릭 설치</h3>
+          <p>버튼 하나로 최신 WordPress 설치 완료. 5분 안에 사이트 시작.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SPECS -->
+  <section class="section specs-section" id="specs">
+    <div class="container specs-inner">
+      <div class="specs-left reveal">
+        <span class="tag">기술 사양</span>
+        <h2 class="sec-title">엔터프라이즈급<br>인프라 스펙</h2>
+        <p class="sec-sub">모든 플랜에 동일하게 적용되는 고성능 사양. 타협 없는 인프라.</p>
+        <a href="#pricing" class="btn primary">플랜 보기</a>
+      </div>
+      <div class="specs-right">
+        <div class="spec-row reveal"><span class="spec-name">CPU</span><span class="spec-val">8 vCore AMD EPYC</span><div class="spec-bar"><div class="spec-fill" data-w="80"></div></div></div>
+        <div class="spec-row reveal d1"><span class="spec-name">RAM</span><span class="spec-val">8 GB DDR5</span><div class="spec-bar"><div class="spec-fill" data-w="90"></div></div></div>
+        <div class="spec-row reveal d2"><span class="spec-name">스토리지</span><span class="spec-val">20 GB NVMe SSD</span><div class="spec-bar"><div class="spec-fill" data-w="70"></div></div></div>
+        <div class="spec-row reveal d3"><span class="spec-name">트래픽</span><span class="spec-val">무제한 Unmetered</span><div class="spec-bar"><div class="spec-fill" data-w="100"></div></div></div>
+        <div class="spec-row reveal"><span class="spec-name">네트워크</span><span class="spec-val">10 Gbps 포트</span><div class="spec-bar"><div class="spec-fill" data-w="95"></div></div></div>
+        <div class="spec-row reveal d1"><span class="spec-name">PHP</span><span class="spec-val">PHP 8.3 최신</span><div class="spec-bar"><div class="spec-fill" data-w="85"></div></div></div>
+        <div class="spec-row reveal d2"><span class="spec-name">DB</span><span class="spec-val">MySQL 8 / MariaDB 11</span><div class="spec-bar"><div class="spec-fill" data-w="88"></div></div></div>
+        <div class="spec-row reveal d3"><span class="spec-name">DDoS</span><span class="spec-val">무제한 Tbps 보호</span><div class="spec-bar"><div class="spec-fill" data-w="100"></div></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PRICING -->
+  <section class="section" id="pricing">
+    <div class="container">
+      <div class="sec-head reveal">
+        <span class="tag">요금제</span>
+        <h2 class="sec-title">투명한 요금, 숨겨진 비용 없음</h2>
+        <p class="sec-sub">모든 플랜에 동일한 고성능 인프라. 14일 무료 체험 포함.</p>
+      </div>
+      <div class="billing-row reveal">
+        <span class="bill-lbl" id="lblMo">월간</span>
+        <button class="tog-btn" id="billingTog" aria-pressed="false"><span class="tog-thumb"></span></button>
+        <span class="bill-lbl" id="lblYr">연간 <span class="save-tag">20% 할인</span></span>
+      </div>
+      <div class="price-grid">
+        <div class="pcard reveal">
+          <p class="pname">스타터</p>
+          <div class="pprice"><span class="pcur">₩</span><span class="pnum" data-mo="9900" data-yr="7900">9,900</span><span class="pper">/월</span></div>
+          <p class="pdesc">개인 블로그 및 소규모 사이트</p>
+          <ul class="plist">
+            <li><svg viewBox="0 0 12 12" fill="none"><path d="M1.5 6l3 3 6-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>1개 WordPress 사이트</li>
+            <li><svg viewBox="0 0 12 12" fill="none"><path d="M1.5 6l3 3 6-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>8GB RAM</li>
+            <li><svg viewBox="0 0 12 12" fill="none"><path d="M1.5 6l3 3 6-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>20GB NVMe SSD</li>
+            <li><svg viewBox="0 0 12 12" fill="none"><path d="M1.5 6l3 3 6-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>무제한 트래픽</li>
+            <li><svg viewBox="0 0 12 12" fill="none"><path d="M1.5 6l3 3 6-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>자동 DDoS 방어</li>
+            <li><svg viewBox="0 0 12 12" fill="none"><path d="M1.5 6l3 3 6-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>무료 SSL</li>
+            <li><svg viewBox="0 0 12 12" fill="none"><path d="M1.5 6l3 3 6-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>자동 백업 (7일)</li>
+            <li><svg viewBox="0 0 12 12" fill="none"><path d="M1.5 6l3 3 6-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>이메일 지원</li>
+          </ul>
+          <a href="/auth.html?tab=signup" class="btn outline full">시작하기</a>
+        </div>
+        <div class="pcard featured reveal d1">
+          <div class="pbadge">가장 인기</div>
+          <p class="pname">프로</p>
+          <div class="pprice"><span class="pcur">₩</span><span class="pnum" data-mo="29900" data-yr="23900">29,900</span><span class="pper">/월</span></div>
+          <p class="pdesc">성장하는 비즈니스 및 전문 블로거</p>
+          <ul class="plist">
+            <li><svg viewBox="0 0 12 12" fill="none"><path d="M1.5 6l3 3 6-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>5개 WordPress 사이트</li>
+            <li><svg viewBox="0 0 12 12" fill="none"><path d="M1.5 6l3 3 6-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>8GB RAM (격리 환경)</li>
+            <li><svg viewBox="0 0 12 12" fill="none"><path d="M1.5 6l3 3 6-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>20GB NVMe SSD × 5</li>
+            <li><svg viewBox="0 0 12 12" fill="none"><path d="M1.5 6l3 3 6-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>무제한 트래픽</li>
+            <li><svg viewBox="0 0 12 12" fill="none"><path d="M1.5 6l3 3 6-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>DDoS 방어 Pro</li>
+            <li><svg viewBox="0 0 12 12" fill="none"><path d="M1.5 6l3 3 6-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>Wildcard SSL</li>
+            <li><svg viewBox="0 0 12 12" fill="none"><path d="M1.5 6l3 3 6-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>자동 백업 (30일)</li>
+            <li><svg viewBox="0 0 12 12" fill="none"><path d="M1.5 6l3 3 6-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>우선 지원 24/7</li>
+            <li><svg viewBox="0 0 12 12" fill="none"><path d="M1.5 6l3 3 6-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>스테이징 환경</li>
+            <li><svg viewBox="0 0 12 12" fill="none"><path d="M1.5 6l3 3 6-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>Cloudflare WAF</li>
+          </ul>
+          <a href="/auth.html?tab=signup" class="btn primary full">시작하기</a>
+        </div>
+        <div class="pcard reveal d2">
+          <p class="pname">엔터프라이즈</p>
+          <div class="pprice"><span class="pcur">₩</span><span class="pnum" data-mo="99000" data-yr="79000">99,000</span><span class="pper">/월</span></div>
+          <p class="pdesc">대규모 트래픽 · 높은 가용성 기업</p>
+          <ul class="plist">
+            <li><svg viewBox="0 0 12 12" fill="none"><path d="M1.5 6l3 3 6-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>무제한 사이트</li>
+            <li><svg viewBox="0 0 12 12" fill="none"><path d="M1.5 6l3 3 6-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>전용 8GB RAM/사이트</li>
+            <li><svg viewBox="0 0 12 12" fill="none"><path d="M1.5 6l3 3 6-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>무제한 NVMe SSD</li>
+            <li><svg viewBox="0 0 12 12" fill="none"><path d="M1.5 6l3 3 6-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>무제한 트래픽</li>
+            <li><svg viewBox="0 0 12 12" fill="none"><path d="M1.5 6l3 3 6-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>엔터프라이즈 DDoS</li>
+            <li><svg viewBox="0 0 12 12" fill="none"><path d="M1.5 6l3 3 6-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>전용 SSL + 커스텀</li>
+            <li><svg viewBox="0 0 12 12" fill="none"><path d="M1.5 6l3 3 6-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>실시간 백업 + 복원</li>
+            <li><svg viewBox="0 0 12 12" fill="none"><path d="M1.5 6l3 3 6-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>전담 계정 매니저</li>
+            <li><svg viewBox="0 0 12 12" fill="none"><path d="M1.5 6l3 3 6-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>SLA 99.99% 업타임</li>
+            <li><svg viewBox="0 0 12 12" fill="none"><path d="M1.5 6l3 3 6-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>전용 IP 주소</li>
+          </ul>
+          <a href="/auth.html?tab=signup" class="btn outline full">문의하기</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section class="section faq-section" id="faq">
+    <div class="container">
+      <div class="sec-head reveal">
+        <span class="tag">FAQ</span>
+        <h2 class="sec-title">자주 묻는 질문</h2>
+      </div>
+      <div class="faq-list reveal">
+        <div class="faq-item">
+          <button class="faq-q">Cloudflare Pages 기반 호스팅이 일반 호스팅과 다른 점은?<svg class="faq-arrow" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
+          <div class="faq-a"><p>Cloudflare Anycast 네트워크로 전 세계 300개 이상의 데이터센터에서 콘텐츠가 서빙됩니다. TTFB 최대 70% 개선, DDoS 방어 기본 내장.</p></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-q">기존 WordPress 사이트를 마이그레이션할 수 있나요?<svg class="faq-arrow" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
+          <div class="faq-a"><p>네, 무료 마이그레이션 서비스를 제공합니다. 지원팀이 직접 도와드리며, 다운타임 없이 이전 가능합니다.</p></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-q">DDoS 방어는 어느 수준까지 지원되나요?<svg class="faq-arrow" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
+          <div class="faq-a"><p>197 Tbps 네트워크 용량 기반. L3/L4 및 L7 DDoS 공격을 모두 자동 탐지·차단하며, 추가 비용 없이 무제한 제공됩니다.</p></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-q">백업은 어떻게 관리되나요?<svg class="faq-arrow" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
+          <div class="faq-a"><p>매일 자동 전체 백업(파일+DB). 스타터 7일, 프로 30일, 엔터프라이즈 실시간. 대시보드에서 원클릭 복원.</p></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-q">언제든지 플랜을 변경할 수 있나요?<svg class="faq-arrow" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
+          <div class="faq-a"><p>언제든지 업·다운그레이드 가능. 업그레이드 즉시 적용, 잔여 금액은 크레딧으로 제공됩니다.</p></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="section cta-section">
+    <div class="container">
+      <div class="cta-box reveal">
+        <div class="cta-orb ca"></div>
+        <div class="cta-orb cb"></div>
+        <div class="cta-inner">
+          <h2 class="cta-title">지금 바로 시작하세요</h2>
+          <p class="cta-sub">신용카드 없이 14일 무료 체험. 언제든지 취소 가능.</p>
+          <div class="cta-btns">
+            <a href="/auth.html?tab=signup" class="btn white lg">무료 체험 시작</a>
+            <a href="/auth.html?tab=signup" class="btn ghost-white lg">영업팀 문의</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-top">
+        <div class="footer-brand">
+          <a href="#" class="logo">
+            <svg width="22" height="22" viewBox="0 0 28 28" fill="none"><path d="M14 2L26 8V20L14 26L2 20V8L14 2Z" stroke="currentColor" stroke-width="1.5"/><path d="M14 8L20 11V17L14 20L8 17V11L14 8Z" fill="currentColor" opacity="0.5"/><circle cx="14" cy="14" r="2.2" fill="currentColor"/></svg>
+            CloudPress
+          </a>
+          <p>Cloudflare 기반 WordPress 호스팅의 새로운 기준</p>
+        </div>
+        <div class="footer-cols">
+          <div><h4>제품</h4><a href="#features">기능</a><a href="#specs">기술 사양</a><a href="#pricing">요금제</a></div>
+          <div><h4>지원</h4><a href="#">문서</a><a href="#faq">FAQ</a><a href="#">고객센터</a></div>
+          <div><h4>회사</h4><a href="#">소개</a><a href="#">블로그</a><a href="#">채용</a></div>
+          <div><h4>법적</h4><a href="#">이용약관</a><a href="#">개인정보처리방침</a><a href="#">SLA</a></div>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <span>© 2025 CloudPress. All rights reserved.</span>
+        <span>Powered by Cloudflare · Made in Korea 🇰🇷</span>
+      </div>
+    </div>
+  </footer>
+
+  <div class="toast" id="toast" role="alert"></div>
+  <script src="script.js"></script>
+</body>
+</html>

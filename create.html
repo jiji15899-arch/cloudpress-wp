@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>WordPress 개설 — CloudPress</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:opsz,wght@9..40,400;9..40,500&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="dashboard.css"/>
+  <style>
+    .wizard{max-width:580px;margin:0 auto}
+    .steps{display:flex;align-items:center;margin-bottom:32px}
+    .stp{display:flex;align-items:center;gap:7px;font-size:.82rem;font-weight:500;color:var(--muted)}
+    .stp.active{color:var(--accent)}.stp.done{color:var(--success)}
+    .stp-num{width:24px;height:24px;border-radius:50%;border:1.5px solid currentColor;display:flex;align-items:center;justify-content:center;font-size:.72rem;font-weight:700;flex-shrink:0}
+    .stp.done .stp-num{display:none}.stp-ck{display:none}
+    .stp.done .stp-ck{display:flex;width:24px;height:24px;border-radius:50%;background:var(--success);align-items:center;justify-content:center}
+    .stp-sep{flex:1;height:1px;background:var(--border);margin:0 8px}
+    .plan-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:24px}
+    .plan-opt{border:2px solid var(--border);border-radius:12px;padding:15px;cursor:pointer;transition:all .2s;position:relative}
+    .plan-opt.sel{border-color:var(--accent);background:rgba(249,115,22,.05)}
+    .po-name{font-family:var(--font-head);font-size:.88rem;font-weight:700;margin-bottom:3px}
+    .po-price{font-size:.82rem;color:var(--accent);font-weight:700;margin-bottom:6px}
+    .po-feat{font-size:.73rem;color:var(--muted);line-height:1.6}
+    .po-badge{position:absolute;top:-8px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-size:.66rem;font-weight:700;padding:2px 9px;border-radius:20px}
+    .spin{width:52px;height:52px;border-radius:50%;border:3px solid var(--border2);border-top-color:var(--accent);animation:sp 1s linear infinite;margin:0 auto 20px}
+    @keyframes sp{to{transform:rotate(360deg)}}
+    .log{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:14px;font-size:.78rem;font-family:monospace;color:var(--muted);height:130px;overflow-y:auto;margin-top:18px;line-height:1.8;text-align:left}
+    .log .ok{color:var(--success)}.log .cur{color:var(--accent)}
+    .success-icon{width:76px;height:76px;border-radius:50%;background:rgba(34,197,94,.1);border:2px solid rgba(34,197,94,.25);display:flex;align-items:center;justify-content:center;margin:0 auto 20px}
+    @media(max-width:560px){.plan-grid{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+<div class="app-wrap">
+  <aside class="sidebar" id="sidebar">
+    <a href="/dashboard.html" class="sb-logo"><svg width="22" height="22" viewBox="0 0 28 28" fill="none"><path d="M14 2L26 8V20L14 26L2 20V8L14 2Z" stroke="currentColor" stroke-width="1.5"/><path d="M14 8L20 11V17L14 20L8 17V11L14 8Z" fill="currentColor" opacity=".5"/><circle cx="14" cy="14" r="2.2" fill="currentColor"/></svg>CloudPress</a>
+    <nav class="sb-nav">
+      <div class="sb-section"><div class="sb-label">메인</div>
+        <a href="/dashboard.html" class="sb-link"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="14" y="3" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="3" y="14" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="14" y="14" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/></svg>대시보드</a>
+        <a href="/create.html" class="sb-link active"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.5"/><path d="M12 8v8M8 12h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>사이트 추가</a>
+      </div>
+      <div class="sb-section"><button class="sb-link danger" onclick="CP.logout()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><polyline points="16 17 21 12 16 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="21" y1="12" x2="9" y2="12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>로그아웃</button></div>
+    </nav>
+    <div class="sb-user"><div class="sb-avatar" id="sbAvatar">?</div><div class="sb-uinfo"><div class="sb-uname" id="sbName">—</div><div class="sb-uemail" id="sbEmail">—</div></div></div>
+  </aside>
+  <div class="sidebar-overlay" id="overlay" onclick="closeSidebar()"></div>
+  <main class="main">
+    <div class="topbar">
+      <div style="display:flex;align-items:center;gap:14px">
+        <button class="sidebar-toggle" onclick="openSidebar()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M3 12h18M3 6h18M3 18h18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
+        <span class="topbar-title">WordPress 개설</span>
+      </div>
+      <a href="/dashboard.html" class="btn btn-ghost btn-sm">← 대시보드</a>
+    </div>
+    <div class="content">
+      <div class="wizard">
+        <div class="steps" id="stepsBar">
+          <div class="stp active" id="s1i"><div class="stp-num">1</div><svg class="stp-ck" width="24" height="24" viewBox="0 0 24 24" fill="none"><polyline points="20 6 9 17 4 12" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>사이트 정보</div>
+          <div class="stp-sep"></div>
+          <div class="stp" id="s2i"><div class="stp-num">2</div><svg class="stp-ck" width="24" height="24" viewBox="0 0 24 24" fill="none"><polyline points="20 6 9 17 4 12" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>완료</div>
+        </div>
+
+        <!-- Step 1 -->
+        <div id="step1">
+          <div class="card" style="padding:26px">
+            <h2 style="font-family:var(--font-head);font-size:1.05rem;font-weight:700;margin-bottom:20px">🚀 WordPress 사이트 기본 설정</h2>
+            <div class="field">
+              <label>사이트 이름</label>
+              <input type="text" id="siteName" placeholder="예: 내 블로그" maxlength="60"/>
+            </div>
+            <div class="field">
+              <label>서브도메인 <span style="color:var(--accent);font-size:.8em">실제 사용되는 주소</span></label>
+              <div style="display:flex;align-items:center">
+                <input type="text" id="subdomain" placeholder="myblog" maxlength="30" style="border-radius:9px 0 0 9px;flex:1" oninput="this.value=this.value.toLowerCase().replace(/[^a-z0-9-]/g,'')"/>
+                <div id="domSuffix" style="padding:10px 13px;background:var(--surface2);border:1px solid var(--border2);border-left:none;border-radius:0 9px 9px 0;color:var(--muted);font-size:.86rem;white-space:nowrap">.cloudpress.site</div>
+              </div>
+              <div class="hint">3~30자, 영소문자·숫자·하이픈만 가능</div>
+            </div>
+            <div style="background:rgba(34,197,94,.05);border:1px solid rgba(34,197,94,.15);border-radius:10px;padding:14px;margin-bottom:20px">
+              <div style="font-size:.82rem;color:var(--success);font-weight:600;margin-bottom:6px">✅ 완전 무료 설치 포함 사항</div>
+              <div style="font-size:.8rem;color:var(--muted);line-height:1.8">• WordPress 최신 버전 자동 설치<br>• PHP 8.3 + MariaDB + Redis<br>• VPS 전용 환경 (공유 호스팅 아님)<br>• LiteSpeed Cache 플러그인 자동 설치<br>• CloudPress Migrator 플러그인 자동 설치<br>• SSL 인증서 자동 발급</div>
+            </div>
+            <div id="stepErr" style="color:var(--error);font-size:.83rem;margin-bottom:14px;display:none"></div>
+            <button class="btn btn-primary" style="width:100%" onclick="doCreate()">WordPress 개설하기 🚀</button>
+          </div>
+        </div>
+
+        <!-- Step 2: Provisioning/Result -->
+        <div id="step2" style="display:none">
+          <div class="card" id="provView" style="padding:32px;text-align:center">
+            <div class="spin"></div>
+            <h2 style="font-family:var(--font-head);font-size:1.05rem;font-weight:700;margin-bottom:8px">WordPress 설치 중...</h2>
+            <p style="color:var(--muted);font-size:.86rem">PHP 8.3 + MariaDB + Redis + 플러그인 자동 설정 중</p>
+            <div class="log" id="logBox"><div class="cur">▶ 환경 초기화 중...</div></div>
+          </div>
+          <div class="card" id="okView" style="padding:32px;display:none">
+            <div class="success-icon"><svg width="34" height="34" viewBox="0 0 24 24" fill="none"><polyline points="20 6 9 17 4 12" stroke="#22c55e" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+            <h2 style="font-family:var(--font-head);font-size:1.15rem;font-weight:700;text-align:center;margin-bottom:6px">설치 완료! 🎉</h2>
+            <p style="color:var(--muted);font-size:.84rem;text-align:center;margin-bottom:22px">아래 정보로 WordPress 관리자에 접속하세요.</p>
+            <div class="section-card" id="credBox"></div>
+            <div style="display:flex;gap:10px;margin-top:14px">
+              <a id="btnAdmin" href="#" target="_blank" class="btn btn-primary" style="flex:1;text-align:center;text-decoration:none">WP 관리자 접속 →</a>
+              <a href="/dashboard.html" class="btn btn-ghost" style="flex:1;text-align:center;text-decoration:none">대시보드</a>
+            </div>
+          </div>
+          <div class="card" id="errView" style="padding:32px;text-align:center;display:none">
+            <div style="width:60px;height:60px;border-radius:50%;background:rgba(239,68,68,.1);border:2px solid rgba(239,68,68,.2);display:flex;align-items:center;justify-content:center;margin:0 auto 18px"><svg width="26" height="26" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="#ef4444" stroke-width="1.5"/><line x1="12" y1="8" x2="12" y2="12" stroke="#ef4444" stroke-width="1.5" stroke-linecap="round"/><circle cx="12" cy="16" r=".5" fill="#ef4444" stroke="#ef4444"/></svg></div>
+            <h2 style="font-family:var(--font-head);font-size:1.05rem;margin-bottom:8px">설치 오류</h2>
+            <p style="color:var(--muted);font-size:.86rem;margin-bottom:18px">WordPress 설치 중 오류가 발생했습니다.</p>
+            <button class="btn btn-primary" onclick="location.reload()">다시 시도</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+<script src="/app.js"></script>
+<script>
+const LOGS=[
+  'WordPress 최신 버전 다운로드 중...',
+  'MariaDB 데이터베이스 생성 중...',
+  'PHP 8.3 FPM 환경 구성 중...',
+  'Redis 캐시 연결 설정 중...',
+  'WordPress 코어 설치 중...',
+  '관리자 계정 생성 중...',
+  'LiteSpeed Cache 플러그인 설치 중...',
+  'CloudPress Migrator 플러그인 설치 중...',
+  'SSL 인증서 발급 중...',
+  '최종 설정 마무리 중...',
+];
+let siteId=null;
+let logIdx=0;
+let logTimer=null;
+
+async function init(){
+  const user=await CP.requireAuth();
+  if(!user)return;
+  document.getElementById('sbAvatar').textContent=user.name[0].toUpperCase();
+  document.getElementById('sbName').textContent=user.name;
+  document.getElementById('sbEmail').textContent=user.email;
+}
+
+async function doCreate(){
+  const name=document.getElementById('siteName').value.trim();
+  const sub=document.getElementById('subdomain').value.trim();
+  const errEl=document.getElementById('stepErr');
+  errEl.style.display='none';
+
+  if(!name){errEl.textContent='사이트 이름을 입력해주세요.';errEl.style.display='';return}
+  if(!sub||!/^[a-z0-9-]{3,30}$/.test(sub)){errEl.textContent='서브도메인은 3~30자 영소문자·숫자·하이픈이어야 합니다.';errEl.style.display='';return}
+
+  const btn=document.querySelector('#step1 .btn.btn-primary');
+  btn.disabled=true;btn.textContent='처리 중...';
+
+  const r=await CP.createSite({ name, subdomain: sub, php_version: '8.3' });
+  if(!r.ok){btn.disabled=false;btn.textContent='WordPress 개설하기 🚀';errEl.textContent=r.error||'개설 실패';errEl.style.display='';return}
+
+  siteId=r.site.id;
+  document.getElementById('step1').style.display='none';
+  document.getElementById('step2').style.display='';
+  document.getElementById('s1i').className='stp done';
+  document.getElementById('s2i').className='stp active';
+
+  startLog();
+  pollSite();
+}
+
+function startLog(){
+  const box=document.getElementById('logBox');
+  box.innerHTML='';
+  logIdx=0;
+  logTimer=setInterval(()=>{
+    if(logIdx>0){const prev=box.querySelector('.cur');if(prev)prev.className='ok';}
+    if(logIdx<LOGS.length){
+      const d=document.createElement('div');d.className='cur';d.textContent='▶ '+LOGS[logIdx];
+      box.appendChild(d);box.scrollTop=box.scrollHeight;logIdx++;
+    }
+  },2800);
+}
+
+async function pollSite(){
+  const start=Date.now();
+  const poll=async()=>{
+    if(Date.now()-start>240000){clearInterval(logTimer);showErr();return}
+    const d=await CP.pollSite(siteId);
+    if(!d.ok){setTimeout(poll,5000);return}
+    if(d.site.status==='active'){clearInterval(logTimer);showSuccess(d.site);}
+    else if(d.site.status==='error'){clearInterval(logTimer);showErr();}
+    else setTimeout(poll,4000);
+  };
+  setTimeout(poll,6000);
+}
+
+function showSuccess(s){
+  const url=s.wp_url||`https://${s.subdomain}.cloudpress.site`;
+  const admin=s.wp_admin_url||url+'/wp-admin';
+  document.getElementById('btnAdmin').href=admin;
+  document.getElementById('credBox').innerHTML=`
+    <div class="cred-row"><span class="cred-label">사이트 URL</span><span class="cred-val">${url}</span><button class="copy-btn" onclick="copyText('${url}',this)">복사</button></div>
+    <div class="cred-row"><span class="cred-label">관리자 URL</span><span class="cred-val">${admin}</span><button class="copy-btn" onclick="copyText('${admin}',this)">복사</button></div>
+    <div class="cred-row"><span class="cred-label">아이디</span><span class="cred-val">${s.wp_username||'admin'}</span><button class="copy-btn" onclick="copyText('${s.wp_username||'admin'}',this)">복사</button></div>
+    <div class="cred-row"><span class="cred-label">비밀번호</span><span class="cred-val" id="passVal">••••••••</span><button class="copy-btn" id="passBtn" onclick="togglePass('${CP.escHtml(s.wp_password||'')}')">보기</button></div>`;
+  document.getElementById('provView').style.display='none';
+  document.getElementById('okView').style.display='';
+  document.getElementById('s2i').className='stp done';
+}
+
+let passShown=false;
+function togglePass(p){
+  passShown=!passShown;
+  document.getElementById('passVal').textContent=passShown?p:'••••••••';
+  document.getElementById('passBtn').textContent=passShown?'숨기기':'보기';
+}
+
+function showErr(){
+  document.getElementById('provView').style.display='none';
+  document.getElementById('errView').style.display='';
+}
+
+init();
+</script>
+</body>
+</html>

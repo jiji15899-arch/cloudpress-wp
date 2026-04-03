@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>로그인 / 회원가입 — CloudPress</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:opsz,wght@9..40,400;9..40,500&display=swap" rel="stylesheet"/>
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{--bg:#08080e;--surface:#0f0f18;--surface2:#161622;--border:rgba(255,255,255,.07);--border2:rgba(255,255,255,.12);--text:#f0f0f5;--muted:rgba(240,240,245,.45);--accent:#f97316;--accent2:#ec4899;--success:#22c55e;--error:#ef4444;--font-head:'Syne',sans-serif;--font-body:'DM Sans',sans-serif}
+    html,body{height:100%;font-family:var(--font-body);background:var(--bg);color:var(--text)}
+    .bg{position:fixed;inset:0;background:radial-gradient(ellipse 80% 60% at 20% 0%,rgba(249,115,22,.12),transparent 60%),radial-gradient(ellipse 60% 60% at 80% 100%,rgba(236,72,153,.08),transparent 60%)}
+    .grid{position:fixed;inset:0;background-image:linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px);background-size:48px 48px}
+    .page{position:relative;z-index:1;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+    .card{width:100%;max-width:440px;background:var(--surface);border:1px solid var(--border2);border-radius:20px;padding:44px 40px;box-shadow:0 40px 80px rgba(0,0,0,.5)}
+    .logo{display:flex;align-items:center;gap:8px;font-family:var(--font-head);font-size:1.1rem;font-weight:700;text-decoration:none;color:var(--text);margin-bottom:36px}
+    .tabs{display:flex;gap:4px;background:var(--bg);border-radius:10px;padding:4px;margin-bottom:28px}
+    .tab{flex:1;padding:9px;border:none;background:none;color:var(--muted);font-family:var(--font-body);font-size:.9rem;border-radius:7px;cursor:pointer;transition:all .2s}
+    .tab.active{background:var(--surface2);color:var(--text);box-shadow:0 1px 4px rgba(0,0,0,.4)}
+    .field{margin-bottom:16px}
+    .field label{display:block;font-size:.82rem;color:var(--muted);margin-bottom:6px;font-weight:500}
+    .field input{width:100%;padding:11px 14px;background:var(--bg);border:1px solid var(--border2);border-radius:9px;color:var(--text);font-family:var(--font-body);font-size:.92rem;outline:none;transition:border-color .2s}
+    .field input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(249,115,22,.1)}
+    .global-err{background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:8px;padding:10px 14px;font-size:.85rem;color:var(--error);margin-bottom:14px;display:none}
+    .global-err.show{display:block}
+    .btn-submit{width:100%;padding:12px;background:linear-gradient(135deg,var(--accent),#e86209);border:none;border-radius:10px;color:#fff;font-family:var(--font-head);font-size:.95rem;font-weight:700;cursor:pointer;margin-top:4px;transition:all .2s}
+    .btn-submit:hover{transform:translateY(-1px);box-shadow:0 8px 24px rgba(249,115,22,.35)}
+    .btn-submit:disabled{opacity:.5;cursor:not-allowed;transform:none}
+    .cp-toast{position:fixed;bottom:24px;right:24px;padding:12px 20px;border-radius:10px;font-size:.88rem;color:#fff;opacity:0;transform:translateY(8px);transition:all .3s;pointer-events:none;z-index:9999}
+    .cp-toast.show{opacity:1;transform:none}
+    .cp-toast.error{background:#ef4444}.cp-toast.success{background:#22c55e}
+    @media(max-width:480px){.card{padding:32px 22px}}
+  </style>
+</head>
+<body>
+<div class="bg"></div><div class="grid"></div>
+<div class="page">
+  <div class="card">
+    <a href="/" class="logo">
+      <svg width="22" height="22" viewBox="0 0 28 28" fill="none"><path d="M14 2L26 8V20L14 26L2 20V8L14 2Z" stroke="currentColor" stroke-width="1.5"/><path d="M14 8L20 11V17L14 20L8 17V11L14 8Z" fill="currentColor" opacity=".5"/><circle cx="14" cy="14" r="2.2" fill="currentColor"/></svg>
+      CloudPress
+    </a>
+    <div class="tabs">
+      <button class="tab active" id="tabLogin" onclick="switchTab('login')">로그인</button>
+      <button class="tab" id="tabReg" onclick="switchTab('reg')">회원가입</button>
+    </div>
+    <div class="global-err" id="gErr"></div>
+
+    <div id="loginForm">
+      <div class="field"><label>이메일</label><input type="email" id="lEmail" placeholder="name@example.com" autocomplete="email"/></div>
+      <div class="field"><label>비밀번호</label><input type="password" id="lPass" placeholder="비밀번호" autocomplete="current-password"/></div>
+      <button class="btn-submit" id="btnLogin" onclick="doLogin()">로그인</button>
+    </div>
+
+    <div id="regForm" style="display:none">
+      <div class="field"><label>이름</label><input type="text" id="rName" placeholder="홍길동"/></div>
+      <div class="field"><label>이메일</label><input type="email" id="rEmail" placeholder="name@example.com"/></div>
+      <div class="field"><label>비밀번호 <span style="color:var(--muted);font-size:.8em">(6자 이상)</span></label><input type="password" id="rPass" placeholder="비밀번호 설정"/></div>
+      <button class="btn-submit" id="btnReg" onclick="doRegister()">무료로 시작하기</button>
+    </div>
+  </div>
+</div>
+<script src="/app.js"></script>
+<script>
+function switchTab(t) {
+  document.getElementById('loginForm').style.display = t==='login'?'':'none';
+  document.getElementById('regForm').style.display   = t==='reg'?'':'none';
+  document.getElementById('tabLogin').classList.toggle('active',t==='login');
+  document.getElementById('tabReg').classList.toggle('active',t==='reg');
+  document.getElementById('gErr').classList.remove('show');
+}
+function showErr(m){const e=document.getElementById('gErr');e.textContent=m;e.classList.add('show')}
+function setLoading(id,v){const b=document.getElementById(id);b.disabled=v;b.textContent=v?'처리 중...':(id==='btnLogin'?'로그인':'무료로 시작하기')}
+
+async function doLogin(){
+  const email=document.getElementById('lEmail').value.trim();
+  const pass=document.getElementById('lPass').value;
+  if(!email||!pass){showErr('이메일과 비밀번호를 입력해주세요.');return}
+  setLoading('btnLogin',true);
+  const r=await CP.login(email,pass);
+  setLoading('btnLogin',false);
+  if(r.ok){
+    window.location.href = r.user?.role==='admin' ? '/admin.html' : '/dashboard.html';
+  } else showErr(r.error||'로그인 실패');
+}
+
+async function doRegister(){
+  const name=document.getElementById('rName').value.trim();
+  const email=document.getElementById('rEmail').value.trim();
+  const pass=document.getElementById('rPass').value;
+  if(!name||!email||!pass){showErr('모든 항목을 입력해주세요.');return}
+  if(pass.length<6){showErr('비밀번호는 6자 이상이어야 합니다.');return}
+  setLoading('btnReg',true);
+  const r=await CP.register(name,email,pass);
+  setLoading('btnReg',false);
+  if(r.ok){
+    window.location.href = r.user?.role==='admin' ? '/admin.html' : '/dashboard.html';
+  } else showErr(r.error||'회원가입 실패');
+}
+
+document.addEventListener('keydown',e=>{
+  if(e.key!=='Enter')return;
+  if(document.getElementById('loginForm').style.display!=='none') doLogin();
+  else doRegister();
+});
+
+(async()=>{if(CP.getToken()){const d=await CP.get('/auth/me');if(d.ok)window.location.href=d.user?.role==='admin'?'/admin.html':'/dashboard.html';}})();
+</script>
+</body>
+</html>

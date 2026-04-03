@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>404 — 페이지를 찾을 수 없습니다 | CloudPress</title>
+  <link rel="stylesheet" href="style.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;1,9..40,300&display=swap" rel="stylesheet" />
+  <style>
+    .error-page {
+      min-height: 100vh;
+      display: flex; align-items: center; justify-content: center;
+      text-align: center; padding: 40px 24px;
+      background: var(--bg);
+      position: relative; overflow: hidden;
+    }
+    .error-page__orb {
+      position: absolute; border-radius: 50%; filter: blur(80px); opacity: 0.3;
+    }
+    .error-page__orb--1 { width: 400px; height: 400px; background: radial-gradient(circle, rgba(249,115,22,0.3) 0%, transparent 70%); top: -100px; left: -100px; }
+    .error-page__orb--2 { width: 300px; height: 300px; background: radial-gradient(circle, rgba(139,92,246,0.25) 0%, transparent 70%); bottom: -80px; right: -80px; }
+    .error-page__inner { position: relative; z-index: 1; }
+    .error-code {
+      font-family: var(--font-display);
+      font-size: clamp(100px, 20vw, 200px);
+      font-weight: 800; line-height: 1;
+      letter-spacing: -8px;
+      background: var(--gradient-brand);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 16px;
+    }
+    .error-title {
+      font-family: var(--font-display);
+      font-size: 28px; font-weight: 700;
+      margin-bottom: 12px;
+    }
+    .error-desc { font-size: 17px; color: var(--text-2); margin-bottom: 36px; }
+    .error-actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  </style>
+</head>
+<body>
+  <div class="noise-overlay"></div>
+  <div class="error-page">
+    <div class="error-page__orb error-page__orb--1"></div>
+    <div class="error-page__orb error-page__orb--2"></div>
+    <div class="error-page__inner">
+      <div class="error-code">404</div>
+      <h1 class="error-title">페이지를 찾을 수 없습니다</h1>
+      <p class="error-desc">요청하신 페이지가 이동되었거나 삭제된 것 같습니다.<br />홈으로 돌아가거나 지원팀에 문의하세요.</p>
+      <div class="error-actions">
+        <a href="index.html" class="btn btn--primary btn--lg">홈으로 돌아가기</a>
+        <a href="index.html#faq" class="btn btn--outline btn--lg">지원팀 문의</a>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

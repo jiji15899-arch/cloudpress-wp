@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>내 계정 — CloudPress</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:opsz,wght@9..40,400;9..40,500&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="dashboard.css"/>
+</head>
+<body>
+<div class="app-wrap">
+  <aside class="sidebar" id="sidebar">
+    <a href="/dashboard.html" class="sb-logo"><svg width="22" height="22" viewBox="0 0 28 28" fill="none"><path d="M14 2L26 8V20L14 26L2 20V8L14 2Z" stroke="currentColor" stroke-width="1.5"/><path d="M14 8L20 11V17L14 20L8 17V11L14 8Z" fill="currentColor" opacity=".5"/><circle cx="14" cy="14" r="2.2" fill="currentColor"/></svg>CloudPress</a>
+    <nav class="sb-nav">
+      <div class="sb-section"><div class="sb-label">메인</div>
+        <a href="/dashboard.html" class="sb-link"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="14" y="3" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="3" y="14" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="14" y="14" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/></svg>대시보드</a>
+      </div>
+      <div class="sb-section"><div class="sb-label">계정</div>
+        <a href="/account.html" class="sb-link active"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="currentColor" stroke-width="1.5"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>내 계정</a>
+        <a href="/pricing.html" class="sb-link"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="2" y="5" width="20" height="14" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M2 10h20" stroke="currentColor" stroke-width="1.5"/></svg>요금제 변경</a>
+      </div>
+      <div class="sb-section"><button class="sb-link danger" onclick="CP.logout()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><polyline points="16 17 21 12 16 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="21" y1="12" x2="9" y2="12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>로그아웃</button></div>
+    </nav>
+    <div class="sb-user"><div class="sb-avatar" id="sbAvatar">?</div><div class="sb-uinfo"><div class="sb-uname" id="sbName">—</div><div class="sb-uemail" id="sbEmail">—</div></div></div>
+  </aside>
+  <div class="sidebar-overlay" id="overlay" onclick="closeSidebar()"></div>
+  <main class="main">
+    <div class="topbar">
+      <div style="display:flex;align-items:center;gap:14px">
+        <button class="sidebar-toggle" onclick="openSidebar()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M3 12h18M3 6h18M3 18h18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
+        <span class="topbar-title">내 계정</span>
+      </div>
+    </div>
+    <div class="content" style="max-width:560px">
+      <h1 style="font-family:var(--font-head);font-size:1.25rem;font-weight:700;margin-bottom:22px">계정 설정</h1>
+      <div class="section-card">
+        <div class="section-title">프로필 정보</div>
+        <div class="field"><label>이름</label><input type="text" id="pName"/></div>
+        <div class="field"><label>이메일</label><input type="email" id="pEmail" disabled style="opacity:.5"/></div>
+        <div class="field"><label>현재 플랜</label><div id="planInfo"></div></div>
+        <div class="field"><label>보유 사이트</label><span id="siteCount" style="font-size:.9rem;font-weight:600">—</span>개</div>
+        <button class="btn btn-primary btn-sm" id="saveBtn" onclick="saveProfile()">저장</button>
+      </div>
+      <div class="section-card">
+        <div class="section-title">비밀번호 변경</div>
+        <div class="field"><label>현재 비밀번호</label><input type="password" id="curPw"/></div>
+        <div class="field"><label>새 비밀번호</label><input type="password" id="newPw" placeholder="6자 이상"/></div>
+        <div class="field"><label>새 비밀번호 확인</label><input type="password" id="newPw2"/></div>
+        <div id="pwErr" style="font-size:.82rem;color:var(--error);margin-bottom:10px;display:none"></div>
+        <button class="btn btn-primary btn-sm" id="chgBtn" onclick="changePw()">비밀번호 변경</button>
+      </div>
+      <div class="section-card">
+        <div class="section-title">고객 지원</div>
+        <p style="font-size:.85rem;color:var(--muted)">문의사항은 <a href="mailto:choichoi3227@gmail.com" style="color:var(--accent)">choichoi3227@gmail.com</a>으로 연락주세요.</p>
+      </div>
+    </div>
+  </main>
+</div>
+<script src="/app.js"></script>
+<script>
+async function init(){
+  const user=await CP.requireAuth();if(!user)return;
+  document.getElementById('sbAvatar').textContent=user.name[0].toUpperCase();
+  document.getElementById('sbName').textContent=user.name;
+  document.getElementById('sbEmail').textContent=user.email;
+  const d=await CP.getProfile();if(!d.ok)return;
+  const u=d.user;
+  document.getElementById('pName').value=u.name;
+  document.getElementById('pEmail').value=u.email;
+  document.getElementById('siteCount').textContent=u.site_count||0;
+  const plan=CP.planInfo(u.plan);
+  document.getElementById('planInfo').innerHTML=`<span class="plan-badge" style="background:${plan.color}18;color:${plan.color}">${plan.name}</span>${u.plan!=='free'?` <a href="/pricing.html" style="font-size:.78rem;color:var(--accent);text-decoration:none;margin-left:8px">변경 →</a>`:'<a href="/pricing.html" style="font-size:.78rem;color:var(--accent);text-decoration:none;margin-left:8px">업그레이드 →</a>'}`;
+}
+async function saveProfile(){
+  const name=document.getElementById('pName').value.trim();
+  if(!name){showToast('이름을 입력해주세요.','error');return}
+  document.getElementById('saveBtn').disabled=true;document.getElementById('saveBtn').textContent='저장 중...';
+  const r=await CP.updateProfile({name});
+  document.getElementById('saveBtn').disabled=false;document.getElementById('saveBtn').textContent='저장';
+  if(r.ok){CP.setUser(r.user);showToast('저장 완료','success');}else showToast(r.error||'실패','error');
+}
+async function changePw(){
+  const cur=document.getElementById('curPw').value;
+  const nw=document.getElementById('newPw').value;
+  const nw2=document.getElementById('newPw2').value;
+  const e=document.getElementById('pwErr');e.style.display='none';
+  if(!cur||!nw||!nw2){e.textContent='모두 입력해주세요.';e.style.display='';return}
+  if(nw.length<6){e.textContent='새 비밀번호는 6자 이상이어야 합니다.';e.style.display='';return}
+  if(nw!==nw2){e.textContent='새 비밀번호가 일치하지 않습니다.';e.style.display='';return}
+  document.getElementById('chgBtn').disabled=true;document.getElementById('chgBtn').textContent='변경 중...';
+  const r=await CP.updateProfile({current_password:cur,new_password:nw});
+  document.getElementById('chgBtn').disabled=false;document.getElementById('chgBtn').textContent='비밀번호 변경';
+  if(r.ok){document.getElementById('curPw').value='';document.getElementById('newPw').value='';document.getElementById('newPw2').value='';showToast('비밀번호 변경 완료','success');}
+  else{e.textContent=r.error||'실패';e.style.display='';}
+}
+init();
+</script>
+</body>
+</html>

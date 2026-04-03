@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>요금제 — CloudPress</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:opsz,wght@9..40,400;9..40,500&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="dashboard.css"/>
+  <style>
+    .pricing-wrap{max-width:900px;margin:0 auto}
+    .plan-cards{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:40px}
+    .plan-card{background:var(--surface);border:2px solid var(--border);border-radius:16px;padding:24px 20px;position:relative;transition:all .2s}
+    .plan-card:hover{border-color:var(--border2)}
+    .plan-card.popular{border-color:var(--accent);background:rgba(249,115,22,.03)}
+    .plan-card.current{border-color:var(--success)}
+    .pop-badge{position:absolute;top:-10px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-size:.68rem;font-weight:700;padding:3px 12px;border-radius:20px;white-space:nowrap}
+    .cur-badge{position:absolute;top:-10px;left:50%;transform:translateX(-50%);background:var(--success);color:#fff;font-size:.68rem;font-weight:700;padding:3px 12px;border-radius:20px}
+    .plan-name{font-family:var(--font-head);font-size:1rem;font-weight:700;margin-bottom:4px}
+    .plan-price{font-size:1.5rem;font-family:var(--font-head);font-weight:800;margin-bottom:4px}
+    .plan-price span{font-size:.85rem;font-weight:400;color:var(--muted)}
+    .plan-desc{font-size:.78rem;color:var(--muted);margin-bottom:16px}
+    .plan-feats{list-style:none;padding:0;margin-bottom:20px}
+    .plan-feats li{font-size:.8rem;color:var(--muted);padding:4px 0;display:flex;align-items:flex-start;gap:7px;line-height:1.4}
+    .plan-feats li::before{content:'✓';color:var(--success);font-weight:700;flex-shrink:0;margin-top:1px}
+    .btn-plan{width:100%;padding:10px;border-radius:9px;font-family:var(--font-head);font-size:.88rem;font-weight:700;cursor:pointer;transition:all .2s;border:none}
+    .btn-plan.primary{background:linear-gradient(135deg,var(--accent),#e86209);color:#fff}
+    .btn-plan.ghost{background:var(--surface2);border:1px solid var(--border2);color:var(--text)}
+    .btn-plan.ghost:hover{border-color:var(--accent);color:var(--accent)}
+    .btn-plan:disabled{opacity:.5;cursor:not-allowed}
+    @media(max-width:768px){.plan-cards{grid-template-columns:1fr 1fr}}
+    @media(max-width:480px){.plan-cards{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+<div class="app-wrap">
+  <aside class="sidebar" id="sidebar">
+    <a href="/dashboard.html" class="sb-logo"><svg width="22" height="22" viewBox="0 0 28 28" fill="none"><path d="M14 2L26 8V20L14 26L2 20V8L14 2Z" stroke="currentColor" stroke-width="1.5"/><path d="M14 8L20 11V17L14 20L8 17V11L14 8Z" fill="currentColor" opacity=".5"/><circle cx="14" cy="14" r="2.2" fill="currentColor"/></svg>CloudPress</a>
+    <nav class="sb-nav">
+      <div class="sb-section"><div class="sb-label">메인</div>
+        <a href="/dashboard.html" class="sb-link"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="14" y="3" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="3" y="14" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="14" y="14" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/></svg>대시보드</a>
+      </div>
+      <div class="sb-section"><div class="sb-label">계정</div>
+        <a href="/account.html" class="sb-link"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="currentColor" stroke-width="1.5"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>내 계정</a>
+        <a href="/pricing.html" class="sb-link active"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="2" y="5" width="20" height="14" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M2 10h20" stroke="currentColor" stroke-width="1.5"/></svg>요금제</a>
+      </div>
+      <div class="sb-section"><button class="sb-link danger" onclick="CP.logout()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><polyline points="16 17 21 12 16 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="21" y1="12" x2="9" y2="12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>로그아웃</button></div>
+    </nav>
+    <div class="sb-user"><div class="sb-avatar" id="sbAvatar">?</div><div class="sb-uinfo"><div class="sb-uname" id="sbName">—</div><div class="sb-uemail" id="sbEmail">—</div></div></div>
+  </aside>
+  <div class="sidebar-overlay" id="overlay" onclick="closeSidebar()"></div>
+  <main class="main">
+    <div class="topbar">
+      <div style="display:flex;align-items:center;gap:14px">
+        <button class="sidebar-toggle" onclick="openSidebar()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M3 12h18M3 6h18M3 18h18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
+        <span class="topbar-title">요금제</span>
+      </div>
+    </div>
+    <div class="content">
+      <div class="pricing-wrap">
+        <div style="text-align:center;margin-bottom:32px">
+          <h1 style="font-family:var(--font-head);font-size:1.6rem;font-weight:800;margin-bottom:8px">합리적인 요금제</h1>
+          <p style="color:var(--muted)">WordPress 호스팅은 <strong style="color:var(--success)">100% 무료</strong>입니다. 더 많은 사이트와 기능이 필요할 때 업그레이드하세요.</p>
+        </div>
+        <div class="plan-cards" id="planCards">
+          <div style="color:var(--muted);font-size:.88rem;padding:20px">로딩 중...</div>
+        </div>
+        <div style="background:rgba(249,115,22,.06);border:1px solid rgba(249,115,22,.15);border-radius:12px;padding:18px 22px;font-size:.84rem;color:var(--muted)">
+          💳 <strong style="color:var(--text)">지원 결제 수단:</strong> 국민, KB국민, 카카오뱅크, 토스, 우리, 신한, 삼성, 농협, 하나, 기업, SC제일, 현대, 롯데, 씨티, 우체국, 새마을, 수협, 신협, MG, 토스뱅크, 케이뱅크 카드 및 계좌이체, 가상계좌, 휴대폰 결제
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Toss Payments SDK -->
+<script src="https://js.tosspayments.com/v2/standard"></script>
+<script src="/app.js"></script>
+<script>
+let currentUser=null;
+let prices={starter:9900,pro:29900,enterprise:99000};
+
+async function init(){
+  currentUser=await CP.requireAuth();
+  if(!currentUser)return;
+  document.getElementById('sbAvatar').textContent=currentUser.name[0].toUpperCase();
+  document.getElementById('sbName').textContent=currentUser.name;
+  document.getElementById('sbEmail').textContent=currentUser.email;
+
+  // 설정에서 가격 조회
+  const sd=await CP.adminSettings();
+  if(sd.ok&&sd.settings){
+    if(sd.settings.plan_starter_price)    prices.starter    =parseInt(sd.settings.plan_starter_price);
+    if(sd.settings.plan_pro_price)       prices.pro        =parseInt(sd.settings.plan_pro_price);
+    if(sd.settings.plan_enterprise_price) prices.enterprise =parseInt(sd.settings.plan_enterprise_price);
+  }
+  renderCards();
+}
+
+function renderCards(){
+  const cur=currentUser.plan;
+  const plans=[
+    {id:'free',name:'무료',price:0,sites:1,feats:['WordPress 사이트 1개','VPS 전용 환경','PHP 8.3 + MariaDB + Redis','LiteSpeed Cache 자동 설치','CloudPress Migrator 자동 설치','5GB 스토리지','cloudpress.site 서브도메인']},
+    {id:'starter',name:'스타터',price:prices.starter,sites:3,feats:['WordPress 사이트 3개','모든 무료 기능 포함','커스텀 도메인 연결','20GB 스토리지','우선 지원']},
+    {id:'pro',name:'프로',price:prices.pro,sites:10,feats:['WordPress 사이트 10개','모든 스타터 기능 포함','100GB 스토리지','고속 CDN','전담 지원','자동 백업'],popular:true},
+    {id:'enterprise',name:'엔터프라이즈',price:prices.enterprise,sites:-1,feats:['무제한 사이트','모든 프로 기능 포함','무제한 스토리지','SLA 99.9% 보장','전담 매니저','커스텀 설정']},
+  ];
+  document.getElementById('planCards').innerHTML=plans.map(p=>`
+    <div class="plan-card${p.popular?' popular':''}${cur===p.id?' current':''}">
+      ${p.popular?'<div class="pop-badge">인기</div>':''}
+      ${cur===p.id?'<div class="cur-badge">현재 플랜</div>':''}
+      <div class="plan-name">${p.name}</div>
+      <div class="plan-price">${p.price===0?'무료':`₩${p.price.toLocaleString()}`}${p.price>0?'<span>/월</span>':''}</div>
+      <div class="plan-desc">사이트 ${p.sites===-1?'무제한':p.sites+'개'}</div>
+      <ul class="plan-feats">${p.feats.map(f=>`<li>${f}</li>`).join('')}</ul>
+      ${p.id==='free'
+        ? `<button class="btn-plan ghost" disabled>${cur==='free'?'현재 플랜':'다운그레이드'}</button>`
+        : cur===p.id
+          ? `<button class="btn-plan ghost" disabled>현재 플랜</button>`
+          : `<button class="btn-plan primary" onclick="subscribe('${p.id}')">구독하기</button>`}
+    </div>`).join('');
+}
+
+async function subscribe(plan){
+  const btn=event.target;
+  btn.disabled=true;btn.textContent='처리 중...';
+
+  const r=await CP.paymentCheckout(plan);
+  if(!r.ok){showToast(r.error||'결제 오류','error');btn.disabled=false;btn.textContent='구독하기';return}
+
+  try{
+    const toss=await window.TossPayments(r.tossClientKey);
+    const payment=toss.payment({customerKey:currentUser.id});
+    await payment.requestPayment({
+      method:'CARD',
+      amount:{currency:'KRW',value:r.amount},
+      orderId:r.orderId,
+      orderName:r.orderName,
+      customerName:r.customerName,
+      customerEmail:r.customerEmail,
+      successUrl:window.location.origin+'/payment-success.html',
+      failUrl:window.location.origin+'/payment-fail.html',
+      card:{useEscrow:false,flowMode:'DEFAULT',useCardPoint:false,useAppCardOnly:false},
+    });
+  }catch(e){
+    console.error(e);
+    if(e.code!=='USER_CANCEL') showToast(e.message||'결제 오류','error');
+    btn.disabled=false;btn.textContent='구독하기';
+  }
+}
+
+init();
+</script>
+</body>
+</html>

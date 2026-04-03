@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>사이트 관리 — CloudPress</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:opsz,wght@9..40,400;9..40,500&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="dashboard.css"/>
+</head>
+<body>
+<div class="app-wrap">
+  <aside class="sidebar" id="sidebar">
+    <a href="/dashboard.html" class="sb-logo"><svg width="22" height="22" viewBox="0 0 28 28" fill="none"><path d="M14 2L26 8V20L14 26L2 20V8L14 2Z" stroke="currentColor" stroke-width="1.5"/><path d="M14 8L20 11V17L14 20L8 17V11L14 8Z" fill="currentColor" opacity=".5"/><circle cx="14" cy="14" r="2.2" fill="currentColor"/></svg>CloudPress</a>
+    <nav class="sb-nav">
+      <div class="sb-section"><div class="sb-label">메인</div>
+        <a href="/dashboard.html" class="sb-link active"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="14" y="3" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="3" y="14" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="14" y="14" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/></svg>대시보드</a>
+        <a href="/create.html" class="sb-link"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.5"/><path d="M12 8v8M8 12h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>사이트 추가</a>
+      </div>
+      <div class="sb-section"><button class="sb-link danger" onclick="CP.logout()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><polyline points="16 17 21 12 16 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="21" y1="12" x2="9" y2="12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>로그아웃</button></div>
+    </nav>
+    <div class="sb-user"><div class="sb-avatar" id="sbAvatar">?</div><div class="sb-uinfo"><div class="sb-uname" id="sbName">—</div><div class="sb-uemail" id="sbEmail">—</div></div></div>
+  </aside>
+  <div class="sidebar-overlay" id="overlay" onclick="closeSidebar()"></div>
+  <main class="main">
+    <div class="topbar">
+      <div style="display:flex;align-items:center;gap:14px">
+        <button class="sidebar-toggle" onclick="openSidebar()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M3 12h18M3 6h18M3 18h18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
+        <span class="topbar-title" id="pageTitle">사이트 관리</span>
+      </div>
+      <a href="/dashboard.html" class="btn btn-ghost btn-sm">← 대시보드</a>
+    </div>
+    <div class="content" id="mainContent"><div style="color:var(--muted);padding:20px 0">불러오는 중...</div></div>
+  </main>
+</div>
+<script src="/app.js"></script>
+<script>
+let site=null;
+
+async function init(){
+  const user=await CP.requireAuth();
+  if(!user)return;
+  document.getElementById('sbAvatar').textContent=user.name[0].toUpperCase();
+  document.getElementById('sbName').textContent=user.name;
+  document.getElementById('sbEmail').textContent=user.email;
+  const id=new URLSearchParams(location.search).get('id');
+  if(!id){location.href='/dashboard.html';return}
+  const d=await CP.getSite(id);
+  if(!d.ok){location.href='/dashboard.html';return}
+  site=d.site;
+  render();
+}
+
+function render(){
+  document.getElementById('pageTitle').textContent=site.name;
+  const st=CP.statusBadge(site.status);
+  const url=site.custom_domain?`https://${site.custom_domain}`:(site.wp_url||`https://${site.subdomain}.cloudpress.site`);
+  const admin=site.wp_admin_url||url+'/wp-admin';
+
+  document.getElementById('mainContent').innerHTML=`
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:22px">
+      <h1 style="font-family:var(--font-head);font-size:1.25rem;font-weight:700">${CP.escHtml(site.name)}</h1>
+      <span class="badge" style="background:${st.color}18;color:${st.color}"><span class="status-dot" style="background:${st.color}"></span>${st.label}</span>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px">
+      <div class="section-card" style="padding:16px"><div style="font-size:.72rem;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.06em">URL</div><div style="font-size:.88rem;font-weight:600"><a href="${url}" target="_blank" style="color:var(--accent);text-decoration:none">${url}</a></div></div>
+      <div class="section-card" style="padding:16px"><div style="font-size:.72rem;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.06em">개설일</div><div style="font-size:.88rem;font-weight:600">${CP.formatDate(site.created_at)}</div></div>
+      <div class="section-card" style="padding:16px"><div style="font-size:.72rem;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.06em">PHP</div><div style="font-size:.88rem;font-weight:600">PHP ${site.php_version||'8.3'}</div></div>
+      <div class="section-card" style="padding:16px"><div style="font-size:.72rem;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.06em">플랜</div><div style="font-size:.88rem;font-weight:600">${CP.planInfo(site.plan).name}</div></div>
+    </div>
+
+    ${site.status==='active'?`
+    <div class="section-card">
+      <div class="section-title">WordPress 접속 정보</div>
+      <div class="cred-row"><span class="cred-label">관리자 URL</span><span class="cred-val"><a href="${admin}" target="_blank" style="color:var(--accent);text-decoration:none">${admin}</a></span><button class="copy-btn" onclick="copyText('${admin}',this)">복사</button></div>
+      <div class="cred-row"><span class="cred-label">아이디</span><span class="cred-val">${CP.escHtml(site.wp_username||'admin')}</span><button class="copy-btn" onclick="copyText('${CP.escHtml(site.wp_username||'admin')}',this)">복사</button></div>
+      <div class="cred-row"><span class="cred-label">비밀번호</span><span class="cred-val" id="pv">••••••••</span><button class="copy-btn" id="pvb" onclick="togglePw('${CP.escHtml(site.wp_password||'')}')">보기</button></div>
+      <div style="margin-top:14px"><a href="${admin}" target="_blank" class="btn btn-primary btn-sm">WP 관리자 접속 →</a></div>
+    </div>
+    <div class="section-card">
+      <div class="section-title">커스텀 도메인 연결</div>
+      <p style="font-size:.83rem;color:var(--muted);margin-bottom:12px">도메인 DNS에서 <code style="background:var(--bg);padding:2px 6px;border-radius:4px">${site.subdomain}.cloudpress.site</code>로 CNAME 설정 후 입력하세요.</p>
+      ${site.custom_domain?`<div class="cred-row" style="margin-bottom:12px"><span class="cred-label">연결된 도메인</span><span class="cred-val"><a href="https://${site.custom_domain}" target="_blank" style="color:var(--accent);text-decoration:none">${site.custom_domain}</a></span></div>`:''}
+      <div style="display:flex;gap:8px">
+        <input type="text" id="cdInput" placeholder="www.myblog.com" value="${site.custom_domain||''}" style="flex:1;padding:9px 12px;background:var(--bg);border:1px solid var(--border2);border-radius:8px;color:var(--text);font-family:var(--font-body);font-size:.88rem;outline:none"/>
+        <button class="btn btn-primary btn-sm" onclick="saveDomain()">저장</button>
+      </div>
+    </div>
+    `:`<div class="section-card" style="text-align:center;padding:28px">${site.status==='provisioning'?'<p style="color:var(--accent)">설치 중... 잠시 후 새로고침하세요.</p>':'<p style="color:var(--error)">설치 오류. 사이트를 삭제 후 다시 개설해주세요.</p>'}</div>`}
+
+    <div class="section-card" style="border-color:rgba(239,68,68,.2)">
+      <div class="section-title" style="color:var(--error)">위험 구역</div>
+      <p style="font-size:.83rem;color:var(--muted);margin-bottom:12px">사이트 삭제 시 WordPress 데이터 전체가 영구 삭제됩니다.</p>
+      <button onclick="delSite()" style="padding:8px 16px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.2);border-radius:8px;color:var(--error);font-size:.85rem;cursor:pointer">사이트 삭제</button>
+    </div>`;
+}
+
+let pw=false;
+function togglePw(p){pw=!pw;document.getElementById('pv').textContent=pw?p:'••••••••';document.getElementById('pvb').textContent=pw?'숨기기':'보기'}
+
+async function saveDomain(){
+  const d=document.getElementById('cdInput').value.trim();
+  if(!d){showToast('도메인을 입력해주세요.','error');return}
+  const r=await CP.updateSite(site.id,{custom_domain:d});
+  if(r.ok){site=r.site;render();showToast('도메인 연결 완료','success');}
+  else showToast(r.error||'실패','error');
+}
+
+async function delSite(){
+  if(!confirm(`"${site.name}" 사이트를 삭제하시겠습니까?`))return;
+  const r=await CP.deleteSite(site.id);
+  if(r.ok){showToast('삭제 완료','success');setTimeout(()=>location.href='/dashboard.html',1000);}
+  else showToast(r.error||'실패','error');
+}
+init();
+</script>
+</body>
+</html>

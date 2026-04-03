@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>결제 완료 — CloudPress</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:opsz,wght@9..40,400;9..40,500&display=swap" rel="stylesheet"/>
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{--bg:#08080e;--surface:#0f0f18;--border2:rgba(255,255,255,.12);--text:#f0f0f5;--muted:rgba(240,240,245,.45);--accent:#f97316;--success:#22c55e;--error:#ef4444;--font-head:'Syne',sans-serif;--font-body:'DM Sans',sans-serif}
+    body{font-family:var(--font-body);background:var(--bg);color:var(--text);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+    .card{background:var(--surface);border:1px solid var(--border2);border-radius:20px;padding:48px 40px;max-width:440px;width:100%;text-align:center}
+    .icon{width:80px;height:80px;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 24px}
+    h1{font-family:var(--font-head);font-size:1.3rem;font-weight:700;margin-bottom:10px}
+    p{color:var(--muted);font-size:.88rem;margin-bottom:24px;line-height:1.6}
+    .info{background:rgba(255,255,255,.04);border:1px solid var(--border2);border-radius:10px;padding:16px;margin-bottom:24px;text-align:left}
+    .info-row{display:flex;justify-content:space-between;padding:5px 0;font-size:.85rem;border-bottom:1px solid rgba(255,255,255,.05)}
+    .info-row:last-child{border-bottom:none}
+    .info-label{color:var(--muted)}
+    .info-val{font-weight:600}
+    .btn{display:inline-block;padding:12px 28px;background:linear-gradient(135deg,var(--accent),#e86209);border:none;border-radius:10px;color:#fff;font-family:var(--font-head);font-size:.92rem;font-weight:700;cursor:pointer;text-decoration:none;transition:all .2s}
+  </style>
+</head>
+<body>
+<div class="card" id="card">
+  <div style="color:var(--muted)">처리 중...</div>
+</div>
+<script src="/app.js"></script>
+<script>
+async function init(){
+  const params=new URLSearchParams(location.search);
+  const paymentKey=params.get('paymentKey');
+  const orderId=params.get('orderId');
+  const amount=params.get('amount');
+
+  if(!paymentKey||!orderId||!amount){showFail('결제 정보가 누락되었습니다.');return}
+
+  const r=await CP.paymentConfirm({paymentKey,orderId,amount:parseInt(amount)});
+
+  if(r.ok){
+    const plan=CP.planInfo(r.plan);
+    document.getElementById('card').innerHTML=`
+      <div class="icon" style="background:rgba(34,197,94,.1);border:2px solid rgba(34,197,94,.25)">
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none"><polyline points="20 6 9 17 4 12" stroke="#22c55e" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <h1>결제 완료! 🎉</h1>
+      <p>${plan.name} 플랜으로 업그레이드 되었습니다.</p>
+      <div class="info">
+        <div class="info-row"><span class="info-label">플랜</span><span class="info-val" style="color:${plan.color}">${plan.name}</span></div>
+        <div class="info-row"><span class="info-label">결제 금액</span><span class="info-val">₩${parseInt(amount).toLocaleString()}</span></div>
+        <div class="info-row"><span class="info-label">만료일</span><span class="info-val">${CP.formatDate(r.expiresAt)}</span></div>
+        ${r.receiptUrl?`<div class="info-row"><span class="info-label">영수증</span><a href="${r.receiptUrl}" target="_blank" style="color:var(--accent);font-size:.85rem">보기</a></div>`:''}
+      </div>
+      <a href="/dashboard.html" class="btn">대시보드로 이동</a>`;
+  }else{
+    showFail(r.error||'결제 처리 중 오류가 발생했습니다.');
+  }
+}
+
+function showFail(msg){
+  document.getElementById('card').innerHTML=`
+    <div class="icon" style="background:rgba(239,68,68,.1);border:2px solid rgba(239,68,68,.2)">
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="#ef4444" stroke-width="1.5"/><line x1="15" y1="9" x2="9" y2="15" stroke="#ef4444" stroke-width="1.5" stroke-linecap="round"/><line x1="9" y1="9" x2="15" y2="15" stroke="#ef4444" stroke-width="1.5" stroke-linecap="round"/></svg>
+    </div>
+    <h1>결제 실패</h1>
+    <p>${msg}</p>
+    <a href="/pricing.html" class="btn">다시 시도</a>`;
+}
+
+init();
+</script>
+</body>
+</html>
