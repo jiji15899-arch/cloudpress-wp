@@ -1,28 +1,15 @@
+# Cloudflare Pages 배포 설정
+# 제작: 아백 (아로스)
+# 생성일: 2026-04-03
+
 name = "cloudpress-wp"
-compatibility_date = "2024-09-23"
-pages_build_output_dir = "."
+compatibility_date = "2026-04-03"
 
-[[d1_databases]]
-binding = "DB"
-database_name = "cloudpress-db"
-database_id = "12bfc2fe-ae8e-45cf-8238-667686251b76"
+[assets]
+directory = "."
+html_handling = "auto-trailing-slash"
 
-[[kv_namespaces]]
-binding = "SESSIONS"
-id = "98dd2527afed40d3a7f00d859fa3d547"
-
-[vars]
-SITE_DOMAIN     = "cloudpress.cloud-in.co.kr"
-ADMIN_EMAIL     = "choichoi3227@gmail.com"
-
-# ★ 필수: InstaWP API 키 (app.instawp.io → Settings → API Tokens)
-INSTAWP_API_KEY = ""
-
-# 선택: Cloudflare CDN 연동 (없으면 InstaWP URL 그대로 사용)
-CF_API_TOKEN    = ""
-CF_ZONE_ID      = ""
-CF_ACCOUNT_ID   = ""
-
-# 토스페이먼츠
-TOSS_CLIENT_KEY = "test_ck_YOUR_TOSS_CLIENT_KEY"
-TOSS_SECRET_KEY = "test_sk_YOUR_TOSS_SECRET_KEY"
+# 404 페이지 설정
+[[assets.fallback_routes]]
+pattern = "/*"
+destination = "/index.html"
