@@ -101,6 +101,65 @@ export async function onRequestPut({ request, env }) {
     if (!settings || typeof settings !== 'object') return err('잘못된 요청');
 
     const now = Math.floor(Date.now() / 1000);
+    /* ── CMS 패키지 ZIP 업로드 ── */
+    if (action === 'upload_cms_package') {
+      const { version, description, is_latest, is_stable, filename, filesize, data } = body;
+      if (!version || !data) return err('버전과 파일 데이터가 필요합니다.');
+      if (!/^\d+\.\d+\.\d+(-[a-z0-9.]+)?$/.test(version)) return err('버전 형식: 1.0.0 또는 1.0.0-beta');
+      if (filesize && filesize > 50 * 1024 * 1024) return err('파일 크기는 50MB 이하여야 합니다.');
+
+      // 중복 버전 체크
+      const dup = await env.DB.prepare('SELECT id FROM cms_versions WHERE version=?').bind(version).first();
+      if (dup) {
+        // 기존 버전 업데이트
+        if (is_latest) {
+          await env.DB.prepare('UPDATE cms_versions SET is_latest=0').run();
+          await env.DB.prepare("UPDATE settings SET value=?,updated_at=unixepoch() WHERE key='cms_latest_version'")
+            .bind(version).run();
+        }
+        await env.DB.prepare(
+          'UPDATE cms_versions SET label=?,description=?,is_stable=?,is_latest=?,release_notes=? WHERE version=?'
+        ).bind(
+          `CloudPress CMS v${version}`,
+          description || filename || `CMS 패키지 v${version}`,
+          is_stable ? 1 : 0, is_latest ? 1 : 0,
+          `파일: ${filename||''}, 크기: ${filesize?Math.round(filesize/1024)+'KB':''}`,
+          version
+        ).run();
+      } else {
+        const id = genId();
+        if (is_latest) {
+          await env.DB.prepare('UPDATE cms_versions SET is_latest=0').run();
+          await env.DB.prepare("UPDATE settings SET value=?,updated_at=unixepoch() WHERE key='cms_latest_version'")
+            .bind(version).run();
+        }
+        await env.DB.prepare(
+          'INSERT INTO cms_versions (id,version,label,description,is_stable,is_latest,release_notes,created_by) VALUES (?,?,?,?,?,?,?,?)'
+        ).bind(
+          id, version,
+          `CloudPress CMS v${version}`,
+          description || filename || `CMS 패키지 v${version}`,
+          is_stable ? 1 : 0, is_latest ? 1 : 0,
+          `파일: ${filename||''}, 크기: ${filesize?Math.round(filesize/1024)+'KB':''}`,
+          admin.id
+        ).run();
+      }
+
+      // KV에 ZIP base64 저장 (사이트 구축 시 사용)
+      if (env.SESSIONS && data) {
+        try {
+          await env.SESSIONS.put(`cms_package:${version}`, data, {
+            metadata: { filename: filename||'', filesize: filesize||0, version, description: description||'', uploaded_at: Date.now() }
+          });
+        } catch(e) {
+          // KV 저장 실패해도 버전 등록은 성공 처리
+          console.error('KV cms_package 저장 실패:', e);
+        }
+      }
+
+      return ok({ message: `CMS v${version} 패키지가 ${dup?'업데이트':'등록'}되었습니다.` });
+    }
+
     const ALLOWED_KEYS = [
       'plan_starter_price', 'plan_pro_price', 'plan_enterprise_price',
       'plan_starter_sites', 'plan_pro_sites', 'plan_enterprise_sites',
