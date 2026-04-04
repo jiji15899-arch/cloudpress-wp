@@ -12,7 +12,7 @@ binding = "SESSIONS"
 id = "3f15462f4ea84887bc3cb9c977fb2e60"
 
 [vars]
-SITE_DOMAIN   = "cloudpress.site"
+SITE_DOMAIN   = "cloud-press.co.kr"
 ADMIN_EMAIL   = "choichoi3227@gmail.com"
 # CF_API_TOKEN / CF_ZONE_ID / CF_ACCOUNT_ID 는 Cloudflare Pages > Settings > Environment Variables 에서 설정
 CF_API_TOKEN  = ""
