@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>내 계정 — CloudPress CMS</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:opsz,wght@9..40,400;9..40,500&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="dashboard.css"/>
+  <style>
+    .cf-api-status{display:inline-flex;align-items:center;gap:6px;font-size:.82rem;font-weight:600;padding:3px 10px;border-radius:8px}
+    .cf-api-status.connected{background:rgba(34,197,94,.1);color:var(--success)}
+    .cf-api-status.disconnected{background:rgba(239,68,68,.08);color:var(--error)}
+    .twofa-option{border:2px solid var(--border);border-radius:10px;padding:14px 16px;cursor:pointer;transition:all .2s;margin-bottom:10px}
+    .twofa-option:hover{border-color:var(--border2)}
+    .twofa-option.selected{border-color:var(--accent);background:rgba(249,115,22,.04)}
+    .twofa-option-title{font-weight:600;font-size:.9rem;margin-bottom:3px}
+    .twofa-option-desc{font-size:.78rem;color:var(--muted)}
+    .warn-box{background:rgba(239,68,68,.07);border:1px solid rgba(239,68,68,.2);border-radius:8px;padding:12px 14px;font-size:.83rem;color:var(--error);margin-bottom:12px}
+    .info-box{background:rgba(99,102,241,.07);border:1px solid rgba(99,102,241,.2);border-radius:8px;padding:12px 14px;font-size:.83rem;color:#818cf8;margin-bottom:12px}
+  </style>
+</head>
+<body>
+<div class="app-wrap">
+  <aside class="sidebar" id="sidebar">
+    <a href="/dashboard.html" class="sb-logo"><svg width="22" height="22" viewBox="0 0 28 28" fill="none"><path d="M14 2L26 8V20L14 26L2 20V8L14 2Z" stroke="currentColor" stroke-width="1.5"/><path d="M14 8L20 11V17L14 20L8 17V11L14 8Z" fill="currentColor" opacity=".5"/><circle cx="14" cy="14" r="2.2" fill="currentColor"/></svg>CloudPress</a>
+    <nav class="sb-nav">
+      <div class="sb-section"><div class="sb-label">메인</div>
+        <a href="/dashboard.html" class="sb-link"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="14" y="3" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="3" y="14" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="14" y="14" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/></svg>대시보드</a>
+        <a href="/create.html" class="sb-link"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.5"/><path d="M12 8v8M8 12h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>사이트 추가</a>
+      </div>
+      <div class="sb-section"><div class="sb-label">계정</div>
+        <a href="/account.html" class="sb-link active"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="currentColor" stroke-width="1.5"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>내 계정</a>
+        <a href="/pricing.html" class="sb-link"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="2" y="5" width="20" height="14" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M2 10h20" stroke="currentColor" stroke-width="1.5"/></svg>요금제 변경</a>
+      </div>
+      <div class="sb-section"><button class="sb-link danger" onclick="CP.logout()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><polyline points="16 17 21 12 16 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="21" y1="12" x2="9" y2="12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>로그아웃</button></div>
+    </nav>
+    <div class="sb-user"><div class="sb-avatar" id="sbAvatar">?</div><div class="sb-uinfo"><div class="sb-uname" id="sbName">—</div><div class="sb-uemail" id="sbEmail">—</div></div></div>
+  </aside>
+  <div class="sidebar-overlay" id="overlay" onclick="closeSidebar()"></div>
+  <main class="main">
+    <div class="topbar">
+      <div style="display:flex;align-items:center;gap:14px">
+        <button class="sidebar-toggle" onclick="openSidebar()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M3 12h18M3 6h18M3 18h18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
+        <span class="topbar-title">내 계정</span>
+      </div>
+    </div>
+    <div class="content" style="max-width:600px">
+      <h1 style="font-family:var(--font-head);font-size:1.25rem;font-weight:700;margin-bottom:22px">계정 설정</h1>
+
+      <!-- 프로필 -->
+      <div class="section-card">
+        <div class="section-title">프로필 정보</div>
+        <div class="field"><label>이름</label><input type="text" id="pName"/></div>
+        <div class="field"><label>이메일</label><input type="email" id="pEmail" disabled style="opacity:.5"/></div>
+        <div class="field"><label>현재 플랜</label><div id="planInfo"></div></div>
+        <div class="field"><label>보유 사이트</label><span id="siteCount" style="font-size:.9rem;font-weight:600">—</span>개</div>
+        <button class="btn btn-primary btn-sm" id="saveBtn" onclick="saveProfile()">저장</button>
+      </div>
+
+      <!-- Cloudflare Global API 키 (핵심 기능) -->
+      <div class="section-card" style="border-color:rgba(249,115,22,.2)">
+        <div class="section-title" style="display:flex;align-items:center;gap:10px">
+          <span>🔑 Cloudflare Global API 설정</span>
+          <span id="cfApiStatus" class="cf-api-status disconnected">미설정</span>
+        </div>
+        <div class="info-box" style="margin-bottom:14px">
+          <strong>이 API 키가 필요한 이유:</strong><br>
+          사이트 구축 시 Cloudflare에 자동으로 D1 데이터베이스, KV 스토리지, DNS 레코드 등을 생성합니다.<br>
+          키는 암호화되어 저장되며, 사이트 구축 외 목적으로 사용되지 않습니다.
+        </div>
+        <div class="field">
+          <label>Cloudflare 계정 이메일</label>
+          <input type="email" id="cfEmail" placeholder="your@email.com"/>
+        </div>
+        <div class="field">
+          <label>Global API 키 <a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank" style="font-size:.76rem;color:var(--accent);margin-left:6px">키 확인 →</a></label>
+          <input type="password" id="cfApiKey" placeholder="Cloudflare 대시보드 → 내 프로필 → API 토큰 → Global API Key"/>
+        </div>
+        <div id="cfApiErr" style="font-size:.82rem;color:var(--error);margin-bottom:10px;display:none"></div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-primary btn-sm" id="cfSaveBtn" onclick="saveCfApi()">API 키 저장 및 검증</button>
+          <button class="btn btn-ghost btn-sm" id="cfRemoveBtn" onclick="removeCfApi()" style="display:none">키 삭제</button>
+        </div>
+        <div style="margin-top:12px;font-size:.78rem;color:var(--muted)">
+          ⚠️ Global API 키는 매우 강력한 권한을 가집니다. 보안을 위해 반드시 아래 2단계 인증을 설정하세요.
+        </div>
+      </div>
+
+      <!-- 2단계 인증 -->
+      <div class="section-card">
+        <div class="section-title" style="display:flex;align-items:center;gap:10px">
+          <span>🛡️ 2단계 인증 (2FA)</span>
+          <span id="twofaStatus" style="font-size:.72rem;font-weight:600;padding:2px 8px;border-radius:8px;background:rgba(107,114,128,.1);color:var(--muted)">비활성</span>
+        </div>
+        <p style="font-size:.84rem;color:var(--muted);margin-bottom:16px">로그인 시 추가 인증 단계를 설정하여 계정 보안을 강화합니다.</p>
+
+        <div id="twofaSetupArea">
+          <div style="font-size:.86rem;font-weight:600;margin-bottom:10px">인증 방식 선택</div>
+          <div class="twofa-option" id="opt_email" onclick="selectTwofaType('email')">
+            <div class="twofa-option-title">📧 이메일 인증</div>
+            <div class="twofa-option-desc">로그인 시 등록된 이메일로 6자리 인증 코드를 발송합니다.</div>
+          </div>
+          <div class="twofa-option" id="opt_second_password" onclick="selectTwofaType('second_password')">
+            <div class="twofa-option-title">🔐 2차 비밀번호</div>
+            <div class="twofa-option-desc">로그인 시 별도의 2차 비밀번호를 추가로 입력합니다.</div>
+          </div>
+
+          <div id="twofaEmailSetup" style="display:none;margin-top:12px">
+            <button class="btn btn-ghost btn-sm" onclick="sendSetup2FACode()" id="sendCodeBtn">이메일로 인증 코드 발송</button>
+            <div class="field" style="margin-top:12px">
+              <label>인증 코드 (이메일 확인)</label>
+              <input type="text" id="twofaEmailCode" placeholder="6자리 코드" maxlength="6"/>
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="enable2FA()">이메일 인증 활성화</button>
+          </div>
+
+          <div id="twofaSecondPwSetup" style="display:none;margin-top:12px">
+            <div id="personalInfoWarn" class="warn-box" style="display:none"></div>
+            <div class="field">
+              <label>2차 비밀번호 (6자 이상)</label>
+              <input type="password" id="secondPw" placeholder="생년월일 등 개인정보 사용 금지" oninput="checkPersonalInfo(this.value)"/>
+            </div>
+            <div class="field">
+              <label>2차 비밀번호 확인</label>
+              <input type="password" id="secondPw2"/>
+            </div>
+            <button class="btn btn-primary btn-sm" id="enable2FaBtn" onclick="enable2FA()">2차 비밀번호 활성화</button>
+            <button class="btn btn-ghost btn-sm" id="forceEnable2FaBtn" onclick="enable2FA(true)" style="display:none;margin-left:8px">경고 무시하고 진행 ⚠️</button>
+          </div>
+        </div>
+
+        <div id="twofaDisableArea" style="display:none">
+          <div style="background:rgba(34,197,94,.07);border:1px solid rgba(34,197,94,.2);border-radius:8px;padding:10px 14px;font-size:.83rem;color:var(--success);margin-bottom:14px">
+            ✅ 2단계 인증이 활성화되어 있습니다. (<span id="twofaTypeLabel">—</span>)
+          </div>
+          <div class="field"><label>비활성화하려면 비밀번호 입력</label><input type="password" id="disablePw"/></div>
+          <button class="btn btn-ghost btn-sm" onclick="disable2FA()" style="border-color:rgba(239,68,68,.3);color:var(--error)">2단계 인증 비활성화</button>
+        </div>
+      </div>
+
+      <!-- 비밀번호 변경 -->
+      <div class="section-card">
+        <div class="section-title">비밀번호 변경</div>
+        <div class="field"><label>현재 비밀번호</label><input type="password" id="curPw"/></div>
+        <div class="field"><label>새 비밀번호 (8자 이상)</label><input type="password" id="newPw" placeholder="8자 이상"/></div>
+        <div class="field"><label>새 비밀번호 확인</label><input type="password" id="newPw2"/></div>
+        <div id="pwErr" style="font-size:.82rem;color:var(--error);margin-bottom:10px;display:none"></div>
+        <button class="btn btn-primary btn-sm" id="chgBtn" onclick="changePw()">비밀번호 변경</button>
+      </div>
+
+      <!-- 고객 지원 -->
+      <div class="section-card">
+        <div class="section-title">고객 지원</div>
+        <p style="font-size:.85rem;color:var(--muted)">문의사항은 <a href="mailto:choichoi3227@gmail.com" style="color:var(--accent)">choichoi3227@gmail.com</a>으로 연락주세요.</p>
+      </div>
+    </div>
+  </main>
+</div>
+<script src="/app.js"></script>
+<script>
+let currentUser=null;
+let selectedTwofaType=null;
+let personalInfoDetected=false;
+
+async function init(){
+  currentUser=await CP.requireAuth();if(!currentUser)return;
+  document.getElementById('sbAvatar').textContent=currentUser.name[0].toUpperCase();
+  document.getElementById('sbName').textContent=currentUser.name;
+  document.getElementById('sbEmail').textContent=currentUser.email;
+  const d=await CP.getProfile();if(!d.ok)return;
+  const u=d.user;
+  document.getElementById('pName').value=u.name;
+  document.getElementById('pEmail').value=u.email;
+  document.getElementById('siteCount').textContent=u.site_count||0;
+  const plan=CP.planInfo(u.plan);
+  document.getElementById('planInfo').innerHTML=`<span class="plan-badge" style="background:${plan.color}18;color:${plan.color}">${plan.name}</span>${u.plan!=='free'?` <a href="/pricing.html" style="font-size:.78rem;color:var(--accent);text-decoration:none;margin-left:8px">변경 →</a>`:'<a href="/pricing.html" style="font-size:.78rem;color:var(--accent);text-decoration:none;margin-left:8px">업그레이드 →</a>'}`;
+
+  // CF API 상태 표시
+  if(u.has_cf_api){
+    document.getElementById('cfApiStatus').textContent='✓ 연결됨';
+    document.getElementById('cfApiStatus').className='cf-api-status connected';
+    document.getElementById('cfRemoveBtn').style.display='';
+    document.getElementById('cfEmail').value=u.cf_account_email||'';
+    document.getElementById('cfEmail').disabled=true;
+    document.getElementById('cfApiKey').placeholder='**** 저장됨 (변경하려면 새로 입력)';
+  }
+
+  // 2FA 상태 표시
+  if(u.twofa_enabled){
+    document.getElementById('twofaStatus').textContent='✅ 활성';
+    document.getElementById('twofaStatus').style.background='rgba(34,197,94,.1)';
+    document.getElementById('twofaStatus').style.color='var(--success)';
+    document.getElementById('twofaSetupArea').style.display='none';
+    document.getElementById('twofaDisableArea').style.display='';
+    const typeMap={email:'이메일 인증',second_password:'2차 비밀번호'};
+    document.getElementById('twofaTypeLabel').textContent=typeMap[u.twofa_type]||u.twofa_type;
+  }
+}
+
+async function saveProfile(){
+  const name=document.getElementById('pName').value.trim();
+  if(!name){showToast('이름을 입력해주세요.','error');return}
+  document.getElementById('saveBtn').disabled=true;document.getElementById('saveBtn').textContent='저장 중...';
+  const r=await CP.updateProfile({name});
+  document.getElementById('saveBtn').disabled=false;document.getElementById('saveBtn').textContent='저장';
+  if(r.ok){CP.setUser(r.user);showToast('저장 완료','success');}else showToast(r.error||'실패','error');
+}
+
+async function saveCfApi(){
+  const email=document.getElementById('cfEmail').value.trim();
+  const key=document.getElementById('cfApiKey').value.trim();
+  const errEl=document.getElementById('cfApiErr');errEl.style.display='none';
+  if(!email||!key){errEl.textContent='이메일과 API 키를 모두 입력해주세요.';errEl.style.display='';return}
+  document.getElementById('cfSaveBtn').disabled=true;document.getElementById('cfSaveBtn').textContent='검증 중...';
+  const r=await CP.saveCfApi({cf_account_email:email,cf_global_api_key:key});
+  document.getElementById('cfSaveBtn').disabled=false;document.getElementById('cfSaveBtn').textContent='API 키 저장 및 검증';
+  if(r.ok){
+    document.getElementById('cfApiStatus').textContent='✓ 연결됨';
+    document.getElementById('cfApiStatus').className='cf-api-status connected';
+    document.getElementById('cfRemoveBtn').style.display='';
+    document.getElementById('cfEmail').disabled=true;
+    document.getElementById('cfApiKey').value='';
+    document.getElementById('cfApiKey').placeholder='**** 저장됨 (변경하려면 새로 입력)';
+    showToast('Cloudflare API 키가 저장되었습니다! 🎉','success');
+  }else{errEl.textContent=r.error||'저장 실패';errEl.style.display='';}
+}
+
+async function removeCfApi(){
+  if(!confirm('Cloudflare API 키를 삭제하면 새 사이트를 구축할 수 없습니다. 계속하시겠습니까?'))return;
+  const r=await CP.removeCfApi();
+  if(r.ok){
+    document.getElementById('cfApiStatus').textContent='미설정';
+    document.getElementById('cfApiStatus').className='cf-api-status disconnected';
+    document.getElementById('cfRemoveBtn').style.display='none';
+    document.getElementById('cfEmail').disabled=false;document.getElementById('cfEmail').value='';
+    document.getElementById('cfApiKey').value='';document.getElementById('cfApiKey').placeholder='Cloudflare 대시보드 → 내 프로필 → API 토큰 → Global API Key';
+    showToast('API 키가 삭제되었습니다.','success');
+  }else showToast(r.error||'실패','error');
+}
+
+function selectTwofaType(type){
+  selectedTwofaType=type;
+  document.querySelectorAll('.twofa-option').forEach(el=>el.classList.remove('selected'));
+  document.getElementById(`opt_${type}`).classList.add('selected');
+  document.getElementById('twofaEmailSetup').style.display=type==='email'?'':'none';
+  document.getElementById('twofaSecondPwSetup').style.display=type==='second_password'?'':'none';
+}
+
+async function sendSetup2FACode(){
+  document.getElementById('sendCodeBtn').disabled=true;document.getElementById('sendCodeBtn').textContent='발송 중...';
+  const r=await CP.send2FACode();
+  document.getElementById('sendCodeBtn').disabled=false;document.getElementById('sendCodeBtn').textContent='다시 발송';
+  if(r.ok) showToast(r.message||'코드가 발송되었습니다.','success');
+  else showToast(r.error||'발송 실패','error');
+}
+
+function checkPersonalInfo(val){
+  const personal=/19\d{4,6}|20\d{4,6}|01[0-9]{8,9}|\d{6}-[1-4]/.test(val.replace(/[-\/\. ]/g,''))||/^\d{6,8}$/.test(val.trim());
+  personalInfoDetected=personal;
+  const warnEl=document.getElementById('personalInfoWarn');
+  if(personal){
+    warnEl.textContent='⚠️ 입력하신 값이 생년월일이나 개인정보처럼 보입니다. 보안에 매우 취약합니다. 다른 비밀번호를 사용하시기를 강력히 권장합니다.';
+    warnEl.style.display='';
+    document.getElementById('enable2FaBtn').style.display='none';
+    document.getElementById('forceEnable2FaBtn').style.display='';
+  }else{
+    warnEl.style.display='none';
+    document.getElementById('enable2FaBtn').style.display='';
+    document.getElementById('forceEnable2FaBtn').style.display='none';
+  }
+}
+
+async function enable2FA(force=false){
+  if(!selectedTwofaType){showToast('인증 방식을 선택해주세요.','error');return}
+  const body={twofa_type:selectedTwofaType};
+
+  if(selectedTwofaType==='email'){
+    body.twofa_code=document.getElementById('twofaEmailCode').value.trim();
+    if(!body.twofa_code){showToast('인증 코드를 입력해주세요.','error');return}
+  }else if(selectedTwofaType==='second_password'){
+    const pw=document.getElementById('secondPw').value;
+    const pw2=document.getElementById('secondPw2').value;
+    if(!pw||pw.length<6){showToast('2차 비밀번호는 6자 이상이어야 합니다.','error');return}
+    if(pw!==pw2){showToast('비밀번호가 일치하지 않습니다.','error');return}
+    body.second_password=pw;
+    if(force)body.force=true;
+  }
+
+  const r=await CP.setup2FA(body);
+
+  if(r.warn_personal_info&&!force){
+    showToast('⚠️ 개인정보 감지 — 재설정을 권장합니다.','warning');
+    return;
+  }
+
+  if(r.ok){
+    showToast(r.message||'2단계 인증 활성화 완료!','success');
+    setTimeout(()=>location.reload(),1200);
+  }else showToast(r.error||'실패','error');
+}
+
+async function disable2FA(){
+  const pw=document.getElementById('disablePw').value;
+  if(!pw){showToast('비밀번호를 입력해주세요.','error');return}
+  const r=await CP.disable2FA(pw);
+  if(r.ok){showToast('2단계 인증이 비활성화되었습니다.','success');setTimeout(()=>location.reload(),1000);}
+  else showToast(r.error||'실패','error');
+}
+
+async function changePw(){
+  const cur=document.getElementById('curPw').value;
+  const nw=document.getElementById('newPw').value;
+  const nw2=document.getElementById('newPw2').value;
+  const e=document.getElementById('pwErr');e.style.display='none';
+  if(!cur||!nw||!nw2){e.textContent='모두 입력해주세요.';e.style.display='';return}
+  if(nw.length<8){e.textContent='새 비밀번호는 8자 이상이어야 합니다.';e.style.display='';return}
+  if(nw!==nw2){e.textContent='새 비밀번호가 일치하지 않습니다.';e.style.display='';return}
+  document.getElementById('chgBtn').disabled=true;document.getElementById('chgBtn').textContent='변경 중...';
+  const r=await CP.updateProfile({action:'change_password',current_password:cur,new_password:nw});
+  document.getElementById('chgBtn').disabled=false;document.getElementById('chgBtn').textContent='비밀번호 변경';
+  if(r.ok){document.getElementById('curPw').value='';document.getElementById('newPw').value='';document.getElementById('newPw2').value='';showToast('비밀번호 변경 완료','success');}
+  else{e.textContent=r.error||'실패';e.style.display='';}
+}
+init();
+</script>
+</body>
+</html>
