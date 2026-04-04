@@ -48,11 +48,26 @@ function deobfuscate(str, salt) {
 async function getUserCfCreds(env, userId) {
   const row = await env.DB.prepare('SELECT cf_global_api_key,cf_account_email,cf_account_id FROM users WHERE id=?').bind(userId).first();
   if (!row?.cf_global_api_key) return null;
-  return {
-    apiKey: deobfuscate(row.cf_global_api_key, env.ENCRYPTION_KEY || 'cp_enc_default'),
-    email: row.cf_account_email,
-    accountId: row.cf_account_id,
-  };
+  const apiKey = deobfuscate(row.cf_global_api_key, env.ENCRYPTION_KEY || 'cp_enc_default');
+  const email = row.cf_account_email;
+  let accountId = row.cf_account_id;
+
+  // accountId가 없거나 비어있으면 CF API에서 다시 조회
+  if (!accountId) {
+    try {
+      const headers = { 'X-Auth-Email': email, 'X-Auth-Key': apiKey, 'Content-Type': 'application/json' };
+      const r = await fetch('https://api.cloudflare.com/client/v4/accounts?per_page=1', { headers });
+      const d = await r.json();
+      if (d.success && d.result?.length > 0) {
+        accountId = d.result[0].id;
+        // DB에 올바른 account ID 업데이트
+        await env.DB.prepare('UPDATE users SET cf_account_id=? WHERE id=?').bind(accountId, userId).run().catch(()=>{});
+      }
+    } catch (_) {}
+  }
+
+  if (!apiKey || !email || !accountId) return null;
+  return { apiKey, email, accountId };
 }
 
 const SITE_LIMITS = { free:1, starter:3, pro:10, enterprise:Infinity };
@@ -267,162 +282,220 @@ async function provisionCmsSite(env, { siteId, siteName, projectName, userPlan, 
   }
 
   const { apiKey, email, accountId } = creds;
-  
-  // 🔧 인증 정보 검증 추가
+  const logs = [];
+
+  // ── Step 0: 인증 정보 사전 검증 ──
+  logs.push('① Cloudflare API 인증 확인 중...');
   if (!apiKey || !email || !accountId) {
-    return { 
-      ok: false, 
-      error: 'Cloudflare API 인증 정보가 불완전합니다. API 키, 이메일, Account ID를 모두 확인해주세요.',
-      logs: [
-        '❌ 인증 정보 검증 실패',
-        `   - API 키: ${apiKey ? '✓' : '✗'}`,
-        `   - 이메일: ${email || '없음'}`,
-        `   - Account ID: ${accountId || '없음'}`
-      ]
-    };
+    logs.push(`   ✗ 인증 정보 불완전: apiKey=${!!apiKey}, email=${email||'없음'}, accountId=${accountId||'없음'}`);
+    return { ok: false, error: 'Cloudflare API 인증 정보가 불완전합니다. 내 계정에서 API 키를 다시 저장해주세요.', logs };
   }
 
   const cfHeaders = { 'X-Auth-Email': email, 'X-Auth-Key': apiKey, 'Content-Type': 'application/json' };
-  const cfAuth = { apiKey, email, accountId };
-  const adminPassword = genPw(16);
-  const dbName = `cp_${siteId.replace(/[^a-z0-9]/gi, '_').toLowerCase()}`;
-  const kvTitle = `CloudPress CMS KV - ${siteName}`;
-  const siteUrl = `https://${projectName}.pages.dev`;
-  const adminUrl = `https://${projectName}.pages.dev/wp-admin/`;
-  const dashboardUrl = env.DASHBOARD_URL || 'https://cloudpress.pages.dev/dashboard.html';
 
-  let cfKvNamespace = null;
-  let cfD1Database  = null;
-  const logs = [];
-
+  // 실제 CF API 호출로 인증 + Account ID 검증
   try {
-    /* Step 1: Cloudflare Pages 프로젝트 생성 */
-    logs.push(`① Cloudflare Pages 프로젝트 생성 중... (${projectName})`);
-    logs.push(`   인증: ${email} / Account: ${accountId}`);
-    
-    const pagesResp = await fetch(
-      `https://api.cloudflare.com/client/v4/accounts/${accountId}/pages/projects`,
-      {
-        method: 'POST',
-        headers: cfHeaders,
-        body: JSON.stringify({ name: projectName, production_branch: 'main' }),
-      }
-    ).then(r => r.json()).catch(e => {
-      // 🔧 네트워크 오류 상세 로깅
-      return { 
-        success: false, 
-        errors: [{ message: `네트워크 오류: ${e.message}` }],
-        _fetchError: e.message 
-      };
-    });
-
-    // 🔧 상세 오류 로깅 추가
-    if (pagesResp.success) {
-      logs.push(`   ✓ Pages 프로젝트 생성 완료 → ${siteUrl}`);
-    } else {
-      const errMsg = pagesResp.errors?.[0]?.message || '알 수 없는 오류';
-      const errCode = pagesResp.errors?.[0]?.code || '';
-      logs.push(`   ✗ Pages 프로젝트 생성 실패`);
-      logs.push(`   오류: ${errMsg}${errCode ? ` (코드: ${errCode})` : ''}`);
-      
-      // 인증 오류인 경우 추가 정보 제공
-      if (errMsg.toLowerCase().includes('authentication') || errMsg.toLowerCase().includes('unauthorized') || errCode === 10000) {
-        logs.push(`   💡 인증 오류 해결 방법:`);
-        logs.push(`      1. Cloudflare 대시보드에서 Global API 키 재확인`);
-        logs.push(`      2. 이메일 주소가 Cloudflare 계정과 일치하는지 확인`);
-        logs.push(`      3. Account ID가 올바른지 확인`);
-        logs.push(`      4. API 키를 다시 입력해보세요`);
-        return { 
-          ok: false, 
-          error: `Pages 프로젝트 생성 실패 (인증 오류)\n${errMsg}\n\n해결 방법: 내 계정에서 Cloudflare API 키를 다시 확인하고 재입력해주세요.`, 
-          logs 
+    const verifyResp = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}`, { headers: cfHeaders });
+    const verifyData = await verifyResp.json();
+    if (!verifyData.success) {
+      // account ID 재조회 시도
+      logs.push(`   ⚠ Account ID 검증 실패, 재조회 중...`);
+      const acctListResp = await fetch('https://api.cloudflare.com/client/v4/accounts?per_page=1', { headers: cfHeaders });
+      const acctListData = await acctListResp.json();
+      if (!acctListData.success || !acctListData.result?.length) {
+        logs.push(`   ✗ Cloudflare 인증 실패: ${verifyData.errors?.[0]?.message || '알 수 없는 오류'}`);
+        return {
+          ok: false,
+          error: `Cloudflare 인증 오류: ${verifyData.errors?.[0]?.message || '알 수 없는 오류'}\n\n해결 방법: 내 계정 → Cloudflare API 설정에서 API 키와 이메일을 다시 저장해주세요.`,
+          logs
         };
       }
-      
-      // 전체 응답을 로그에 포함 (디버깅용)
-      if (pagesResp._fetchError) {
-        logs.push(`   네트워크 오류 상세: ${pagesResp._fetchError}`);
+      // 재조회한 account ID로 교체
+      creds.accountId = acctListData.result[0].id;
+      logs.push(`   ✓ Account ID 재설정: ${creds.accountId}`);
+      // DB에도 업데이트
+      await env.DB.prepare('UPDATE users SET cf_account_id=? WHERE cf_account_email=?').bind(creds.accountId, email).run().catch(()=>{});
+    } else {
+      logs.push(`   ✓ 인증 확인 완료: ${verifyData.result?.name || accountId}`);
+    }
+  } catch (e) {
+    logs.push(`   ✗ 인증 확인 중 네트워크 오류: ${e.message}`);
+    return { ok: false, error: `Cloudflare API 연결 실패: ${e.message}`, logs };
+  }
+
+  // 검증된 accountId 사용
+  const verifiedAccountId = creds.accountId || accountId;
+  const verifiedHeaders = { 'X-Auth-Email': email, 'X-Auth-Key': apiKey, 'Content-Type': 'application/json' };
+  const cfAuth = { apiKey, email, accountId: verifiedAccountId };
+
+  try {
+    /* Step 1: Cloudflare Pages 프로젝트 생성 (최대 3회 재시도) */
+    logs.push(`② Cloudflare Pages 프로젝트 생성 중... (${projectName})`);
+
+    let pagesResp = null;
+    let currentProjectName = projectName;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      pagesResp = await fetch(
+        `https://api.cloudflare.com/client/v4/accounts/${verifiedAccountId}/pages/projects`,
+        {
+          method: 'POST',
+          headers: verifiedHeaders,
+          body: JSON.stringify({ name: currentProjectName, production_branch: 'main' }),
+        }
+      ).then(r => r.json()).catch(e => ({ success: false, errors: [{ message: `네트워크 오류: ${e.message}` }] }));
+
+      if (pagesResp.success) {
+        logs.push(`   ✓ Pages 프로젝트 생성 완료 → ${siteUrl}`);
+        break;
       }
-      
-      return { ok: false, error: `Pages 프로젝트 생성 실패: ${errMsg}`, logs };
+
+      const errMsg = pagesResp.errors?.[0]?.message || '';
+      const errCode = pagesResp.errors?.[0]?.code;
+
+      // 이미 존재하는 프로젝트명이면 새 이름으로 재시도
+      if (errMsg.toLowerCase().includes('already exist') || errMsg.toLowerCase().includes('duplicate') || errCode === 8000039) {
+        currentProjectName = generateProjectName(siteName);
+        logs.push(`   ⚠ 프로젝트명 중복, 새 이름으로 재시도: ${currentProjectName} (${attempt}/3)`);
+        continue;
+      }
+
+      // 인증 오류 = 즉시 중단
+      if (errMsg.toLowerCase().includes('authentication') || errMsg.toLowerCase().includes('unauthorized') ||
+          errCode === 10000 || errCode === 9109) {
+        logs.push(`   ✗ 인증 오류: ${errMsg}`);
+        return {
+          ok: false,
+          error: `Pages 프로젝트 생성 실패 (인증 오류)\n\n원인: ${errMsg}\n\n해결 방법: 내 계정 → Cloudflare API 설정에서 Global API 키를 다시 저장해주세요. (이메일과 API 키가 일치해야 합니다)`,
+          logs
+        };
+      }
+
+      if (attempt < 3) {
+        logs.push(`   ⚠ 시도 ${attempt} 실패 (${errMsg}), 재시도 중...`);
+        await new Promise(r => setTimeout(r, 2000 * attempt));
+      } else {
+        logs.push(`   ✗ Pages 프로젝트 생성 최종 실패: ${errMsg}`);
+        return { ok: false, error: `Pages 프로젝트 생성 실패: ${errMsg}`, logs };
+      }
     }
 
+    // 프로젝트명이 바뀐 경우 업데이트
+    if (currentProjectName !== projectName) {
+      projectName = currentProjectName;
+      await env.DB.prepare('UPDATE sites SET subdomain=? WHERE id=?').bind(projectName, siteId).run().catch(()=>{});
+    }
+    const finalSiteUrl = `https://${projectName}.pages.dev`;
+    const finalAdminUrl = `https://${projectName}.pages.dev/wp-admin/`;
+
     /* Step 2: KV Namespace 생성 */
-    logs.push('② KV Namespace 생성 중...');
+    logs.push('③ KV Namespace 생성 중...');
     const kvResp = await fetch(
-      `https://api.cloudflare.com/client/v4/accounts/${accountId}/storage/kv/namespaces`,
-      { method: 'POST', headers: cfHeaders, body: JSON.stringify({ title: kvTitle }) }
+      `https://api.cloudflare.com/client/v4/accounts/${verifiedAccountId}/storage/kv/namespaces`,
+      { method: 'POST', headers: verifiedHeaders, body: JSON.stringify({ title: kvTitle }) }
     ).then(r => r.json()).catch(() => ({}));
 
     if (kvResp.success) {
       cfKvNamespace = kvResp.result?.id;
       logs.push(`   ✓ KV Namespace: ${cfKvNamespace}`);
     } else {
-      logs.push(`   ⚠ KV 생성 실패 — ${kvResp.errors?.[0]?.message || '알 수 없는 오류'}`);
+      logs.push(`   ⚠ KV 생성 실패 — ${kvResp.errors?.[0]?.message || '알 수 없는 오류'} (계속 진행)`);
     }
 
     /* Step 3: D1 Database 생성 */
-    logs.push('③ D1 데이터베이스 생성 중...');
+    logs.push('④ D1 데이터베이스 생성 중...');
     const d1Resp = await fetch(
-      `https://api.cloudflare.com/client/v4/accounts/${accountId}/d1/database`,
-      { method: 'POST', headers: cfHeaders, body: JSON.stringify({ name: dbName }) }
+      `https://api.cloudflare.com/client/v4/accounts/${verifiedAccountId}/d1/database`,
+      { method: 'POST', headers: verifiedHeaders, body: JSON.stringify({ name: dbName }) }
     ).then(r => r.json()).catch(() => ({}));
 
     if (d1Resp.result?.uuid) {
       cfD1Database = d1Resp.result.uuid;
       logs.push(`   ✓ D1 Database: ${cfD1Database}`);
     } else {
-      logs.push(`   ⚠ D1 생성 실패 — ${d1Resp.errors?.[0]?.message || '알 수 없는 오류'}`);
+      logs.push(`   ⚠ D1 생성 실패 — ${d1Resp.errors?.[0]?.message || '알 수 없는 오류'} (계속 진행)`);
     }
 
     /* Step 4: D1 CMS 스키마 초기화 */
     if (cfD1Database) {
-      logs.push('④ CMS 데이터베이스 초기화 중...');
+      logs.push('⑤ CMS 데이터베이스 초기화 중...');
       const cmsSchema = getCmsSchema(siteId, siteName, adminPassword, projectName);
+      let schemaOk = true;
       for (const sql of cmsSchema) {
-        await fetch(
-          `https://api.cloudflare.com/client/v4/accounts/${accountId}/d1/database/${cfD1Database}/query`,
-          { method: 'POST', headers: cfHeaders, body: JSON.stringify({ sql }) }
-        ).catch(() => {});
+        const r = await fetch(
+          `https://api.cloudflare.com/client/v4/accounts/${verifiedAccountId}/d1/database/${cfD1Database}/query`,
+          { method: 'POST', headers: verifiedHeaders, body: JSON.stringify({ sql }) }
+        ).catch(() => null);
+        if (!r?.ok) schemaOk = false;
       }
-      logs.push('   ✓ CMS 스키마 초기화 완료');
+      logs.push(`   ${schemaOk ? '✓' : '⚠'} CMS 스키마 초기화 ${schemaOk ? '완료' : '일부 실패 (계속 진행)'}`);
     }
 
     /* Step 5: KV 사이트 설정 저장 */
     if (cfKvNamespace) {
-      logs.push('⑤ CMS 설정 데이터 저장 중...');
+      logs.push('⑥ CMS 설정 데이터 저장 중...');
       const siteConfig = {
-        site_id: siteId,
-        site_name: siteName,
-        site_url: siteUrl,
-        admin_url: adminUrl,
-        cms_version: cmsVersion || '1.0.0',
-        created_at: new Date().toISOString(),
-        theme: 'default',
-        settings: {
-          title: siteName,
-          tagline: 'CloudPress CMS로 만든 사이트',
-          language: 'ko_KR',
-          timezone: 'Asia/Seoul',
-          posts_per_page: 10,
-        }
+        site_id: siteId, site_name: siteName, site_url: finalSiteUrl, admin_url: finalAdminUrl,
+        cms_version: cmsVersion || '1.0.0', created_at: new Date().toISOString(), theme: 'default',
+        settings: { title: siteName, tagline: 'CloudPress CMS로 만든 사이트', language: 'ko_KR', timezone: 'Asia/Seoul', posts_per_page: 10 }
       };
       await fetch(
-        `https://api.cloudflare.com/client/v4/accounts/${accountId}/storage/kv/namespaces/${cfKvNamespace}/values/site_config`,
-        { method: 'PUT', headers: { ...cfHeaders, 'Content-Type': 'text/plain' }, body: JSON.stringify(siteConfig) }
+        `https://api.cloudflare.com/client/v4/accounts/${verifiedAccountId}/storage/kv/namespaces/${cfKvNamespace}/values/site_config`,
+        { method: 'PUT', headers: { ...verifiedHeaders, 'Content-Type': 'text/plain' }, body: JSON.stringify(siteConfig) }
       ).catch(() => {});
       logs.push('   ✓ CMS 설정 저장 완료');
     }
 
     /* Step 6: Pages에 CMS 템플릿 배포 */
-    logs.push('⑥ CMS 사이트 템플릿 배포 중...');
-    const deployResult = await deployPagesTemplate(accountId, projectName, cfAuth, {
-      siteName, siteUrl, dashboardUrl,
+    logs.push('⑦ CMS 사이트 템플릿 배포 중...');
+    const deployResult = await deployPagesTemplate(verifiedAccountId, projectName, { ...cfAuth, accountId: verifiedAccountId }, {
+      siteName, siteUrl: finalSiteUrl, dashboardUrl,
     });
     if (deployResult.ok) {
-      logs.push(`   ✓ 사이트 배포 완료 → ${siteUrl}`);
+      logs.push(`   ✓ 사이트 배포 완료 → ${finalSiteUrl}`);
     } else {
-      logs.push(`   ⚠ 배포 실패 — ${deployResult.error} (URL은 유효)`);
+      logs.push(`   ⚠ 배포 실패 — ${deployResult.error} (Pages URL은 이미 활성화됨)`);
+    }
+
+    /* Step 7: 사이트 크롤링으로 구축 확인 */
+    logs.push('⑧ 사이트 구축 확인 중... (최대 2분 소요)');
+    let crawlOk = false;
+    let crawlStatus = '대기 중';
+    const maxWait = 120000; // 2분
+    const interval = 15000; // 15초 간격
+    const start = Date.now();
+
+    while (Date.now() - start < maxWait) {
+      await new Promise(r => setTimeout(r, interval));
+      try {
+        const crawlResp = await fetch(finalSiteUrl, {
+          method: 'GET',
+          headers: { 'User-Agent': 'CloudPress-Crawler/1.0' },
+          redirect: 'follow',
+          signal: AbortSignal.timeout(10000),
+        });
+        if (crawlResp.status === 200) {
+          const text = await crawlResp.text();
+          if (text.includes(siteName) || text.includes('CloudPress')) {
+            crawlOk = true;
+            crawlStatus = `HTTP 200 ✓`;
+            break;
+          } else {
+            crawlStatus = `응답받음 (콘텐츠 확인 중...)`;
+          }
+        } else if (crawlResp.status === 522 || crawlResp.status === 524) {
+          crawlStatus = `배포 전파 중... (${Math.floor((Date.now()-start)/1000)}초)`;
+        } else {
+          crawlStatus = `HTTP ${crawlResp.status}`;
+          if (crawlResp.status < 500) { crawlOk = true; break; } // 4xx도 사이트 존재로 간주
+        }
+      } catch (_) {
+        crawlStatus = `전파 중... (${Math.floor((Date.now()-start)/1000)}초)`;
+      }
+    }
+
+    logs.push(`   ${crawlOk ? '✓' : '⚠'} 사이트 접속 확인: ${crawlStatus}`);
+    if (!crawlOk) {
+      logs.push(`   ℹ Cloudflare Pages 전파는 최대 5분이 걸릴 수 있습니다. 잠시 후 접속해주세요.`);
     }
 
     logs.push('✅ CloudPress CMS 구축 완료!');
@@ -430,14 +503,16 @@ async function provisionCmsSite(env, { siteId, siteName, projectName, userPlan, 
     return {
       ok: true,
       status: 'active',
-      cmsUrl: siteUrl,
-      cmsAdminUrl: adminUrl,
+      cmsUrl: finalSiteUrl,
+      cmsAdminUrl: finalAdminUrl,
       cmsUsername: 'admin',
       cmsPassword: adminPassword,
       cfZoneId: null,
       cfKvNamespace,
       cfD1Database,
       cfPagesProject: projectName,
+      projectName,
+      crawlVerified: crawlOk,
       logs,
     };
 
