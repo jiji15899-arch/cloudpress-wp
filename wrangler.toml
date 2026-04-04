@@ -1,0 +1,25 @@
+name = "cloudpress-cms"
+compatibility_date = "2024-09-23"
+pages_build_output_dir = "."
+
+[[d1_databases]]
+binding = "DB"
+database_name = "cloudpress-db"
+database_id = "12bfc2fe-ae8e-45cf-8238-667686251b76"
+
+[[kv_namespaces]]
+binding = "SESSIONS"
+id = "98dd2527afed40d3a7f00d859fa3d547"
+
+[vars]
+SITE_DOMAIN   = "cloudpress.site"
+ADMIN_EMAIL   = "choichoi3227@gmail.com"
+# CF_API_TOKEN / CF_ZONE_ID / CF_ACCOUNT_ID 는 Cloudflare Pages > Settings > Environment Variables 에서 설정
+CF_API_TOKEN  = ""
+CF_ZONE_ID    = ""
+CF_ACCOUNT_ID = ""
+# 결제 키 (Toss Payments)
+TOSS_CLIENT_KEY = ""
+TOSS_SECRET_KEY = ""
+# 암호화 솔트 (필수: 임의 문자열로 변경)
+ENCRYPTION_KEY = "cloudpress_enc_salt_change_me_v1"
