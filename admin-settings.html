@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>설정 — CloudPress 어드민</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:opsz,wght@9..40,400;9..40,500&display=swap" rel="stylesheet"/>
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{--bg:#06060c;--surface:#0d0d18;--surface2:#131320;--surface3:#181828;--border:rgba(255,255,255,.06);--border2:rgba(255,255,255,.1);--text:#f0f0f5;--muted:rgba(240,240,245,.45);--accent:#f97316;--accent2:#ec4899;--success:#22c55e;--warning:#eab308;--error:#ef4444;--info:#6366f1;--font-head:'Syne',sans-serif;--font-body:'DM Sans',sans-serif;--sw:220px}
+    html,body{height:100%;font-family:var(--font-body);background:var(--bg);color:var(--text);overflow-x:hidden}
+    .wrap{display:flex;min-height:100vh}
+    .aside{width:var(--sw);flex-shrink:0;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;position:fixed;top:0;left:0;height:100vh;z-index:100}
+    .aside-logo{padding:20px 18px;display:flex;align-items:center;gap:8px;font-family:var(--font-head);font-size:.95rem;font-weight:700;border-bottom:1px solid var(--border);text-decoration:none;color:var(--text)}
+    .aside-logo .badge-admin{font-size:.6rem;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;padding:2px 7px;border-radius:10px;margin-left:4px;font-weight:700}
+    .aside-nav{flex:1;padding:12px 10px;overflow-y:auto}
+    .nav-section{margin-bottom:20px}
+    .nav-label{font-size:.68rem;font-weight:700;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;padding:0 8px;margin-bottom:5px}
+    .nav-item{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:8px;color:var(--muted);font-size:.85rem;font-weight:500;cursor:pointer;transition:all .15s;border:none;background:none;width:100%;text-align:left;text-decoration:none}
+    .nav-item:hover,.nav-item.active{background:var(--surface2);color:var(--text)}
+    .nav-item.active{background:rgba(249,115,22,.1);color:var(--accent)}
+    .nav-item.danger:hover{background:rgba(239,68,68,.1);color:var(--error)}
+    .aside-user{padding:14px 16px;border-top:1px solid var(--border);display:flex;align-items:center;gap:10px}
+    .av{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent2));display:flex;align-items:center;justify-content:center;font-family:var(--font-head);font-size:.82rem;font-weight:700;flex-shrink:0}
+    .main{flex:1;margin-left:var(--sw);min-width:0}
+    .topbar{height:56px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 24px;position:sticky;top:0;z-index:50}
+    .topbar-title{font-family:var(--font-head);font-size:.95rem;font-weight:700}
+    .content{padding:24px}
+    .field{margin-bottom:14px}
+    .field label{display:block;font-size:.8rem;color:var(--muted);margin-bottom:5px;font-weight:500}
+    .field input,.field select{width:100%;padding:9px 12px;background:var(--bg);border:1px solid var(--border2);border-radius:8px;color:var(--text);font-family:var(--font-body);font-size:.88rem;outline:none;transition:border-color .2s}
+    .field input:focus,.field select:focus{border-color:var(--accent)}
+    .btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:8px;font-family:var(--font-body);font-size:.85rem;font-weight:600;cursor:pointer;transition:all .15s;border:none;text-decoration:none}
+    .btn-primary{background:linear-gradient(135deg,var(--accent),#e86209);color:#fff}
+    .btn-ghost{background:var(--surface2);border:1px solid var(--border2);color:var(--text)}
+    .btn-ghost:hover{border-color:var(--accent);color:var(--accent)}
+    .btn-danger{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.2);color:var(--error)}
+    .btn-sm{padding:5px 11px;font-size:.78rem;border-radius:6px}
+    .section-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:22px;margin-bottom:14px}
+    .ver-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)}
+    .ver-row:last-child{border:none}
+    .ver-info{flex:1;min-width:0}
+    .ver-label{font-size:.85rem;font-weight:600}
+    .ver-desc{font-size:.75rem;color:var(--muted);margin-top:2px}
+    .ver-chips{display:flex;gap:5px;margin-top:4px;flex-wrap:wrap}
+    .chip{font-size:.66rem;padding:2px 7px;border-radius:6px;font-weight:600}
+    .chip-latest{background:rgba(249,115,22,.15);color:var(--accent)}
+    .chip-stable{background:rgba(34,197,94,.12);color:var(--success)}
+    .chip-beta{background:rgba(99,102,241,.15);color:#818cf8}
+    .cp-toast{position:fixed;bottom:24px;right:24px;padding:12px 20px;border-radius:10px;font-size:.88rem;font-weight:500;color:#fff;opacity:0;transform:translateY(8px);transition:all .3s;pointer-events:none;z-index:9999}
+    .cp-toast.show{opacity:1;transform:none}
+    .cp-toast.success{background:#22c55e}.cp-toast.error{background:#ef4444}.cp-toast.info{background:#6366f1}.cp-toast.warning{background:#f59e0b}
+    @media(max-width:900px){.main{margin-left:0}.aside{transform:translateX(-100%)}}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <aside class="aside">
+    <a href="/admin-info.html" class="aside-logo">
+      <svg width="20" height="20" viewBox="0 0 28 28" fill="none"><path d="M14 2L26 8V20L14 26L2 20V8L14 2Z" stroke="currentColor" stroke-width="1.5"/><path d="M14 8L20 11V17L14 20L8 17V11L14 8Z" fill="currentColor" opacity=".5"/><circle cx="14" cy="14" r="2.2" fill="currentColor"/></svg>
+      CloudPress<span class="badge-admin">ADMIN</span>
+    </a>
+    <nav class="aside-nav">
+      <div class="nav-section">
+        <div class="nav-label">대시보드</div>
+        <a href="/admin-info.html" class="nav-item"><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="14" y="3" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="3" y="14" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="14" y="14" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/></svg>개요</a>
+        <a href="/admin-traffic.html" class="nav-item"><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M22 12h-4l-3 9L9 3l-3 9H2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>트래픽</a>
+      </div>
+      <div class="nav-section">
+        <div class="nav-label">관리</div>
+        <a href="/admin-user-control.html" class="nav-item"><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="9" cy="7" r="4" stroke="currentColor" stroke-width="1.5"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M16 3.13a4 4 0 0 1 0 7.75M21 21v-2a4 4 0 0 0-3-3.87" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>사용자 관리</a>
+        <a href="/admin-site-control.html" class="nav-item"><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><rect x="2" y="3" width="20" height="14" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M8 21h8M12 17v4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>사이트 관리</a>
+        <a href="/admin-notices.html" class="nav-item"><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" stroke="currentColor" stroke-width="1.5"/><path d="M13.73 21a2 2 0 0 1-3.46 0" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>공지 관리</a>
+      </div>
+      <div class="nav-section">
+        <div class="nav-label">매출</div>
+        <a href="/admin-revenue.html" class="nav-item"><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><line x1="12" y1="1" x2="12" y2="23" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>매출 관리</a>
+      </div>
+      <div class="nav-section">
+        <div class="nav-label">시스템</div>
+        <a href="/admin-settings.html" class="nav-item active"><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.5"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" stroke="currentColor" stroke-width="1.5"/></svg>설정</a>
+        <a href="/dashboard.html" class="nav-item"><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" stroke="currentColor" stroke-width="1.5"/><polyline points="9 22 9 12 15 12 15 22" stroke="currentColor" stroke-width="1.5"/></svg>일반 대시보드</a>
+        <button class="nav-item danger" onclick="CP.logout()"><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><polyline points="16 17 21 12 16 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="21" y1="12" x2="9" y2="12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>로그아웃</button>
+      </div>
+    </nav>
+    <div class="aside-user">
+      <div class="av" id="adminAv">A</div>
+      <div><div style="font-size:.84rem;font-weight:600" id="adminName">—</div><div style="font-size:.72rem;color:var(--accent)">어드민</div></div>
+    </div>
+  </aside>
+
+  <div class="main">
+    <div class="topbar">
+      <span class="topbar-title">시스템 설정</span>
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="font-size:.8rem;color:var(--muted)" id="lastRefresh"></span>
+        <button class="btn btn-ghost btn-sm" onclick="loadSettings()">새로고침</button>
+      </div>
+    </div>
+    <div class="content" id="mainContent">
+      <div style="color:var(--muted);padding:20px 0">로딩 중...</div>
+    </div>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+<script>
+function esc(s){ return CP.escHtml(s); }
+function setErr(msg){ document.getElementById('mainContent').innerHTML='<div style="color:var(--error);padding:20px 0;font-size:.9rem">⚠️ '+esc(msg||'데이터를 불러오지 못했습니다.')+'</div>'; }
+
+let cmsVersionsData=[];
+
+async function init(){
+  const user = await CP.requireAdmin();
+  if(!user) return;
+  document.getElementById('adminAv').textContent = user.name[0].toUpperCase();
+  document.getElementById('adminName').textContent = user.name;
+  loadSettings();
+}
+
+async function loadSettings(){
+  document.getElementById('lastRefresh').textContent = '업데이트: '+new Date().toLocaleTimeString('ko-KR');
+  try{
+    const d = await CP.adminSettings();
+    if(!d.ok){ setErr(d.error||'설정 로딩 실패'); return; }
+    const s = d.settings||{};
+    cmsVersionsData = d.cms_versions||[];
+    const cfOk = s.cf_api_configured === '1';
+
+    document.getElementById('mainContent').innerHTML=`
+      <div style="max-width:680px">
+
+        <!-- 요금제 가격 -->
+        <div class="section-card">
+          <div style="font-family:var(--font-head);font-size:.95rem;font-weight:700;margin-bottom:16px">💰 요금제 가격 (원/월)</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div class="field"><label>스타터 플랜</label><input type="number" id="cfgStarterPrice" value="${s.plan_starter_price||9900}"/></div>
+            <div class="field"><label>프로 플랜</label><input type="number" id="cfgProPrice" value="${s.plan_pro_price||29900}"/></div>
+            <div class="field"><label>엔터프라이즈 플랜</label><input type="number" id="cfgEntPrice" value="${s.plan_enterprise_price||99000}"/></div>
+            <div class="field"><label>스타터 최대 사이트</label><input type="number" id="cfgStarterSites" value="${s.plan_starter_sites||3}"/></div>
+            <div class="field"><label>프로 최대 사이트</label><input type="number" id="cfgProSites" value="${s.plan_pro_sites||10}"/></div>
+          </div>
+        </div>
+
+        <!-- Toss 결제 -->
+        <div class="section-card">
+          <div style="font-family:var(--font-head);font-size:.95rem;font-weight:700;margin-bottom:14px">💳 Toss Payments 설정</div>
+          <div class="field"><label>클라이언트 키</label><input type="text" id="cfgTossClient" value="${esc(s.toss_client_key||'')}" placeholder="test_ck_..."/></div>
+          <div class="field"><label>시크릿 키</label><input type="password" id="cfgTossSecret" value="${esc(s.toss_secret_key||'')}" placeholder="test_sk_..."/></div>
+        </div>
+
+        <!-- Cloudflare 상태 -->
+        <div class="section-card">
+          <div style="font-family:var(--font-head);font-size:.95rem;font-weight:700;margin-bottom:8px">
+            ☁️ Cloudflare API 상태
+            <span style="font-size:.72rem;font-weight:500;margin-left:8px;padding:2px 8px;border-radius:10px;background:${cfOk?'rgba(34,197,94,.1)':'rgba(107,114,128,.1)'};color:${cfOk?'var(--success)':'var(--muted)'}">
+              ${cfOk?'✓ 관리자 환경변수 설정됨':'미설정 (선택)'}
+            </span>
+          </div>
+          <div style="font-size:.8rem;color:var(--muted)">CF_API_TOKEN, CF_ZONE_ID, CF_ACCOUNT_ID를 Cloudflare Pages 환경변수에 추가하세요. (각 사용자는 내 계정에서 개인 API 키를 설정합니다.)</div>
+        </div>
+
+        <button class="btn btn-primary" onclick="saveSettings()" style="margin-bottom:28px">설정 저장</button>
+
+        <!-- CMS 버전 관리 (관리자 전용 핵심 기능) -->
+        <div class="section-card" style="border-color:rgba(249,115,22,.2)">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+            <div style="font-family:var(--font-head);font-size:.95rem;font-weight:700">📦 CloudPress CMS 버전 관리</div>
+            <button class="btn btn-primary btn-sm" onclick="openAddVersion()">+ 버전 추가</button>
+          </div>
+          <p style="font-size:.82rem;color:var(--muted);margin-bottom:14px">사용자가 사이트 구축 시 선택 가능한 CMS 버전을 관리합니다. 코드 배포 후 여기서 버전을 추가하세요.</p>
+
+          <div id="verList">
+            ${cmsVersionsData.length===0?'<div style="color:var(--muted);font-size:.84rem;padding:12px 0">등록된 버전이 없습니다.</div>':
+              cmsVersionsData.map(v=>`
+                <div class="ver-row" id="verrow_${v.id}">
+                  <div class="ver-info">
+                    <div class="ver-label">${esc(v.label)}</div>
+                    <div class="ver-desc">${esc(v.description||'')}</div>
+                    <div class="ver-chips">
+                      ${v.is_latest?'<span class="chip chip-latest">최신</span>':''}
+                      ${v.is_stable?'<span class="chip chip-stable">안정</span>':'<span class="chip chip-beta">베타</span>'}
+                      <span style="font-size:.68rem;color:var(--muted)">${esc(v.version)}</span>
+                    </div>
+                  </div>
+                  <div style="display:flex;gap:6px;flex-shrink:0">
+                    ${!v.is_latest?`<button class="btn btn-ghost btn-sm" onclick="setLatestVersion('${v.id}','${esc(v.version)}')">최신으로</button>`:''}
+                    ${!v.is_latest?`<button class="btn btn-danger btn-sm" onclick="deleteVersion('${v.id}','${esc(v.version)}')">삭제</button>`:'<span style="font-size:.72rem;color:var(--muted);padding:5px">현재 최신</span>'}
+                  </div>
+                </div>`).join('')}
+          </div>
+        </div>
+
+        <!-- 버전 추가 폼 -->
+        <div class="section-card" id="addVersionCard" style="display:none;border-color:rgba(99,102,241,.2)">
+          <div style="font-family:var(--font-head);font-size:.9rem;font-weight:700;margin-bottom:14px">새 CMS 버전 추가</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div class="field"><label>버전 (예: 1.2.0)</label><input type="text" id="newVerNum" placeholder="1.2.0"/></div>
+            <div class="field"><label>라벨</label><input type="text" id="newVerLabel" placeholder="CloudPress CMS v1.2.0"/></div>
+          </div>
+          <div class="field"><label>설명</label><input type="text" id="newVerDesc" placeholder="주요 변경사항 요약"/></div>
+          <div class="field"><label>릴리즈 노트 (선택)</label><input type="text" id="newVerNotes" placeholder="버그 수정, 새 기능 등..."/></div>
+          <div style="display:flex;gap:10px;margin-top:4px">
+            <label style="display:flex;align-items:center;gap:6px;font-size:.83rem;cursor:pointer"><input type="checkbox" id="newVerStable" checked/> 안정 버전</label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:.83rem;cursor:pointer"><input type="checkbox" id="newVerLatest"/> 최신 버전으로 설정</label>
+          </div>
+          <div id="addVerErr" style="color:var(--error);font-size:.82rem;margin:10px 0;display:none"></div>
+          <div style="display:flex;gap:8px;margin-top:14px">
+            <button class="btn btn-primary btn-sm" onclick="addVersion()">버전 추가</button>
+            <button class="btn btn-ghost btn-sm" onclick="document.getElementById('addVersionCard').style.display='none'">취소</button>
+          </div>
+        </div>
+
+      </div>`;
+  }catch(e){ setErr(e.message); }
+}
+
+async function saveSettings(){
+  const settings = {
+    plan_starter_price:    document.getElementById('cfgStarterPrice')?.value,
+    plan_pro_price:        document.getElementById('cfgProPrice')?.value,
+    plan_enterprise_price: document.getElementById('cfgEntPrice')?.value,
+    plan_starter_sites:    document.getElementById('cfgStarterSites')?.value,
+    plan_pro_sites:        document.getElementById('cfgProSites')?.value,
+    toss_client_key:       document.getElementById('cfgTossClient')?.value,
+    toss_secret_key:       document.getElementById('cfgTossSecret')?.value,
+  };
+  Object.keys(settings).forEach(k=>{ if(settings[k]===undefined||settings[k]==='') delete settings[k]; });
+  const r = await CP.adminSaveSettings(settings);
+  if(r.ok) showToast('설정 저장 완료','success');
+  else showToast(r.error||'저장 실패','error');
+}
+
+function openAddVersion(){
+  document.getElementById('addVersionCard').style.display='';
+  document.getElementById('newVerNum').focus();
+}
+
+async function addVersion(){
+  const version = document.getElementById('newVerNum').value.trim();
+  const label   = document.getElementById('newVerLabel').value.trim();
+  const desc    = document.getElementById('newVerDesc').value.trim();
+  const notes   = document.getElementById('newVerNotes').value.trim();
+  const stable  = document.getElementById('newVerStable').checked;
+  const latest  = document.getElementById('newVerLatest').checked;
+  const errEl   = document.getElementById('addVerErr');
+  errEl.style.display='none';
+
+  if(!version||!label){errEl.textContent='버전과 라벨을 입력해주세요.';errEl.style.display='';return}
+  if(!/^\d+\.\d+\.\d+(-[a-z0-9.]+)?$/.test(version)){errEl.textContent='버전 형식: 1.0.0 또는 1.0.0-beta';errEl.style.display='';return}
+
+  const r = await CP.adminAddCmsVersion({version,label,description:desc,is_stable:stable,is_latest:latest,release_notes:notes});
+  if(r.ok){showToast(r.message||'버전이 추가되었습니다.','success');await loadSettings();}
+  else{errEl.textContent=r.error||'추가 실패';errEl.style.display='';}
+}
+
+async function setLatestVersion(id,ver){
+  if(!confirm(`${ver}을(를) 최신 버전으로 설정하시겠습니까?`))return;
+  const r = await CP.adminSetLatestVersion(id);
+  if(r.ok){showToast(r.message||'최신 버전 변경 완료','success');await loadSettings();}
+  else showToast(r.error||'실패','error');
+}
+
+async function deleteVersion(id,ver){
+  if(!confirm(`${ver} 버전을 삭제하시겠습니까?`))return;
+  const r = await CP.adminDeleteCmsVersion(id);
+  if(r.ok){showToast('버전이 삭제되었습니다.','success');await loadSettings();}
+  else showToast(r.error||'삭제 실패','error');
+}
+
+init();
+</script>
+</body>
+</html>
