@@ -71,7 +71,7 @@ async function ensureSchema(DB, env) {
 
   /* ── 어드민 계정 자동 시드 (최초 1회) ── */
   try {
-    const adminEmail = ((env && env.ADMIN_EMAIL) || 'cseongwon233@gmail.com').toLowerCase().trim();
+    const adminEmail = ((env && env.ADMIN_EMAIL) || 'choichoi3227@gmail.com').toLowerCase().trim();
     const adminPw    = (env && env.ADMIN_PASSWORD) || 'Swsh120327!';
     const exists = await DB.prepare('SELECT id FROM users WHERE email=?').bind(adminEmail).first();
     if (!exists) {
