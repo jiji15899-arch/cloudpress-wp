@@ -267,6 +267,21 @@ async function provisionCmsSite(env, { siteId, siteName, projectName, userPlan, 
   }
 
   const { apiKey, email, accountId } = creds;
+  
+  // 🔧 인증 정보 검증 추가
+  if (!apiKey || !email || !accountId) {
+    return { 
+      ok: false, 
+      error: 'Cloudflare API 인증 정보가 불완전합니다. API 키, 이메일, Account ID를 모두 확인해주세요.',
+      logs: [
+        '❌ 인증 정보 검증 실패',
+        `   - API 키: ${apiKey ? '✓' : '✗'}`,
+        `   - 이메일: ${email || '없음'}`,
+        `   - Account ID: ${accountId || '없음'}`
+      ]
+    };
+  }
+
   const cfHeaders = { 'X-Auth-Email': email, 'X-Auth-Key': apiKey, 'Content-Type': 'application/json' };
   const cfAuth = { apiKey, email, accountId };
   const adminPassword = genPw(16);
@@ -283,6 +298,8 @@ async function provisionCmsSite(env, { siteId, siteName, projectName, userPlan, 
   try {
     /* Step 1: Cloudflare Pages 프로젝트 생성 */
     logs.push(`① Cloudflare Pages 프로젝트 생성 중... (${projectName})`);
+    logs.push(`   인증: ${email} / Account: ${accountId}`);
+    
     const pagesResp = await fetch(
       `https://api.cloudflare.com/client/v4/accounts/${accountId}/pages/projects`,
       {
@@ -290,13 +307,43 @@ async function provisionCmsSite(env, { siteId, siteName, projectName, userPlan, 
         headers: cfHeaders,
         body: JSON.stringify({ name: projectName, production_branch: 'main' }),
       }
-    ).then(r => r.json()).catch(() => ({}));
+    ).then(r => r.json()).catch(e => {
+      // 🔧 네트워크 오류 상세 로깅
+      return { 
+        success: false, 
+        errors: [{ message: `네트워크 오류: ${e.message}` }],
+        _fetchError: e.message 
+      };
+    });
 
+    // 🔧 상세 오류 로깅 추가
     if (pagesResp.success) {
       logs.push(`   ✓ Pages 프로젝트 생성 완료 → ${siteUrl}`);
     } else {
       const errMsg = pagesResp.errors?.[0]?.message || '알 수 없는 오류';
-      logs.push(`   ✗ Pages 프로젝트 생성 실패 — ${errMsg}`);
+      const errCode = pagesResp.errors?.[0]?.code || '';
+      logs.push(`   ✗ Pages 프로젝트 생성 실패`);
+      logs.push(`   오류: ${errMsg}${errCode ? ` (코드: ${errCode})` : ''}`);
+      
+      // 인증 오류인 경우 추가 정보 제공
+      if (errMsg.toLowerCase().includes('authentication') || errMsg.toLowerCase().includes('unauthorized') || errCode === 10000) {
+        logs.push(`   💡 인증 오류 해결 방법:`);
+        logs.push(`      1. Cloudflare 대시보드에서 Global API 키 재확인`);
+        logs.push(`      2. 이메일 주소가 Cloudflare 계정과 일치하는지 확인`);
+        logs.push(`      3. Account ID가 올바른지 확인`);
+        logs.push(`      4. API 키를 다시 입력해보세요`);
+        return { 
+          ok: false, 
+          error: `Pages 프로젝트 생성 실패 (인증 오류)\n${errMsg}\n\n해결 방법: 내 계정에서 Cloudflare API 키를 다시 확인하고 재입력해주세요.`, 
+          logs 
+        };
+      }
+      
+      // 전체 응답을 로그에 포함 (디버깅용)
+      if (pagesResp._fetchError) {
+        logs.push(`   네트워크 오류 상세: ${pagesResp._fetchError}`);
+      }
+      
       return { ok: false, error: `Pages 프로젝트 생성 실패: ${errMsg}`, logs };
     }
 
@@ -396,6 +443,7 @@ async function provisionCmsSite(env, { siteId, siteName, projectName, userPlan, 
 
   } catch (e) {
     console.error('provisionCmsSite error:', e);
+    logs.push(`❌ 예상치 못한 오류: ${e?.message ?? e}`);
     return { ok: false, error: 'CMS 구축 중 오류: ' + (e?.message ?? e), logs };
   }
 }
