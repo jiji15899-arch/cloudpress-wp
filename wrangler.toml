@@ -2,14 +2,6 @@ name = "cloudpress-cms"
 compatibility_date = "2024-09-23"
 pages_build_output_dir = "."
 
-[[d1_databases]]
-binding = "DB"
-database_name = "cloudpress-db"
-database_id = "12bfc2fe-ae8e-45cf-8238-667686251b76"
-
-[[kv_namespaces]]
-binding = "SESSIONS"
-id = "98dd2527afed40d3a7f00d859fa3d547"
 
 [vars]
 SITE_DOMAIN   = "cloudpress.site"
