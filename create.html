@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>CMS 사이트 구축 — CloudPress</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:opsz,wght@9..40,400;9..40,500&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="dashboard.css"/>
+  <style>
+    .wizard{max-width:580px;margin:0 auto}
+    .steps{display:flex;align-items:center;margin-bottom:32px}
+    .stp{display:flex;align-items:center;gap:7px;font-size:.82rem;font-weight:500;color:var(--muted)}
+    .stp.active{color:var(--accent)}.stp.done{color:var(--success)}
+    .stp-num{width:24px;height:24px;border-radius:50%;border:1.5px solid currentColor;display:flex;align-items:center;justify-content:center;font-size:.72rem;font-weight:700;flex-shrink:0}
+    .stp.done .stp-num{display:none}.stp-ck{display:none}
+    .stp.done .stp-ck{display:flex;width:24px;height:24px;border-radius:50%;background:var(--success);align-items:center;justify-content:center}
+    .stp-sep{flex:1;height:1px;background:var(--border);margin:0 8px}
+    .ver-select{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px}
+    .ver-opt{border:2px solid var(--border);border-radius:10px;padding:12px 14px;cursor:pointer;transition:all .2s;position:relative}
+    .ver-opt:hover{border-color:var(--border2)}
+    .ver-opt.sel{border-color:var(--accent);background:rgba(249,115,22,.04)}
+    .ver-opt-name{font-family:var(--font-head);font-size:.88rem;font-weight:700;margin-bottom:2px}
+    .ver-opt-desc{font-size:.73rem;color:var(--muted);line-height:1.5}
+    .ver-badge-latest{position:absolute;top:-8px;right:10px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-size:.62rem;font-weight:700;padding:2px 8px;border-radius:10px}
+    .ver-badge-beta{position:absolute;top:-8px;right:10px;background:rgba(99,102,241,.8);color:#fff;font-size:.62rem;font-weight:700;padding:2px 8px;border-radius:10px}
+    .spin{width:52px;height:52px;border-radius:50%;border:3px solid var(--border2);border-top-color:var(--accent);animation:sp 1s linear infinite;margin:0 auto 20px}
+    @keyframes sp{to{transform:rotate(360deg)}}
+    .log{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:14px;font-size:.78rem;font-family:monospace;color:var(--muted);height:150px;overflow-y:auto;margin-top:18px;line-height:1.9;text-align:left}
+    .log .ok{color:var(--success)}.log .cur{color:var(--accent)}.log .warn{color:var(--warning)}
+    .success-icon{width:76px;height:76px;border-radius:50%;background:rgba(34,197,94,.1);border:2px solid rgba(34,197,94,.25);display:flex;align-items:center;justify-content:center;margin:0 auto 20px}
+    .cred-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)}
+    .cred-row:last-child{border:none}
+    .cred-label{font-size:.78rem;color:var(--muted);width:90px;flex-shrink:0}
+    .cred-val{flex:1;font-size:.85rem;font-weight:600;word-break:break-all}
+    .copy-btn{padding:4px 10px;background:var(--surface2);border:1px solid var(--border2);border-radius:6px;color:var(--muted);font-size:.74rem;cursor:pointer;white-space:nowrap}
+    @media(max-width:500px){.ver-select{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+<div class="app-wrap">
+  <aside class="sidebar" id="sidebar">
+    <a href="/dashboard.html" class="sb-logo"><svg width="22" height="22" viewBox="0 0 28 28" fill="none"><path d="M14 2L26 8V20L14 26L2 20V8L14 2Z" stroke="currentColor" stroke-width="1.5"/><path d="M14 8L20 11V17L14 20L8 17V11L14 8Z" fill="currentColor" opacity=".5"/><circle cx="14" cy="14" r="2.2" fill="currentColor"/></svg>CloudPress</a>
+    <nav class="sb-nav">
+      <div class="sb-section"><div class="sb-label">메인</div>
+        <a href="/dashboard.html" class="sb-link"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="14" y="3" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="3" y="14" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="14" y="14" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/></svg>대시보드</a>
+        <a href="/create.html" class="sb-link active"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.5"/><path d="M12 8v8M8 12h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>사이트 추가</a>
+      </div>
+      <div class="sb-section"><button class="sb-link danger" onclick="CP.logout()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><polyline points="16 17 21 12 16 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="21" y1="12" x2="9" y2="12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>로그아웃</button></div>
+    </nav>
+    <div class="sb-user"><div class="sb-avatar" id="sbAvatar">?</div><div class="sb-uinfo"><div class="sb-uname" id="sbName">—</div><div class="sb-uemail" id="sbEmail">—</div></div></div>
+  </aside>
+  <div class="sidebar-overlay" id="overlay" onclick="closeSidebar()"></div>
+  <main class="main">
+    <div class="topbar">
+      <div style="display:flex;align-items:center;gap:14px">
+        <button class="sidebar-toggle" onclick="openSidebar()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M3 12h18M3 6h18M3 18h18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
+        <span class="topbar-title">CMS 사이트 구축</span>
+      </div>
+      <a href="/dashboard.html" class="btn btn-ghost btn-sm">← 대시보드</a>
+    </div>
+    <div class="content">
+      <div class="wizard">
+        <div class="steps" id="stepsBar">
+          <div class="stp active" id="s1i"><div class="stp-num">1</div><svg class="stp-ck" width="24" height="24" viewBox="0 0 24 24" fill="none"><polyline points="20 6 9 17 4 12" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>사이트 정보</div>
+          <div class="stp-sep"></div>
+          <div class="stp" id="s2i"><div class="stp-num">2</div><svg class="stp-ck" width="24" height="24" viewBox="0 0 24 24" fill="none"><polyline points="20 6 9 17 4 12" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>완료</div>
+        </div>
+
+        <!-- Step 1 -->
+        <div id="step1">
+          <div id="noApiWarn" style="display:none;background:rgba(239,68,68,.07);border:1px solid rgba(239,68,68,.2);border-radius:10px;padding:14px;margin-bottom:16px;font-size:.84rem">
+            ⚠️ Cloudflare API 키가 설정되지 않았습니다. <a href="/account.html" style="color:var(--accent)">내 계정 → Cloudflare API 설정</a>에서 먼저 API 키를 등록해주세요.
+          </div>
+          <div class="card" style="padding:26px">
+            <h2 style="font-family:var(--font-head);font-size:1.05rem;font-weight:700;margin-bottom:20px">🚀 CloudPress CMS 사이트 구축</h2>
+            <div class="field">
+              <label>사이트 이름</label>
+              <input type="text" id="siteName" placeholder="예: 내 블로그" maxlength="60"/>
+              <div class="hint" style="margin-top:6px">사이트 이름으로 <strong>.pages.dev</strong> 도메인이 자동 생성됩니다</div>
+            </div>
+
+            <div style="background:rgba(99,102,241,.05);border:1px solid rgba(99,102,241,.2);border-radius:10px;padding:16px;margin-bottom:18px">
+              <div style="font-size:.82rem;font-weight:700;color:#818cf8;margin-bottom:12px">🔐 관리자 계정 설정</div>
+              <div class="field" style="margin-bottom:10px">
+                <label style="font-size:.8rem">관리자 아이디 <span style="color:var(--error)">*</span></label>
+                <input type="text" id="adminUsername" placeholder="예: admin" maxlength="60" autocomplete="off"/>
+              </div>
+              <div class="field" style="margin-bottom:10px">
+                <label style="font-size:.8rem">관리자 이메일 <span style="color:var(--error)">*</span></label>
+                <input type="email" id="adminEmail" placeholder="예: admin@example.com" maxlength="100" autocomplete="off"/>
+              </div>
+              <div class="field" style="margin-bottom:0">
+                <label style="font-size:.8rem">관리자 비밀번호 <span style="color:var(--error)">*</span></label>
+                <div style="position:relative">
+                  <input type="password" id="adminPassword" placeholder="8자 이상" maxlength="100" autocomplete="new-password" style="padding-right:60px"/>
+                  <button type="button" onclick="togglePwField()" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);font-size:.76rem;cursor:pointer;padding:4px 6px" id="pwToggleBtn">보기</button>
+                </div>
+                <div class="hint" style="margin-top:4px">영문+숫자+특수문자 조합 권장</div>
+              </div>
+            </div>
+
+            <!-- CMS 버전 선택 -->
+            <div class="field">
+              <label>CMS 버전 선택 <span style="font-size:.76rem;color:var(--muted)">(관리자가 배포한 버전)</span></label>
+              <div class="ver-select" id="verSelect">
+                <div style="color:var(--muted);font-size:.84rem;padding:8px 0">버전 목록 로딩 중...</div>
+              </div>
+            </div>
+
+            <div style="background:rgba(34,197,94,.05);border:1px solid rgba(34,197,94,.15);border-radius:10px;padding:14px;margin-bottom:20px">
+              <div style="font-size:.82rem;color:var(--success);font-weight:600;margin-bottom:6px">✅ 자동 구축 포함 사항</div>
+              <div style="font-size:.8rem;color:var(--muted);line-height:1.9">
+                • Cloudflare Pages 프로젝트 자동 생성 (<strong>.pages.dev</strong> 도메인)<br>
+                • Cloudflare D1 데이터베이스 자동 생성<br>
+                • Cloudflare KV 스토리지 자동 생성<br>
+                • CMS 사이트 템플릿 자동 배포<br>
+                • CMS 데이터베이스 스키마 자동 초기화<br>
+                • 관리자 계정 자동 생성<br>
+                • SSL 인증서 자동 적용 (Cloudflare 자동 발급)
+              </div>
+            </div>
+            <div id="stepErr" style="color:var(--error);font-size:.83rem;margin-bottom:14px;display:none"></div>
+            <button class="btn btn-primary" style="width:100%" id="createBtn" onclick="doCreate()">CMS 사이트 구축하기 🚀</button>
+          </div>
+        </div>
+
+        <!-- Step 2: 구축 중 / 완료 -->
+        <div id="step2" style="display:none">
+          <div class="card" id="provView" style="padding:32px;text-align:center">
+            <div class="spin"></div>
+            <h2 style="font-family:var(--font-head);font-size:1.05rem;font-weight:700;margin-bottom:6px">CloudPress CMS 구축 중...</h2>
+            <p style="color:var(--muted);font-size:.84rem;margin-bottom:4px">Cloudflare Pages · D1 DB · KV 자동 설정 중</p>
+            <p style="color:var(--muted);font-size:.78rem;margin-bottom:14px">⏱ 백그라운드로 구축을 시작합니다. 잠시 후 대시보드로 이동합니다.</p>
+            <div id="elapsedTimer" style="font-size:.78rem;color:var(--accent);margin-bottom:10px;font-weight:600">경과: 0분 00초</div>
+            <div class="log" id="logBox"></div>
+          </div>
+          <div class="card" id="okView" style="padding:32px;display:none">
+            <div class="success-icon"><svg width="34" height="34" viewBox="0 0 24 24" fill="none"><polyline points="20 6 9 17 4 12" stroke="#22c55e" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+            <h2 style="font-family:var(--font-head);font-size:1.15rem;font-weight:700;text-align:center;margin-bottom:6px">구축 완료! 🎉</h2>
+            <p style="color:var(--muted);font-size:.84rem;text-align:center;margin-bottom:4px">아래 정보로 CloudPress CMS 관리자에 접속하세요.</p>
+            <p style="color:var(--accent);font-size:.82rem;text-align:center;font-weight:600;margin-bottom:18px">⏱ <span id="dashCountdown">5</span>초 후 대시보드로 자동 이동합니다...</p>
+            <div class="section-card" id="credBox"></div>
+            <div style="display:flex;gap:10px;margin-top:18px;justify-content:center">
+              <a id="adminLink" href="#" target="_blank" class="btn btn-primary">CMS 관리자 접속 →</a>
+              <a href="/dashboard.html" class="btn btn-ghost">대시보드로 바로 이동</a>
+            </div>
+          </div>
+          <div class="card" id="errView" style="padding:32px;display:none;text-align:center">
+            <div style="font-size:2rem;margin-bottom:12px">❌</div>
+            <h2 style="font-family:var(--font-head);font-size:1.05rem;font-weight:700;margin-bottom:12px">구축 실패</h2>
+            <div id="errMsg" style="color:var(--error);font-size:.85rem;line-height:1.7;background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.2);border-radius:8px;padding:14px;margin-bottom:6px;text-align:left;word-break:break-word;white-space:pre-line"></div>
+            <div style="color:var(--muted);font-size:.78rem;margin-bottom:18px;text-align:left">
+              💡 <strong>해결 방법:</strong> 내 계정 → Cloudflare API 설정에서 Global API 키와 이메일을 <strong>다시 저장</strong>해주세요.<br>
+              (저장 시 API 키와 Account ID가 자동으로 재검증됩니다)
+            </div>
+            <div style="display:flex;gap:10px;justify-content:center">
+              <a href="/create.html" class="btn btn-primary btn-sm">← 다시 시도</a>
+              <a href="/account.html" class="btn btn-ghost btn-sm">API 키 설정</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+<script src="/app.js"></script>
+<script>
+let selVersion=null;
+
+async function init(){
+  const user=await CP.requireAuth();if(!user)return;
+  document.getElementById('sbAvatar').textContent=user.name[0].toUpperCase();
+  document.getElementById('sbName').textContent=user.name;
+  document.getElementById('sbEmail').textContent=user.email;
+
+  // CF API 키 확인
+  const profile=await CP.getProfile();
+  if(profile.ok&&!profile.user.has_cf_api){
+    document.getElementById('noApiWarn').style.display='';
+    document.getElementById('createBtn').disabled=true;
+    document.getElementById('createBtn').textContent='API 키 설정 후 구축 가능';
+  }
+
+  // CMS 버전 목록 로드
+  const d=await CP.adminSettings().catch(()=>({ok:false}));
+  const verSel=document.getElementById('verSelect');
+  if(d.ok&&d.cms_versions&&d.cms_versions.length){
+    const versions=d.cms_versions;
+    verSel.innerHTML=versions.map(v=>`
+      <div class="ver-opt${v.is_latest?' sel':''}" id="ver_${v.id}" onclick="selectVersion('${v.id}','${CP.escHtml(v.version)}')">
+        ${v.is_latest?'<div class="ver-badge-latest">최신</div>':''}
+        ${!v.is_stable&&!v.is_latest?'<div class="ver-badge-beta">BETA</div>':''}
+        <div class="ver-opt-name">${CP.escHtml(v.label)}</div>
+        <div class="ver-opt-desc">${CP.escHtml(v.description||'')}</div>
+      </div>`).join('');
+    // 기본값: 최신 버전
+    const latest=versions.find(v=>v.is_latest)||versions[0];
+    if(latest) selectVersion(latest.id,latest.version);
+  }else{
+    // 버전 로드 실패 시 기본값
+    selVersion='1.0.0';
+    verSel.innerHTML=`<div class="ver-opt sel" style="grid-column:1/-1"><div class="ver-badge-latest">최신</div><div class="ver-opt-name">CloudPress CMS v1.0.0</div><div class="ver-opt-desc">안정 버전</div></div>`;
+  }
+}
+
+function selectVersion(id,ver){
+  selVersion=ver;
+  document.querySelectorAll('.ver-opt').forEach(el=>el.classList.remove('sel'));
+  document.getElementById('ver_'+id)?.classList.add('sel');
+}
+
+function togglePwField(){
+  const inp=document.getElementById('adminPassword');
+  const btn=document.getElementById('pwToggleBtn');
+  if(inp.type==='password'){inp.type='text';btn.textContent='숨기기';}
+  else{inp.type='password';btn.textContent='보기';}
+}
+
+async function doCreate(){
+  const name=document.getElementById('siteName').value.trim();
+  const adminUsername=document.getElementById('adminUsername').value.trim();
+  const adminEmail=document.getElementById('adminEmail').value.trim();
+  const adminPassword=document.getElementById('adminPassword').value;
+  const errEl=document.getElementById('stepErr');errEl.style.display='none';
+  if(!name){errEl.textContent='사이트 이름을 입력해주세요.';errEl.style.display='';return}
+  if(!adminUsername){errEl.textContent='관리자 아이디를 입력해주세요.';errEl.style.display='';return}
+  if(!/^[a-zA-Z0-9_\-\.]+$/.test(adminUsername)){errEl.textContent='관리자 아이디는 영문, 숫자, 밑줄, 하이픈만 사용 가능합니다.';errEl.style.display='';return}
+  if(!adminEmail||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(adminEmail)){errEl.textContent='올바른 이메일 주소를 입력해주세요.';errEl.style.display='';return}
+  if(!adminPassword||adminPassword.length<8){errEl.textContent='비밀번호는 8자 이상이어야 합니다.';errEl.style.display='';return}
+
+  document.getElementById('step1').style.display='none';
+  document.getElementById('step2').style.display='';
+  document.getElementById('s1i').className='stp done';
+  document.getElementById('s2i').className='stp active';
+
+  const logBox=document.getElementById('logBox');
+  logBox.innerHTML='';
+  const addLog=(msg,cls='')=>{
+    const div=document.createElement('div');
+    div.className=cls;
+    div.textContent=msg;
+    logBox.appendChild(div);
+    logBox.scrollTop=logBox.scrollHeight;
+  };
+
+  // 실시간 진행 상황 애니메이션 (API 응답 전까지 가상 단계 표시)
+  const fakeSteps=[
+    {msg:'① Cloudflare API 인증 확인 중...',delay:0},
+    {msg:'② Pages 프로젝트 생성 중...',delay:8000},
+    {msg:'③ KV Namespace 생성 중...',delay:18000},
+    {msg:'④ D1 데이터베이스 생성 중...',delay:28000},
+    {msg:'⑤ CMS 스키마 초기화 중...',delay:45000},
+    {msg:'⑥ CMS 설정 저장 중...',delay:70000},
+    {msg:'⑦ 사이트 템플릿 배포 중...',delay:100000},
+    {msg:'⑧ 사이트 구축 확인 중... (Cloudflare 전파 대기)',delay:150000},
+  ];
+  const fakeTimers=[];
+  fakeSteps.forEach(s=>{
+    const t=setTimeout(()=>{ addLog(s.msg,'cur'); },s.delay);
+    fakeTimers.push(t);
+  });
+
+  // 경과 시간 표시
+  const startTime=Date.now();
+  const timerEl=document.getElementById('elapsedTimer');
+  const timerInterval=setInterval(()=>{
+    const sec=Math.floor((Date.now()-startTime)/1000);
+    const m=Math.floor(sec/60), s=sec%60;
+    if(timerEl) timerEl.textContent=`경과: ${m}분 ${String(s).padStart(2,'0')}초`;
+  },1000);
+
+  // 백그라운드 구축 API 호출 (즉시 응답, 구축은 백그라운드 진행)
+  const r=await CP.createSite({name,cms_version:selVersion||'1.0.0',admin_username:adminUsername,admin_email:adminEmail,admin_password:adminPassword,background:true});
+
+  // 가짜 타이머 모두 취소
+  fakeTimers.forEach(t=>clearTimeout(t));
+  clearInterval(timerInterval);
+
+  if(r.ok){
+    // 실제 로그로 교체
+    logBox.innerHTML='';
+    if(r.logs&&r.logs.length){
+      r.logs.forEach(l=>{
+        const cls=l.startsWith('✅')?'ok':
+                  l.includes('⚠')||l.includes('warn')?'warn':
+                  l.startsWith('   ✓')||l.startsWith('✓')?'ok':'cur';
+        addLog(l,cls);
+      });
+    }else{
+      addLog('✅ 구축 완료!','ok');
+    }
+    document.getElementById('s2i').className='stp done';
+
+    // 사이트 정보 표시 후 대시보드로 자동 이동
+    const site=r.site||{};
+    const siteUrl=site.cms_url||`https://${site.subdomain}.pages.dev`;
+    const adminUrl=site.cms_admin_url||(siteUrl+'/wp-admin/');
+
+    document.getElementById('provView').style.display='none';
+    document.getElementById('okView').style.display='';
+    document.getElementById('adminLink').href=adminUrl;
+
+    // 비밀번호 세션 저장 (대시보드에서 표시용)
+    try{ sessionStorage.setItem('cp_new_site_creds', JSON.stringify({
+      id:site.id, url:siteUrl, adminUrl, username:site.cms_username||'admin',
+      password:site.cms_password||'', version:site.cms_version||'1.0.0'
+    })); }catch(_){}
+
+    document.getElementById('credBox').innerHTML=`
+      <div class="cred-row"><span class="cred-label">사이트 URL</span><span class="cred-val"><a href="${CP.escHtml(siteUrl)}" target="_blank" style="color:var(--accent)">${CP.escHtml(siteUrl)}</a></span><button class="copy-btn" onclick="copyText('${CP.escHtml(siteUrl)}',this)">복사</button></div>
+      <div class="cred-row"><span class="cred-label">관리자 URL</span><span class="cred-val"><a href="${CP.escHtml(adminUrl)}" target="_blank" style="color:var(--accent)">${CP.escHtml(adminUrl)}</a></span><button class="copy-btn" onclick="copyText('${CP.escHtml(adminUrl)}',this)">복사</button></div>
+      <div class="cred-row"><span class="cred-label">아이디</span><span class="cred-val">${CP.escHtml(site.cms_username||adminUsername)}</span><button class="copy-btn" onclick="copyText('${CP.escHtml(site.cms_username||adminUsername)}',this)">복사</button></div>
+      <div class="cred-row"><span class="cred-label">비밀번호</span><span class="cred-val" id="pwVal">••••••••</span><button class="copy-btn" id="pwBtn" onclick="toggleCredPw('${CP.escHtml(site.cms_password||adminPassword)}')">보기</button></div>
+      <div class="cred-row"><span class="cred-label">이메일</span><span class="cred-val">${CP.escHtml(site.cms_email||adminEmail)}</span></div>
+      <div class="cred-row"><span class="cred-label">CMS 버전</span><span class="cred-val">${CP.escHtml(site.cms_version||'1.0.0')}</span></div>
+      <div style="margin-top:10px;padding:10px;background:rgba(249,115,22,.06);border:1px solid rgba(249,115,22,.2);border-radius:8px;font-size:.78rem;color:var(--muted)">
+        ⏱ 구축은 백그라운드에서 진행됩니다. 완료까지 3~8분 소요됩니다. 대시보드에서 상태를 확인하세요.
+      </div>`;
+
+    // 3초 후 대시보드로 자동 이동 (백그라운드 모드)
+    let countdown=3;
+    const cdEl=document.getElementById('dashCountdown');
+    if(cdEl) cdEl.textContent=countdown;
+    const cdInterval=setInterval(()=>{
+      countdown--;
+      if(cdEl) cdEl.textContent=countdown;
+      if(countdown<=0){
+        clearInterval(cdInterval);
+        window.location.href='/dashboard.html';
+      }
+    },1000);
+
+  }else{
+    // 오류 시 실제 서버 로그 표시
+    logBox.innerHTML='';
+    if(r.logs&&r.logs.length){
+      r.logs.forEach(l=>addLog(l, l.includes('✗')||l.includes('❌')?'warn':'cur'));
+    }
+    document.getElementById('provView').style.display='none';
+    document.getElementById('errView').style.display='';
+    document.getElementById('errMsg').textContent=r.error||'알 수 없는 오류가 발생했습니다.';
+  }
+}
+
+let pwShown=false;
+function toggleCredPw(pw){
+  pwShown=!pwShown;
+  document.getElementById('pwVal').textContent=pwShown?pw:'••••••••';
+  document.getElementById('pwBtn').textContent=pwShown?'숨기기':'보기';
+}
+init();
+</script>
+</body>
+</html>
