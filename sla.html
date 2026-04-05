@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>서비스 수준 협약 (SLA) — CloudPress</title>
+  <meta name="description" content="CloudPress SLA. 플랜별 업타임 보장, 보상 정책, 지원 응답 시간 등을 안내합니다."/>
+  <link rel="canonical" href="https://cloudpress.pages.dev/sla.html"/>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:opsz,wght@9..40,400;9..40,500&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="style.css"/>
+  <style>
+    .page-hero{padding:120px 0 60px;background:linear-gradient(135deg,#0a0a0f,#0f0f1a)}
+    .page-hero h1{font-family:'Syne',sans-serif;font-size:clamp(1.8rem,4vw,2.8rem);font-weight:800;color:#fff;margin-bottom:12px}
+    .legal-content{max-width:760px;margin:0 auto;padding:60px 24px}
+    .legal-content h2{font-family:'Syne',sans-serif;font-size:1.3rem;font-weight:700;color:#fff;margin:40px 0 14px;border-top:1px solid rgba(255,255,255,.07);padding-top:8px}
+    .legal-content h2:first-child{border:none;margin-top:0}
+    .legal-content p,.legal-content li{color:rgba(255,255,255,.65);line-height:1.85;font-size:.92rem;margin-bottom:10px}
+    .legal-content ul{padding-left:20px}
+    table{width:100%;border-collapse:collapse;margin:16px 0}
+    table th,table td{padding:10px 14px;border:1px solid rgba(255,255,255,.1);font-size:.85rem;color:rgba(255,255,255,.7)}
+    table th{background:rgba(255,255,255,.06);color:#fff;font-weight:600}
+    .breadcrumb{font-size:.8rem;color:rgba(255,255,255,.4);margin-bottom:14px}
+    .breadcrumb a{color:rgba(255,255,255,.5);text-decoration:none}
+  </style>
+</head>
+<body>
+  <div class="noise"></div>
+  <header class="header" id="header">
+    <div class="container header-inner">
+      <a href="/" class="logo"><svg width="26" height="26" viewBox="0 0 28 28" fill="none"><path d="M14 2L26 8V20L14 26L2 20V8L14 2Z" stroke="currentColor" stroke-width="1.5"/><path d="M14 8L20 11V17L14 20L8 17V11L14 8Z" fill="currentColor" opacity="0.5"/><circle cx="14" cy="14" r="2.2" fill="currentColor"/></svg>CloudPress</a>
+      <nav class="nav" id="nav"><a href="/features.html">기능</a><a href="/pricing.html">요금제</a><a href="/faq.html">FAQ</a><a href="/about.html">소개</a></nav>
+      <div class="header-actions"><a href="/auth.html" class="btn ghost sm">로그인</a><a href="/auth.html?tab=signup" class="btn primary sm">시작하기</a></div>
+      <button class="burger" id="burger" aria-label="메뉴"><span></span><span></span><span></span></button>
+    </div>
+  </header>
+  <section class="page-hero"><div class="container"><div class="breadcrumb"><a href="/">홈</a> › SLA</div><h1>서비스 수준 협약 (SLA)</h1><p style="color:rgba(255,255,255,.5);font-size:.9rem">최종 업데이트: 2026년 1월 1일</p></div></section>
+  <div class="legal-content">
+    <h2>업타임 보장</h2>
+    <table><thead><tr><th>플랜</th><th>월간 업타임 보장</th><th>최대 다운타임/월</th></tr></thead>
+    <tbody>
+      <tr><td>스타터</td><td>99.9%</td><td>약 43.8분</td></tr>
+      <tr><td>프로</td><td>99.95%</td><td>약 21.9분</td></tr>
+      <tr><td>엔터프라이즈</td><td>99.99%</td><td>약 4.4분</td></tr>
+    </tbody></table>
+    <h2>서비스 중단 정의</h2>
+    <p>서비스 중단이란 CloudPress 서비스가 완전히 응답 불가능한 상태를 의미합니다. 다음 경우는 서비스 중단에 해당하지 않습니다.</p>
+    <ul>
+      <li>예정된 유지보수 (사전 공지 기준)</li>
+      <li>이용자 귀책 사유로 인한 중단</li>
+      <li>Cloudflare 플랫폼 자체의 장애</li>
+      <li>천재지변, 불가항력적 사유</li>
+    </ul>
+    <h2>지원 응답 시간</h2>
+    <table><thead><tr><th>플랜</th><th>1순위 응답</th><th>지원 채널</th></tr></thead>
+    <tbody>
+      <tr><td>스타터</td><td>24시간 이내 (업무일)</td><td>이메일</td></tr>
+      <tr><td>프로</td><td>4시간 이내</td><td>이메일 + 우선 처리</td></tr>
+      <tr><td>엔터프라이즈</td><td>1시간 이내</td><td>전담 매니저 + 전화</td></tr>
+    </tbody></table>
+    <h2>SLA 위반 시 보상</h2>
+    <p>SLA를 위반한 경우 다음 기준으로 서비스 크레딧을 제공합니다.</p>
+    <ul>
+      <li>99.0% ~ 99.9% 미만: 월 요금의 10% 크레딧</li>
+      <li>95.0% ~ 99.0% 미만: 월 요금의 25% 크레딧</li>
+      <li>95.0% 미만: 월 요금의 50% 크레딧</li>
+    </ul>
+    <p>크레딧 청구는 해당 월 종료 후 30일 이내에 고객센터를 통해 신청하세요.</p>
+    <h2>문의</h2>
+    <p>SLA 관련 문의 및 크레딧 신청은 <a href="/contact.html" style="color:#f97316">고객센터</a>로 연락하세요.</p>
+  </div>
+  <footer class="footer"><div class="container"><div class="footer-bottom"><span>© 2026 CloudPress. All rights reserved.</span><span><a href="/terms.html" style="color:rgba(255,255,255,.5)">이용약관</a> · <a href="/privacy.html" style="color:rgba(255,255,255,.5)">개인정보처리방침</a></span></div></div></footer>
+  <script src="script.js"></script>
+</body>
+</html>

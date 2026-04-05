@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>자주 묻는 질문 — CloudPress</title>
+  <meta name="description" content="CloudPress 자주 묻는 질문(FAQ). Cloudflare 호스팅, 워드프레스 호환, 가격, 보안, 백업 등 모든 궁금증을 해결하세요."/>
+  <meta name="keywords" content="CloudPress FAQ, 클라우드프레스 FAQ, 클라우드플레어 호스팅 질문, 워드프레스 CMS 호스팅 FAQ"/>
+  <link rel="canonical" href="https://cloudpress.pages.dev/faq.html"/>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:opsz,wght@9..40,400;9..40,500&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="style.css"/>
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"FAQPage","mainEntity":[
+    {"@type":"Question","name":"Cloudflare Pages 기반 호스팅이 일반 VPS 호스팅과 다른 점은?","acceptedAnswer":{"@type":"Answer","text":"Cloudflare Anycast 네트워크로 전 세계 300개 이상의 데이터센터에서 콘텐츠가 서빙됩니다. 별도 서버 관리 없이 자동 확장, DDoS 방어, CDN이 모두 포함됩니다."}},
+    {"@type":"Question","name":"워드프레스와 얼마나 호환되나요?","acceptedAnswer":{"@type":"Answer","text":"WordPress REST API(/wp-json/wp/v2/)와 완전히 동일한 구조를 제공합니다. 글 작성, 카테고리, 태그, 미디어 관리, 사용자 권한 등 핵심 기능이 100% 호환됩니다."}},
+    {"@type":"Question","name":"사이트 구축에 얼마나 걸리나요?","acceptedAnswer":{"@type":"Answer","text":"버튼 하나 클릭 후 3~8분 내에 Cloudflare Pages, D1 데이터베이스, KV 스토리지, 바인딩 설정이 모두 자동 완료됩니다."}},
+    {"@type":"Question","name":"무료 플랜이 있나요?","acceptedAnswer":{"@type":"Answer","text":"현재 무료 플랜은 제공하지 않습니다. 스타터·프로·엔터프라이즈 유료 플랜을 제공하며, 가격은 요금제 페이지에서 확인하세요."}},
+    {"@type":"Question","name":"DDoS 방어는 어느 수준까지 지원되나요?","acceptedAnswer":{"@type":"Answer","text":"197 Tbps 네트워크 용량 기반. L3/L4 및 L7 DDoS 공격을 모두 자동 탐지·차단하며, 추가 비용 없이 무제한 제공됩니다."}}
+  ]}</script>
+  <style>
+    .page-hero{padding:120px 0 60px;text-align:center;background:linear-gradient(135deg,#0a0a0f 0%,#0f0f1a 100%)}
+    .page-hero h1{font-family:'Syne',sans-serif;font-size:clamp(2rem,5vw,3rem);font-weight:800;color:#fff;margin-bottom:16px}
+    .faq-cat{font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#f97316;margin:40px 0 16px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,.07)}
+    .breadcrumb{font-size:.8rem;color:rgba(255,255,255,.4);margin-bottom:16px}
+    .breadcrumb a{color:rgba(255,255,255,.5);text-decoration:none}
+  </style>
+</head>
+<body>
+  <div class="noise"></div>
+  <header class="header" id="header">
+    <div class="container header-inner">
+      <a href="/" class="logo"><svg width="26" height="26" viewBox="0 0 28 28" fill="none"><path d="M14 2L26 8V20L14 26L2 20V8L14 2Z" stroke="currentColor" stroke-width="1.5"/><path d="M14 8L20 11V17L14 20L8 17V11L14 8Z" fill="currentColor" opacity="0.5"/><circle cx="14" cy="14" r="2.2" fill="currentColor"/></svg>CloudPress</a>
+      <nav class="nav" id="nav">
+        <a href="/features.html">기능</a><a href="/pricing.html">요금제</a>
+        <a href="/faq.html" style="color:#f97316">FAQ</a><a href="/about.html">소개</a>
+      </nav>
+      <div class="header-actions"><a href="/auth.html" class="btn ghost sm">로그인</a><a href="/auth.html?tab=signup" class="btn primary sm">시작하기</a></div>
+      <button class="burger" id="burger" aria-label="메뉴"><span></span><span></span><span></span></button>
+    </div>
+  </header>
+  <section class="page-hero">
+    <div class="container">
+      <div class="breadcrumb"><a href="/">홈</a> › FAQ</div>
+      <h1>자주 묻는 질문</h1>
+      <p style="color:rgba(255,255,255,.6);font-size:1rem;max-width:480px;margin:0 auto">CloudPress에 대한 모든 궁금증을 해결하세요.</p>
+    </div>
+  </section>
+  <section class="section faq-section">
+    <div class="container" style="max-width:760px">
+      <div class="faq-cat">서비스 일반</div>
+      <div class="faq-list">
+        <div class="faq-item"><button class="faq-q">CloudPress가 일반 워드프레스 호스팅과 다른 점은?<svg class="faq-arrow" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button><div class="faq-a"><p>CloudPress는 Cloudflare Pages를 기반으로 작동하며, 별도 VPS 관리 없이 자동 확장·DDoS 방어·글로벌 CDN이 기본 포함됩니다. 전통적인 LAMP 스택 대신 Cloudflare D1(SQLite)과 KV를 사용하여 더 빠르고 안정적입니다.</p></div></div>
+        <div class="faq-item"><button class="faq-q">워드프레스와 얼마나 호환되나요?<svg class="faq-arrow" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button><div class="faq-a"><p>WordPress REST API(/wp-json/wp/v2/)와 완전히 동일한 엔드포인트 구조를 제공합니다. 글 작성·편집, 카테고리·태그, 미디어, 사용자 권한 관리 등 핵심 기능이 100% 호환됩니다. 기존 워드프레스 사용자라면 동일한 방식으로 사용 가능합니다.</p></div></div>
+        <div class="faq-item"><button class="faq-q">사이트 구축에 얼마나 걸리나요?<svg class="faq-arrow" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button><div class="faq-a"><p>버튼 하나 클릭 후 3~8분 내에 Cloudflare Pages 프로젝트, D1 데이터베이스, KV 스토리지 생성, 바인딩 설정, CMS 배포까지 모두 자동 완료됩니다. 사이트 DNS 전파는 최대 5분 추가 소요될 수 있습니다.</p></div></div>
+        <div class="faq-item"><button class="faq-q">무료 플랜이 있나요?<svg class="faq-arrow" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button><div class="faq-a"><p>현재 무료 플랜은 제공하지 않습니다. 스타터·프로·엔터프라이즈 유료 플랜을 제공합니다. 자세한 가격은 <a href="/pricing.html" style="color:#f97316">요금제 페이지</a>에서 확인하세요.</p></div></div>
+      </div>
+      <div class="faq-cat">기술 및 인프라</div>
+      <div class="faq-list">
+        <div class="faq-item"><button class="faq-q">DDoS 방어는 어느 수준까지 지원되나요?<svg class="faq-arrow" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button><div class="faq-a"><p>197 Tbps 네트워크 용량 기반. L3/L4 및 L7 DDoS 공격을 모두 자동 탐지·차단하며, 추가 비용 없이 무제한 제공됩니다. Cloudflare Magic Transit이 공격을 밀리초 단위로 완화합니다.</p></div></div>
+        <div class="faq-item"><button class="faq-q">데이터베이스는 어떻게 작동하나요?<svg class="faq-arrow" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button><div class="faq-a"><p>각 사이트마다 Cloudflare D1(SQLite 기반) 데이터베이스가 자동 생성됩니다. KV 스토리지는 세션·설정·캐시에 사용됩니다. 모든 데이터는 Cloudflare 인프라 내에 안전하게 저장됩니다.</p></div></div>
+        <div class="faq-item"><button class="faq-q">커스텀 도메인을 연결할 수 있나요?<svg class="faq-arrow" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button><div class="faq-a"><p>네. 사이트 설정에서 커스텀 도메인을 입력하고, DNS에서 생성된 .pages.dev 도메인으로 CNAME 설정하면 됩니다. SSL 인증서는 자동 발급됩니다.</p></div></div>
+        <div class="faq-item"><button class="faq-q">백업은 어떻게 이루어지나요?<svg class="faq-arrow" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button><div class="faq-a"><p>스타터 플랜은 7일, 프로 플랜은 30일, 엔터프라이즈는 실시간 백업을 제공합니다. D1 데이터베이스와 KV 스토리지 모두 백업됩니다.</p></div></div>
+      </div>
+      <div class="faq-cat">결제 및 플랜</div>
+      <div class="faq-list">
+        <div class="faq-item"><button class="faq-q">언제든지 플랜을 변경할 수 있나요?<svg class="faq-arrow" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button><div class="faq-a"><p>언제든지 업·다운그레이드 가능합니다. 업그레이드는 즉시 적용되며, 잔여 금액은 크레딧으로 제공됩니다.</p></div></div>
+        <div class="faq-item"><button class="faq-q">결제 수단은 무엇을 지원하나요?<svg class="faq-arrow" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button><div class="faq-a"><p>토스페이먼츠를 통해 신용카드, 체크카드, 계좌이체 등 다양한 결제 수단을 지원합니다.</p></div></div>
+        <div class="faq-item"><button class="faq-q">환불 정책은 어떻게 되나요?<svg class="faq-arrow" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button><div class="faq-a"><p>결제 후 7일 이내 환불 요청 시 전액 환불 가능합니다. 7일 이후에는 잔여 기간에 해당하는 금액을 일할 계산하여 환불합니다. 자세한 내용은 <a href="/terms.html" style="color:#f97316">이용약관</a>을 참조하세요.</p></div></div>
+      </div>
+    </div>
+  </section>
+  <section class="section" style="padding-top:0"><div class="container" style="text-align:center"><h2 style="font-family:'Syne',sans-serif;font-size:1.8rem;font-weight:800;color:#fff;margin-bottom:12px">더 궁금한 점이 있으신가요?</h2><p style="color:rgba(255,255,255,.6);margin-bottom:24px">고객센터에서 직접 답변해드립니다.</p><a href="/contact.html" class="btn primary">문의하기</a></div></section>
+  <footer class="footer"><div class="container"><div class="footer-bottom"><span>© 2026 CloudPress. All rights reserved.</span><span><a href="/terms.html" style="color:rgba(255,255,255,.5)">이용약관</a> · <a href="/privacy.html" style="color:rgba(255,255,255,.5)">개인정보처리방침</a></span></div></div></footer>
+  <script src="script.js"></script>
+</body>
+</html>
