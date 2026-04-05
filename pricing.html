@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>요금제 — CloudPress | Cloudflare 기반 CMS 호스팅</title>
+  <meta name="description" content="CloudPress 요금제. 스타터·프로·엔터프라이즈. 모든 플랜에 DDoS 방어, 글로벌 CDN, SSL 자동화 포함."/>
+  <meta name="keywords" content="클라우드프레스 요금제, 호스팅 가격, Cloudflare Pages 호스팅 비용, CMS 호스팅 요금"/>
+  <link rel="canonical" href="https://cloudpress.pages.dev/pricing.html"/>
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebPage","name":"CloudPress 요금제","description":"CloudPress CMS 호스팅 요금제 안내","url":"https://cloudpress.pages.dev/pricing.html"}</script>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:opsz,wght@9..40,400;9..40,500&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="style.css"/>
+  <style>
+    .page-hero{padding:120px 0 60px;text-align:center;background:linear-gradient(135deg,#0a0a0f 0%,#0f0f1a 100%)}
+    .page-hero h1{font-family:'Syne',sans-serif;font-size:clamp(2rem,5vw,3.5rem);font-weight:800;color:#fff;margin-bottom:16px}
+    .page-hero p{color:rgba(255,255,255,.6);font-size:1.05rem;max-width:520px;margin:0 auto}
+    .loading-price{color:var(--muted,#888);font-size:.9rem}
+    .price-note{text-align:center;color:rgba(255,255,255,.45);font-size:.82rem;margin-top:28px}
+    .compare-table{width:100%;border-collapse:collapse;margin-top:48px;background:rgba(255,255,255,.03);border-radius:12px;overflow:hidden}
+    .compare-table th,.compare-table td{padding:14px 20px;text-align:left;border-bottom:1px solid rgba(255,255,255,.06);font-size:.88rem}
+    .compare-table th{background:rgba(255,255,255,.06);font-weight:700;color:#fff}
+    .compare-table td{color:rgba(255,255,255,.75)}
+    .compare-table tr:last-child td{border:none}
+    .ck{color:#22c55e;font-size:1rem}
+    .xk{color:rgba(255,255,255,.25)}
+    .breadcrumb{font-size:.8rem;color:rgba(255,255,255,.4);margin-bottom:16px}
+    .breadcrumb a{color:rgba(255,255,255,.5);text-decoration:none}
+    .breadcrumb a:hover{color:#fff}
+  </style>
+</head>
+<body>
+  <div class="noise"></div>
+  <header class="header" id="header">
+    <div class="container header-inner">
+      <a href="/" class="logo">
+        <svg width="26" height="26" viewBox="0 0 28 28" fill="none"><path d="M14 2L26 8V20L14 26L2 20V8L14 2Z" stroke="currentColor" stroke-width="1.5"/><path d="M14 8L20 11V17L14 20L8 17V11L14 8Z" fill="currentColor" opacity="0.5"/><circle cx="14" cy="14" r="2.2" fill="currentColor"/></svg>
+        CloudPress
+      </a>
+      <nav class="nav" id="nav">
+        <a href="/features.html">기능</a>
+        <a href="/pricing.html" style="color:#f97316">요금제</a>
+        <a href="/faq.html">FAQ</a>
+        <a href="/about.html">소개</a>
+      </nav>
+      <div class="header-actions">
+        <a href="/auth.html" class="btn ghost sm">로그인</a>
+        <a href="/auth.html?tab=signup" class="btn primary sm">시작하기</a>
+      </div>
+      <button class="burger" id="burger" aria-label="메뉴"><span></span><span></span><span></span></button>
+    </div>
+  </header>
+
+  <section class="page-hero">
+    <div class="container">
+      <div class="breadcrumb"><a href="/">홈</a> › 요금제</div>
+      <h1>투명한 요금, 숨겨진 비용 없음</h1>
+      <p>모든 플랜에 동일한 고성능 Cloudflare 인프라. 언제든지 업·다운그레이드 가능.</p>
+    </div>
+  </section>
+
+  <section class="section" id="pricing" style="padding-top:40px">
+    <div class="container">
+      <div class="billing-row reveal">
+        <span class="bill-lbl" id="lblMo">월간</span>
+        <button class="tog-btn" id="billingTog" aria-pressed="false"><span class="tog-thumb"></span></button>
+        <span class="bill-lbl" id="lblYr">연간 <span class="save-tag">20% 할인</span></span>
+      </div>
+      <div class="price-grid" id="priceGrid">
+        <div style="text-align:center;color:rgba(255,255,255,.5);grid-column:1/-1;padding:40px">가격 로딩 중...</div>
+      </div>
+      <p class="price-note">※ 표시된 가격은 부가세 별도입니다. 연간 결제 시 20% 할인 적용.</p>
+
+      <!-- 상세 비교표 -->
+      <div class="reveal" style="overflow-x:auto;margin-top:60px">
+        <h3 style="font-family:'Syne',sans-serif;font-size:1.4rem;font-weight:700;color:#fff;text-align:center;margin-bottom:8px">플랜 상세 비교</h3>
+        <p style="text-align:center;color:rgba(255,255,255,.5);font-size:.87rem;margin-bottom:24px">내게 맞는 플랜을 선택하세요</p>
+        <table class="compare-table">
+          <thead><tr><th>기능</th><th>스타터</th><th>프로</th><th>엔터프라이즈</th></tr></thead>
+          <tbody>
+            <tr><td>사이트 수</td><td id="cSites1">—</td><td id="cSites2">—</td><td>무제한</td></tr>
+            <tr><td>RAM</td><td>8GB DDR5</td><td>8GB DDR5 (격리)</td><td>전용 8GB/사이트</td></tr>
+            <tr><td>스토리지</td><td>20GB NVMe</td><td>20GB × 사이트수</td><td>무제한</td></tr>
+            <tr><td>트래픽</td><td>무제한</td><td>무제한</td><td>무제한</td></tr>
+            <tr><td>DDoS 방어</td><td><span class="ck">✓</span> 기본</td><td><span class="ck">✓</span> Pro</td><td><span class="ck">✓</span> Enterprise</td></tr>
+            <tr><td>SSL/TLS</td><td><span class="ck">✓</span> 자동</td><td><span class="ck">✓</span> Wildcard</td><td><span class="ck">✓</span> 전용+커스텀</td></tr>
+            <tr><td>자동 백업</td><td>7일</td><td>30일</td><td>실시간</td></tr>
+            <tr><td>Cloudflare WAF</td><td><span class="xk">✕</span></td><td><span class="ck">✓</span></td><td><span class="ck">✓</span> 고급</td></tr>
+            <tr><td>스테이징 환경</td><td><span class="xk">✕</span></td><td><span class="ck">✓</span></td><td><span class="ck">✓</span></td></tr>
+            <tr><td>커스텀 도메인</td><td><span class="ck">✓</span></td><td><span class="ck">✓</span></td><td><span class="ck">✓</span> 다중</td></tr>
+            <tr><td>지원</td><td>이메일</td><td>우선 24/7</td><td>전담 매니저</td></tr>
+            <tr><td>SLA 업타임</td><td>99.9%</td><td>99.95%</td><td>99.99%</td></tr>
+            <tr><td>전용 IP</td><td><span class="xk">✕</span></td><td><span class="xk">✕</span></td><td><span class="ck">✓</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" style="padding-top:0">
+    <div class="container">
+      <div class="cta-box reveal" style="background:linear-gradient(135deg,rgba(249,115,22,.12),rgba(99,102,241,.12));border:1px solid rgba(249,115,22,.2);border-radius:20px;padding:56px;text-align:center">
+        <h2 style="font-family:'Syne',sans-serif;font-size:2rem;font-weight:800;color:#fff;margin-bottom:12px">지금 바로 시작하세요</h2>
+        <p style="color:rgba(255,255,255,.6);margin-bottom:28px">Cloudflare 기반 고성능 호스팅을 경험하세요.</p>
+        <a href="/auth.html?tab=signup" class="btn primary lg">시작하기</a>
+      </div>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-bottom">
+        <span>© 2026 CloudPress. All rights reserved.</span>
+        <span><a href="/terms.html" style="color:rgba(255,255,255,.5)">이용약관</a> · <a href="/privacy.html" style="color:rgba(255,255,255,.5)">개인정보처리방침</a></span>
+      </div>
+    </div>
+  </footer>
+
+  <script src="script.js"></script>
+  <script>
+  // 어드민 설정 가격 로드
+  async function loadPrices(){
+    const li=(txt,plan)=>`<li><svg viewBox="0 0 12 12" fill="none"><path d="M1.5 6l3 3 6-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>${txt}</li>`;
+    let starterMo=9900,proMo=29900,entMo=99000,starterSites=3,proSites=10;
+    try{
+      const r=await fetch('/api/admin/settings',{headers:{Authorization:'Bearer '+localStorage.getItem('cp_token')||''}}).catch(()=>null);
+      if(r&&r.ok){const d=await r.json();if(d.ok&&d.settings){const s=d.settings;
+        if(s.plan_starter_price)starterMo=parseInt(s.plan_starter_price);
+        if(s.plan_pro_price)proMo=parseInt(s.plan_pro_price);
+        if(s.plan_enterprise_price)entMo=parseInt(s.plan_enterprise_price);
+        if(s.plan_starter_sites)starterSites=parseInt(s.plan_starter_sites);
+        if(s.plan_pro_sites)proSites=parseInt(s.plan_pro_sites);
+      }}
+    }catch(_){}
+    const yr=p=>Math.floor(p*0.8);
+    const fmt=p=>p.toLocaleString('ko-KR');
+    const mkPrice=(id,name,desc,mo,features,featured,cta)=>`
+      <div class="pcard${featured?' featured reveal d1':' reveal'}" style="position:relative">
+        ${featured?'<div class="pbadge">가장 인기</div>':''}
+        <p class="pname">${name}</p>
+        <div class="pprice"><span class="pcur">₩</span><span class="pnum ${id}" data-mo="${mo}" data-yr="${yr(mo)}">${fmt(mo)}</span><span class="pper">/월</span></div>
+        <p class="pdesc">${desc}</p>
+        <ul class="plist">${features.map(f=>li(f)).join('')}</ul>
+        <a href="/auth.html?tab=signup" class="btn ${featured?'primary':'outline'} full">${cta}</a>
+      </div>`;
+    document.getElementById('priceGrid').innerHTML=
+      mkPrice('starter','스타터','개인 블로그 및 소규모 사이트',starterMo,
+        [`${starterSites}개 사이트`,'8GB DDR5 RAM','20GB NVMe SSD','무제한 트래픽','자동 DDoS 방어','SSL/TLS 자동화','자동 백업 (7일)','이메일 지원'],false,'시작하기')+
+      mkPrice('pro','프로','성장하는 비즈니스 및 전문 블로거',proMo,
+        [`${proSites}개 사이트`,'8GB RAM (격리 환경)',`20GB NVMe SSD × ${proSites}`,'무제한 트래픽','DDoS 방어 Pro','Wildcard SSL','자동 백업 (30일)','우선 지원 24/7','스테이징 환경','Cloudflare WAF'],true,'시작하기')+
+      mkPrice('ent','엔터프라이즈','대규모 트래픽 · 높은 가용성 기업',entMo,
+        ['무제한 사이트','전용 8GB RAM/사이트','무제한 NVMe SSD','무제한 트래픽','엔터프라이즈 DDoS','전용 SSL + 커스텀','실시간 백업 + 복원','전담 계정 매니저','SLA 99.99% 업타임','전용 IP 주소'],false,'문의하기');
+    document.getElementById('cSites1').textContent=starterSites+'개';
+    document.getElementById('cSites2').textContent=proSites+'개';
+    // 연간/월간 토글
+    const tog=document.getElementById('billingTog');
+    if(tog)tog.addEventListener('click',function(){
+      const yr=this.getAttribute('aria-pressed')==='true';
+      this.setAttribute('aria-pressed',String(!yr));
+      document.querySelectorAll('.pnum').forEach(el=>{
+        const v=!yr?el.dataset.yr:el.dataset.mo;
+        if(v)el.textContent=parseInt(v).toLocaleString('ko-KR');
+      });
+    });
+  }
+  loadPrices();
+  </script>
+</body>
+</html>
