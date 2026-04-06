@@ -1,0 +1,28 @@
+<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>사용자 — CloudPress 관리자</title>
+<link rel="stylesheet" href="/wp-admin/admin.css"/>
+</head><body>
+<div id="wpadminbar">
+  <div class="abl"><svg width="18" height="18" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="9" stroke="white" stroke-width="1.5"/><circle cx="10" cy="10" r="3" fill="white"/></svg>CloudPress</div>
+  <a href="/" target="_blank">🌐 사이트</a>
+  <div class="spacer"></div><span class="abu" id="abUser"></span>
+  <a href="/wp-login/?action=logout">로그아웃</a>
+</div>
+<div id="adminmenu"><ul>
+  <li><a href="/wp-admin/">🏠 대시보드</a></li><li class="sep"></li>
+  <li><a href="/wp-admin/edit.html">📄 글</a></li><li class="sep"></li>
+  <li><a href="/wp-admin/media.html">🖼 미디어</a></li><li class="sep"></li>
+  <li><a href="/wp-admin/edit.html?post_type=page">📋 페이지</a></li><li class="sep"></li>
+  <li><a href="/wp-admin/themes.html">🎨 외모</a></li><li class="sep"></li>
+  <li><a href="/wp-admin/plugins.html">🔌 플러그인</a></li><li class="sep"></li>
+  <li class="cur"><a href="/wp-admin/users.html">👥 사용자</a></li>
+  <li class="sep"></li><li><a href="/wp-admin/options-general.html">⚙️ 설정</a></li>
+</ul></div>
+<div id="wpcontent"><div class="wrap">
+  <h1>사용자 <button onclick="showAddUser()" style="font-size:.75rem;font-weight:600;background:var(--primary);color:#fff;padding:4px 12px;border-radius:3px;border:none;cursor:pointer;margin-left:8px">새로 추가</button></h1>
+  <table class="wp-list-table widefat">
+    <thead><tr><th style="width:50px">아바타</th><th>사용자명</th><th>이름</th><th>이메일</th><th>역할</th><th>글 수</th></tr></thead>
+    <tbody id="usersTbody"><tr><td colspan="6"><div class="sk" style="margin:8px 0"></div></td></tr></tbody>
+  </table>
+</div></div>
+<script src="/wp-admin/users.js"></script><script src="/wp-admin/admin.js"></script>
+</body></html>

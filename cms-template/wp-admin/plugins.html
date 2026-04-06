@@ -1,0 +1,27 @@
+<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>플러그인 — CloudPress 관리자</title>
+<link rel="stylesheet" href="/wp-admin/admin.css"/>
+</head><body>
+<div id="wpadminbar">
+  <div class="abl"><svg width="18" height="18" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="9" stroke="white" stroke-width="1.5"/><circle cx="10" cy="10" r="3" fill="white"/></svg>CloudPress</div>
+  <a href="/" target="_blank">🌐 사이트</a>
+  <div class="spacer"></div><span class="abu" id="abUser"></span>
+  <a href="/wp-login/?action=logout">로그아웃</a>
+</div>
+<div id="adminmenu"><ul>
+  <li><a href="/wp-admin/">🏠 대시보드</a></li><li class="sep"></li>
+  <li><a href="/wp-admin/edit.html">📄 글</a></li><li class="sep"></li>
+  <li><a href="/wp-admin/media.html">🖼 미디어</a></li><li class="sep"></li>
+  <li><a href="/wp-admin/edit.html?post_type=page">📋 페이지</a></li><li class="sep"></li>
+  <li><a href="/wp-admin/themes.html">🎨 외모</a></li><li class="sep"></li>
+  <li class="cur"><a href="/wp-admin/plugins.html">🔌 플러그인</a></li>
+  <li class="sep"></li><li><a href="/wp-admin/options-general.html">⚙️ 설정</a></li>
+</ul></div>
+<div id="wpcontent"><div class="wrap">
+  <h1>플러그인 <a href="#" style="font-size:.75rem;font-weight:600;background:var(--primary);color:#fff;padding:4px 12px;border-radius:3px;text-decoration:none;margin-left:8px" onclick="alert('ZIP 패키지에 플러그인 파일을 추가하세요.')">새로 추가</a></h1>
+  <table class="wp-list-table widefat">
+    <thead><tr><th style="width:32px"></th><th>플러그인</th><th style="width:120px">버전</th><th style="width:100px">상태</th></tr></thead>
+    <tbody id="pluginsTbody"></tbody>
+  </table>
+</div></div>
+<script src="/wp-admin/plugins.js"></script><script src="/wp-admin/admin.js"></script>
+</body></html>

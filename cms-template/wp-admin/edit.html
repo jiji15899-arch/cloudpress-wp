@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>글 목록 — CloudPress CMS</title>
+<link rel="stylesheet" href="/wp-admin/admin.css"/>
+</head>
+<body>
+<div id="wpadminbar"></div>
+<nav id="adminmenu"></nav>
+<div id="wpcontent">
+  <div class="wrap">
+    <h1 class="wp-heading-inline" id="pageTitle">글 목록</h1>
+    <a href="/wp-admin/post-new.html" class="page-title-action">+ 새로 추가</a>
+    <hr class="wp-header-end"/>
+    <div id="notices"></div>
+
+    <!-- 필터/검색 -->
+    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center">
+      <div id="statusFilter" style="display:flex;gap:4px"></div>
+      <div style="margin-left:auto;display:flex;gap:6px">
+        <input type="text" id="searchInput" placeholder="검색..." style="padding:5px 10px;width:180px" onkeydown="if(event.key==='Enter')loadPosts(1)"/>
+        <button class="button" onclick="loadPosts(1)">검색</button>
+      </div>
+    </div>
+
+    <!-- 일괄 작업 -->
+    <div style="display:flex;gap:6px;margin-bottom:8px;align-items:center">
+      <select id="bulkAction" style="padding:4px 8px"><option value="">일괄 작업 선택</option><option value="trash">휴지통으로</option><option value="publish">발행</option><option value="draft">임시저장</option></select>
+      <button class="button" onclick="applyBulk()">적용</button>
+      <span id="selectedCount" style="font-size:.82rem;color:#646970;margin-left:6px"></span>
+    </div>
+
+    <div id="tableWrap">
+      <table class="wp-list-table widefat">
+        <thead><tr>
+          <th class="column-cb"><input type="checkbox" id="checkAll" onclick="toggleAll(this)"/></th>
+          <th>제목</th><th>작성자</th><th>카테고리</th><th>날짜</th><th>상태</th>
+        </tr></thead>
+        <tbody id="postsList"><tr><td colspan="6" style="text-align:center;padding:24px"><div class="spinner"></div></td></tr></tbody>
+      </table>
+    </div>
+
+    <!-- 페이지네이션 -->
+    <div id="pagination" style="margin-top:16px;display:flex;gap:6px;align-items:center;flex-wrap:wrap"></div>
+  </div>
+</div>
+<div id="cp-toast"></div>
+<script src="/wp-admin/admin.js"></script>
+<script src="/wp-admin/edit.js"></script>
+</body>
+</html>

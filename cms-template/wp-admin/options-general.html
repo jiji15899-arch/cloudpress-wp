@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>일반 설정 — CloudPress CMS</title>
+<link rel="stylesheet" href="/wp-admin/admin.css"/>
+<link rel="stylesheet" href="/wp-admin/options-general.css"/>
+</head>
+<body>
+<div id="wpadminbar"></div>
+<nav id="adminmenu"></nav>
+<div id="wpcontent">
+  <div class="wrap">
+    <h1>일반 설정</h1>
+    <hr class="wp-header-end"/>
+    <div id="notices"></div>
+
+    <nav class="nav-tab-wrapper">
+      <a class="nav-tab nav-tab-active" href="#general">일반</a>
+      <a class="nav-tab" href="#security" onclick="showTab('security');return false;">보안/계정</a>
+      <a class="nav-tab" href="#reading" onclick="showTab('reading');return false;">읽기</a>
+    </nav>
+
+    <!-- 일반 설정 탭 -->
+    <div id="tab-general">
+      <form id="generalForm">
+        <table class="form-table">
+          <tr><th><label for="blogname">사이트 제목</label></th><td><input type="text" id="blogname" name="blogname" class="regular-text"/><p class="description">사이트의 이름입니다. 대부분의 테마에서 상단에 표시됩니다.</p></td></tr>
+          <tr><th><label for="blogdescription">태그라인</label></th><td><input type="text" id="blogdescription" name="blogdescription" class="regular-text"/><p class="description">간략하게 사이트를 설명하세요.</p></td></tr>
+          <tr><th><label for="siteurl">사이트 주소(URL)</label></th><td><input type="text" id="siteurl" name="siteurl" class="regular-text" readonly style="background:#f6f7f7;color:#646970"/><p class="description">사이트 주소입니다. (읽기 전용)</p></td></tr>
+          <tr><th><label for="admin_email">관리자 이메일</label></th><td><input type="email" id="admin_email" name="admin_email" class="regular-text"/><p class="description">이 주소로 관리 알림이 발송됩니다.</p></td></tr>
+          <tr><th><label for="timezone_string">시간대</label></th><td>
+            <select id="timezone_string" name="timezone_string">
+              <option value="Asia/Seoul">서울 (UTC+9)</option><option value="Asia/Tokyo">도쿄 (UTC+9)</option>
+              <option value="Asia/Shanghai">상하이 (UTC+8)</option><option value="America/New_York">뉴욕 (UTC-5)</option>
+              <option value="Europe/London">런던 (UTC+0)</option><option value="UTC">UTC</option>
+            </select>
+          </td></tr>
+          <tr><th><label for="date_format">날짜 형식</label></th><td>
+            <select id="date_format" name="date_format">
+              <option value="Y년 n월 j일">Y년 n월 j일</option><option value="Y-m-d">Y-m-d</option>
+              <option value="d/m/Y">d/m/Y</option><option value="m/d/Y">m/d/Y</option>
+            </select>
+          </td></tr>
+          <tr><th><label for="time_format">시간 형식</label></th><td>
+            <select id="time_format" name="time_format">
+              <option value="H:i">24시간 (H:i)</option><option value="g:i a">12시간 (g:i a)</option>
+            </select>
+          </td></tr>
+          <tr><th><label for="posts_per_page">한 페이지당 글 수</label></th><td><input type="number" id="posts_per_page" name="posts_per_page" min="1" max="100" style="width:80px"/></td></tr>
+        </table>
+        <p class="submit"><button type="button" class="button button-primary button-large" onclick="saveGeneral()">변경 사항 저장</button></p>
+      </form>
+    </div>
+
+    <!-- 보안/계정 탭 -->
+    <div id="tab-security" style="display:none">
+      <h2 style="font-size:1.1rem;margin-bottom:16px">비밀번호 변경</h2>
+      <table class="form-table">
+        <tr><th><label for="currentPassword">현재 비밀번호</label></th><td>
+          <div class="pw-wrap"><input type="password" id="currentPassword" class="regular-text"/>
+          <button type="button" class="pw-eye" onclick="togglePwVis('currentPassword',this)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.5"/></svg></button></div>
+        </td></tr>
+        <tr><th><label for="newPassword">새 비밀번호</label></th><td>
+          <div class="pw-wrap"><input type="password" id="newPassword" class="regular-text"/>
+          <button type="button" class="pw-eye" onclick="togglePwVis('newPassword',this)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.5"/></svg></button></div>
+          <p class="description">8자 이상, 영문+숫자+특수문자 조합을 권장합니다.</p>
+        </td></tr>
+        <tr><th><label for="newPassword2">새 비밀번호 확인</label></th><td>
+          <div class="pw-wrap"><input type="password" id="newPassword2" class="regular-text"/>
+          <button type="button" class="pw-eye" onclick="togglePwVis('newPassword2',this)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.5"/></svg></button></div>
+        </td></tr>
+      </table>
+      <p class="submit"><button type="button" class="button button-primary button-large" onclick="changePassword()">비밀번호 변경</button></p>
+    </div>
+
+    <!-- 읽기 설정 탭 -->
+    <div id="tab-reading" style="display:none">
+      <table class="form-table">
+        <tr><th><label for="show_on_front">홈페이지 표시</label></th><td>
+          <select id="show_on_front" name="show_on_front">
+            <option value="posts">최신 글</option><option value="page">고정 페이지</option>
+          </select>
+        </td></tr>
+        <tr><th><label>피드 글 수</label></th><td><input type="number" id="posts_per_rss" name="posts_per_rss" value="10" min="1" max="100" style="width:80px"/> <p class="description">신디케이션 피드에 포함할 최근 글 수</p></td></tr>
+        <tr><th><label>검색 엔진 가시성</label></th><td><label style="display:flex;align-items:center;gap:8px;font-size:.9rem"><input type="checkbox" id="blog_public" name="blog_public" checked/> 검색 엔진이 이 사이트를 색인하도록 허용</label></td></tr>
+      </table>
+      <p class="submit"><button type="button" class="button button-primary button-large" onclick="saveReading()">변경 사항 저장</button></p>
+    </div>
+  </div>
+</div>
+<div id="cp-toast"></div>
+<script src="/wp-admin/admin.js"></script>
+<script src="/wp-admin/options-general.js"></script>
+</body>
+</html>

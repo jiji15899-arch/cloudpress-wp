@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>새 글 쓰기 — CloudPress CMS</title>
+<link rel="stylesheet" href="/wp-admin/admin.css"/>
+<link rel="stylesheet" href="/wp-admin/post-new.css"/>
+</head>
+<body>
+<div id="wpadminbar"></div>
+<nav id="adminmenu"></nav>
+<div id="wpcontent">
+  <div class="wrap">
+    <h1 class="wp-heading-inline" id="pageHeading">새 글 추가</h1>
+    <a href="/wp-admin/edit.html" class="page-title-action" style="background:none;color:#2271b1;border:1px solid #2271b1">← 글 목록</a>
+    <hr class="wp-header-end"/>
+    <div id="notices"></div>
+
+    <div id="poststuff">
+      <div id="post-body-content">
+        <!-- 제목 -->
+        <div id="titlediv">
+          <input type="text" id="title" name="post_title" size="30" placeholder="제목을 입력하세요"/>
+          <div id="slugbox" style="font-size:.82rem;color:#646970;margin-top:6px;display:none">고유주소: <a id="slugPreview" href="#" target="_blank" style="color:#2271b1"></a> <button class="button" style="margin-left:6px;padding:2px 8px;font-size:.78rem" onclick="editSlug()">편집</button></div>
+        </div>
+
+        <!-- 에디터 -->
+        <div id="wp-content-editor-container">
+          <div class="editor-toolbar">
+            <button class="ed-btn" onclick="fmt('bold')" title="굵게"><b>B</b></button>
+            <button class="ed-btn" onclick="fmt('italic')" title="기울임"><i>I</i></button>
+            <button class="ed-btn" onclick="fmt('underline')" title="밑줄"><u>U</u></button>
+            <button class="ed-btn" onclick="fmt('strikeThrough')" title="취소선"><s>S</s></button>
+            <span style="border-left:1px solid #dcdcde;margin:0 4px"></span>
+            <button class="ed-btn" onclick="fmtBlock('h2')" title="제목2">H2</button>
+            <button class="ed-btn" onclick="fmtBlock('h3')" title="제목3">H3</button>
+            <button class="ed-btn" onclick="fmtBlock('p')" title="단락">¶</button>
+            <span style="border-left:1px solid #dcdcde;margin:0 4px"></span>
+            <button class="ed-btn" onclick="insertLink()" title="링크">🔗</button>
+            <button class="ed-btn" onclick="insertImg()" title="이미지">🖼</button>
+            <button class="ed-btn" onclick="fmt('insertUnorderedList')" title="목록">≡</button>
+            <button class="ed-btn" onclick="fmt('insertOrderedList')" title="번호 목록">№</button>
+            <span style="border-left:1px solid #dcdcde;margin:0 4px"></span>
+            <button class="ed-btn" onclick="fmt('removeFormat')" title="서식 제거">T×</button>
+            <button class="ed-btn" onclick="toggleSource()" id="sourceBtn" title="HTML 소스">HTML</button>
+          </div>
+          <div id="wp-content-wrap">
+            <div id="content" contenteditable="true" style="min-height:400px;padding:14px;outline:none;font-size:.95rem;line-height:1.8"></div>
+            <textarea id="content-source" style="display:none;width:100%;min-height:400px;padding:14px;border:none;font-family:monospace;font-size:.85rem;resize:vertical"></textarea>
+          </div>
+        </div>
+
+        <!-- 발췌 -->
+        <div class="postbox" style="margin-top:16px">
+          <h2>발췌문</h2>
+          <div class="postbox-body">
+            <textarea id="excerpt" style="width:100%;min-height:80px;padding:8px;border:1px solid #c3c4c7;border-radius:3px;font-size:.88rem;font-family:inherit;resize:vertical" placeholder="발췌문은 자동으로 생성됩니다. 직접 입력하면 이 내용을 사용합니다."></textarea>
+          </div>
+        </div>
+      </div>
+
+      <!-- 사이드바 -->
+      <div class="postbox-container">
+        <!-- 발행 -->
+        <div class="postbox">
+          <h2>발행</h2>
+          <div class="side-meta">
+            <label>상태</label>
+            <select id="post_status">
+              <option value="draft">임시저장</option>
+              <option value="publish">발행</option>
+              <option value="pending">검토 대기</option>
+              <option value="private">비공개</option>
+            </select>
+            <label>공개 여부</label>
+            <select id="post_visibility">
+              <option value="public">공개</option>
+              <option value="private">비공개</option>
+              <option value="password">비밀번호 보호</option>
+            </select>
+            <label>발행 일시</label>
+            <input type="datetime-local" id="post_date"/>
+            <div class="pub-actions">
+              <button class="button" onclick="saveDraft()">임시저장</button>
+              <button class="button button-primary" onclick="publishPost()">발행</button>
+            </div>
+            <div id="saveMsg" style="font-size:.82rem;margin-top:8px"></div>
+          </div>
+        </div>
+
+        <!-- 카테고리 -->
+        <div class="postbox">
+          <h2>카테고리</h2>
+          <div class="postbox-body" id="categoryBox">
+            <div class="spinner"></div>
+          </div>
+        </div>
+
+        <!-- 태그 -->
+        <div class="postbox">
+          <h2>태그</h2>
+          <div class="postbox-body">
+            <input type="text" id="tagInput" placeholder="쉼표로 구분해 입력" style="width:100%"/>
+            <div style="font-size:.78rem;color:#646970;margin-top:4px">태그를 입력하고 Enter 또는 쉼표로 추가</div>
+          </div>
+        </div>
+
+        <!-- 특성 이미지 -->
+        <div class="postbox">
+          <h2>특성 이미지</h2>
+          <div class="postbox-body">
+            <div id="featuredImg" style="margin-bottom:8px"></div>
+            <button class="button" onclick="openMediaPicker()">이미지 설정</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<div id="cp-toast"></div>
+<script src="/wp-admin/admin.js"></script>
+<script src="/wp-admin/post-new.js"></script>
+</body>
+</html>

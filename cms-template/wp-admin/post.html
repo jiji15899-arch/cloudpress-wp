@@ -1,0 +1,110 @@
+<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>새 글 추가 — CloudPress 관리자</title>
+<link rel="stylesheet" href="/wp-admin/admin.css"/>
+</head><body>
+<div id="wpadminbar">
+  <div class="ab-logo"><svg width="18" height="18" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="9" stroke="white" stroke-width="1.5"/><circle cx="10" cy="10" r="3" fill="white"/></svg>CloudPress</div>
+  <a href="/" target="_blank">🌐 사이트</a>
+  <a href="/wp-admin/edit.html">← 글 목록</a>
+  <div class="spacer"></div>
+  <span class="ab-user" id="abUser"></span>
+  <a href="/wp-login/?action=logout">로그아웃</a>
+</div>
+<div id="adminmenu"><ul>
+  <li><a href="/wp-admin/">🏠 대시보드</a></li><li class="sep"></li>
+  <li class="cur"><a href="/wp-admin/edit.html">📄 글</a></li>
+  <li><a href="/wp-admin/post-new.html" style="padding-left:28px;font-size:.8rem">새 글 추가</a></li>
+  <li class="sep"></li><li><a href="/wp-admin/media.html">🖼 미디어</a></li>
+  <li class="sep"></li><li><a href="/wp-admin/edit.html?post_type=page">📋 페이지</a></li>
+  <li class="sep"></li><li><a href="/wp-admin/themes.html">🎨 외모</a></li>
+  <li class="sep"></li><li><a href="/wp-admin/plugins.html">🔌 플러그인</a></li>
+  <li class="sep"></li><li><a href="/wp-admin/options-general.html">⚙️ 설정</a></li>
+</ul></div>
+<div id="wpcontent">
+  <div class="editor-header">
+    <button class="btn btn-ghost btn-plain" onclick="history.back()">←</button>
+    <span id="statusPill" class="status-pill">임시글</span>
+    <div class="spacer"></div>
+    <span id="saveMsg"></span>
+    <button class="btn btn-ghost" onclick="savePost('draft')">임시 저장</button>
+    <button class="btn btn-primary" onclick="savePost('publish')" id="publishBtn">발행</button>
+  </div>
+  <div class="editor-body">
+    <div class="editor-main">
+      <textarea class="post-title-input" id="postTitle" rows="1" placeholder="제목 입력" oninput="autoResize(this);updateSlug()"></textarea>
+      <div class="permalink" id="permalinkEl">고유주소: <span id="slugPreview">—</span> <a href="#" onclick="editSlug();return false">편집</a></div>
+      <div class="block-toolbar">
+        <button onclick="fmt('bold')" title="굵게"><b>B</b></button>
+        <button onclick="fmt('italic')" title="기울임"><i>I</i></button>
+        <button onclick="fmt('underline')" title="밑줄"><u>U</u></button>
+        <button onclick="fmt('strikeThrough')" title="취소선"><s>S</s></button>
+        <div class="sep"></div>
+        <button onclick="insertBlock('h2')" title="제목2">H2</button>
+        <button onclick="insertBlock('h3')" title="제목3">H3</button>
+        <div class="sep"></div>
+        <button onclick="fmt('insertUnorderedList')" title="목록">≡</button>
+        <button onclick="fmt('insertOrderedList')" title="번호목록">1.</button>
+        <button onclick="insertBlock('blockquote')" title="인용">❝</button>
+        <div class="sep"></div>
+        <button onclick="insertLink()" title="링크">🔗</button>
+        <button onclick="insertImage()" title="이미지">🖼</button>
+        <button onclick="insertBlock('pre')" title="코드">{ }</button>
+        <button onclick="insertBlock('hr')" title="구분선">—</button>
+        <div class="sep"></div>
+        <button onclick="fmt('undo')" title="실행취소">↩</button>
+        <button onclick="fmt('redo')" title="다시실행">↪</button>
+      </div>
+      <div class="editor-content" id="editorContent" contenteditable="true" spellcheck="false"></div>
+    </div>
+    <div class="editor-sidebar">
+      <div class="sidebar-panel">
+        <div class="sidebar-panel-header" onclick="togglePanel(this)">📝 요약 <span>▼</span></div>
+        <div class="sidebar-panel-body">
+          <label>공개 상태</label>
+          <select id="postStatus">
+            <option value="publish">공개</option>
+            <option value="draft" selected>임시글</option>
+            <option value="private">비공개</option>
+          </select>
+          <label>발행일</label>
+          <input type="datetime-local" id="postDate">
+          <label>고유주소 (slug)</label>
+          <input type="text" id="slugInput" placeholder="url-slug" oninput="document.getElementById('slugPreview').textContent=this.value||'—'">
+        </div>
+      </div>
+      <div class="sidebar-panel">
+        <div class="sidebar-panel-header" onclick="togglePanel(this)">📂 카테고리 <span>▼</span></div>
+        <div class="sidebar-panel-body">
+          <ul class="cat-list" id="catList"><li style="color:var(--muted)">로딩 중...</li></ul>
+          <a href="#" onclick="addCat();return false" style="font-size:.78rem;margin-top:8px;display:block">+ 새 카테고리 추가</a>
+        </div>
+      </div>
+      <div class="sidebar-panel">
+        <div class="sidebar-panel-header" onclick="togglePanel(this)">🖼 대표 이미지 <span>▼</span></div>
+        <div class="sidebar-panel-body">
+          <img id="featuredPreview" src="" alt="">
+          <div class="featured-img-area" id="featuredArea">
+            <input type="file" accept="image/*" onchange="previewFeatured(this)">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" style="opacity:.4;margin:0 auto 6px;display:block"><rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" stroke-width="1.5"/><circle cx="8.5" cy="8.5" r="1.5" fill="currentColor"/><polyline points="21 15 16 10 5 21" stroke="currentColor" stroke-width="1.5"/></svg>
+            <div style="font-size:.8rem;color:var(--muted)">대표 이미지 설정</div>
+          </div>
+        </div>
+      </div>
+      <div class="sidebar-panel">
+        <div class="sidebar-panel-header" onclick="togglePanel(this)">🏷 태그 <span>▼</span></div>
+        <div class="sidebar-panel-body">
+          <input type="text" id="tagsInput" placeholder="태그 입력 후 쉼표로 구분" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:3px;font-size:.82rem;outline:none">
+          <div style="font-size:.76rem;color:var(--muted);margin-top:4px">Enter 또는 쉼표로 태그 추가</div>
+        </div>
+      </div>
+      <div class="sidebar-panel">
+        <div class="sidebar-panel-header" onclick="togglePanel(this)">📄 발췌 <span>▼</span></div>
+        <div class="sidebar-panel-body">
+          <textarea id="postExcerpt" rows="3" placeholder="발췌문 (비워두면 자동 생성)" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:3px;font-size:.82rem;font-family:var(--font);resize:vertical;outline:none"></textarea>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/wp-admin/post.js"></script><script src="/wp-admin/admin.js"></script>
+</body></html>
