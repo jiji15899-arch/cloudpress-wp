@@ -97,9 +97,7 @@ function getMimeType(path){
   return map[ext]||'application/octet-stream';
 }
 
-/* SHA-256 */
-async function sha256hex(text){const buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(text));return[...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join('');}
-async function sha256hexBytes(bytes){const buf=await crypto.subtle.digest('SHA-256',bytes);return[...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join('');}
+/* SHA-256 (선언은 파일 상단 참조) */
 
 /* 플레이스홀더 치환 */
 function applyPlaceholders(text,vars){
