@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml"/>
+  <link rel="alternate icon" href="/favicon.ico"/>
+  <meta charset="UTF-8"/>
+  <title>어드민 패널 — CloudPress</title>
+  <script src="app.js"></script>
+</head>
+<body>
+  <script>
+    (async () => {
+      const user = await CP.requireAdmin();
+      if (user) window.location.replace('/admin-info.html');
+    })();
+  </script>
+</body>
+</html>
