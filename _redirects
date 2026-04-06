@@ -1,0 +1,38 @@
+# CloudPress 메인 사이트 — Cloudflare Pages 라우팅 규칙
+# ─────────────────────────────────────────────────────
+# Cloudflare Pages 동작 방식:
+#   1. /functions/** → Pages Functions 자동 처리 (최우선)
+#   2. 정적 파일 존재하면 직접 서빙
+#   3. _redirects 규칙 순서대로 적용 (첫 번째 매칭)
+#   4. 404.html 존재하면 반환
+# ─────────────────────────────────────────────────────
+
+# ── 1. 정적 HTML 직접 서빙 (확장자 없는 경로 → .html)
+/dashboard          /dashboard.html          200
+/create             /create.html             200
+/site               /site.html               200
+/auth               /auth.html               200
+/account            /account.html            200
+/pricing            /pricing.html            200
+/features           /features.html           200
+/faq                /faq.html                200
+/contact            /contact.html            200
+/sla                /sla.html                200
+/admin              /admin.html              200
+/admin-info         /admin-info.html         200
+/admin-notices      /admin-notices.html      200
+/admin-revenue      /admin-revenue.html      200
+/admin-settings     /admin-settings.html     200
+/admin-site-control /admin-site-control.html 200
+/admin-traffic      /admin-traffic.html      200
+/admin-user-control /admin-user-control.html 200
+/payment-success    /payment-success.html    200
+/payment-fail       /payment-fail.html       200
+
+# ── 2. 인증 별칭
+/login    /auth.html  200
+/signup   /auth.html  200
+/register /auth.html  200
+
+# ── 3. 모든 미매칭 경로 → index.html (SPA)
+/*  /index.html  200
