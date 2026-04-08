@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS sites (
   hosting_email TEXT NOT NULL,            -- 호스팅 계정 이메일
   hosting_password TEXT NOT NULL,         -- 호스팅 계정 비밀번호
   hosting_domain TEXT,                    -- 호스팅 도메인 (예: mysite.infinityfreeapp.com)
-  subdomain TEXT,                         -- 서브도메인 (예: mysite)
+  subdomain TEXT NOT NULL DEFAULT '',          -- 서브도메인 (예: mysite)
   cpanel_url TEXT,                        -- cPanel 로그인 URL
 
   -- WordPress 정보
