@@ -313,7 +313,17 @@ async function startCreation() {
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
       body: JSON.stringify({ siteName, adminLogin }),
     });
-    const data = await res.json();
+    let data;
+    const contentType = res.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      data = await res.json();
+    } else {
+      const text = await res.text();
+      showFail('서버 오류 (' + res.status + '): 잠시 후 다시 시도해주세요.');
+      console.error('Non-JSON response:', text);
+      document.getElementById('createBtn').disabled = false;
+      return;
+    }
 
     if (!data.ok) {
       showFail(data.error || '사이트 생성 요청 실패');
@@ -349,6 +359,9 @@ function startPolling(siteId) {
       const res = await fetch(`/api/sites/${siteId}`, {
         headers: { 'Authorization': 'Bearer ' + token },
       });
+      if (!res.ok && res.status !== 200) return;
+      const contentType = res.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) return;
       const data = await res.json();
       if (!data.ok) return;
 
