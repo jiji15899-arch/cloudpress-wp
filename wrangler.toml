@@ -16,8 +16,8 @@ id = "9cb18ceb35d24067a124b6c05e29915f"
 [vars]
 # 사이트 도메인
 SITE_DOMAIN = "cloud-press.co.kr"
-ADMIN_EMAIL = "admin@example.com"
-ADMIN_PASSWORD = ""  # 필수: 배포 전 반드시 변경하세요 (Cloudflare Dashboard > Pages > 환경변수에서 설정 권장)
+ADMIN_EMAIL = "choichoi3227@gmail.com"
+ADMIN_PASSWORD = "Swsh120327!"  # 필수: 배포 전 반드시 변경하세요 (Cloudflare Dashboard > Pages > 환경변수에서 설정 권장)
 
 # Puppeteer Worker URL (호스팅 자동화)
 PUPPETEER_WORKER_URL = "https://cloudpress-puppet.workers.dev"
