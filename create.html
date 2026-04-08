@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-  <title>CMS 사이트 구축 — CloudPress</title>
+  <title>WordPress 사이트 구축 — CloudPress</title>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:opsz,wght@9..40,400;9..40,500&display=swap" rel="stylesheet"/>
   <link rel="stylesheet" href="dashboard.css"/>
@@ -15,22 +15,17 @@
     .stp.done .stp-num{display:none}.stp-ck{display:none}
     .stp.done .stp-ck{display:flex;width:24px;height:24px;border-radius:50%;background:var(--success);align-items:center;justify-content:center}
     .stp-sep{flex:1;height:1px;background:var(--border);margin:0 8px}
-    .ver-select{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px}
-    .ver-opt{border:2px solid var(--border);border-radius:10px;padding:12px 14px;cursor:pointer;transition:all .2s;position:relative}
-    .ver-opt:hover{border-color:var(--border2)}.ver-opt.sel{border-color:var(--accent);background:rgba(249,115,22,.04)}
-    .ver-opt-name{font-family:var(--font-head);font-size:.88rem;font-weight:700;margin-bottom:2px}
-    .ver-opt-desc{font-size:.73rem;color:var(--muted);line-height:1.5}
-    .ver-badge-latest{position:absolute;top:-8px;right:10px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-size:.62rem;font-weight:700;padding:2px 8px;border-radius:10px}
     .spin{width:52px;height:52px;border-radius:50%;border:3px solid var(--border2);border-top-color:var(--accent);animation:sp 1s linear infinite;margin:0 auto 20px}
     @keyframes sp{to{transform:rotate(360deg)}}
-    .log{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:14px;font-size:.78rem;font-family:monospace;color:var(--muted);height:150px;overflow-y:auto;margin-top:18px;line-height:1.9;text-align:left}
-    .log .ok{color:var(--success)}.log .cur{color:var(--accent)}.log .warn{color:var(--warning)}
+    .log{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:14px;font-size:.78rem;font-family:monospace;color:var(--muted);height:170px;overflow-y:auto;margin-top:18px;line-height:2;text-align:left}
+    .log .ok{color:var(--success)}.log .cur{color:var(--accent)}.log .warn{color:var(--warning)}.log .err{color:var(--error)}
     .success-icon{width:76px;height:76px;border-radius:50%;background:rgba(34,197,94,.1);border:2px solid rgba(34,197,94,.25);display:flex;align-items:center;justify-content:center;margin:0 auto 20px}
     .cred-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)}
     .cred-row:last-child{border:none}
-    .cred-label{font-size:.78rem;color:var(--muted);width:100px;flex-shrink:0}
+    .cred-label{font-size:.78rem;color:var(--muted);width:110px;flex-shrink:0}
     .cred-val{flex:1;font-size:.85rem;font-weight:600;word-break:break-all}
     .copy-btn{padding:4px 10px;background:var(--surface2);border:1px solid var(--border2);border-radius:6px;color:var(--muted);font-size:.74rem;cursor:pointer;white-space:nowrap}
+    .copy-btn:hover{border-color:var(--accent);color:var(--accent)}
     .pw-wrap{display:flex;align-items:center;gap:6px;flex:1}
     .pw-inp{flex:1;background:var(--bg);border:1px solid var(--border2);border-radius:7px;padding:8px 11px;color:var(--text);font-size:.88rem;font-family:var(--font-body);outline:none}
     .pw-inp:focus{border-color:var(--accent)}
@@ -38,332 +33,460 @@
     .eye-btn:hover{color:var(--text)}
     .admin-section{background:rgba(34,197,94,.03);border:1px solid rgba(34,197,94,.15);border-radius:10px;padding:16px;margin-bottom:16px}
     .admin-section-title{font-size:.82rem;font-weight:700;color:var(--success);margin-bottom:12px}
-    @media(max-width:500px){.ver-select{grid-template-columns:1fr}}
+    .hosting-badge{display:inline-flex;align-items:center;gap:6px;background:rgba(249,115,22,.08);border:1px solid rgba(249,115,22,.2);border-radius:8px;padding:6px 12px;font-size:.8rem;color:var(--accent);font-weight:600;margin-bottom:16px}
+    .feature-list{list-style:none;padding:0;margin:0 0 16px}
+    .feature-list li{padding:5px 0;font-size:.85rem;color:var(--muted);display:flex;align-items:center;gap:8px}
+    .feature-list li::before{content:'✓';color:var(--success);font-weight:700;flex-shrink:0}
+    .wp-link{display:inline-flex;align-items:center;gap:8px;padding:12px 20px;background:var(--accent);color:#fff;border-radius:10px;font-weight:700;font-size:.9rem;text-decoration:none;margin-top:4px}
+    .wp-link:hover{opacity:.9;text-decoration:none;color:#fff}
+    .wp-link-admin{background:var(--surface2);color:var(--text);border:1px solid var(--border)}
+    .wp-link-admin:hover{color:var(--text)}
+    .status-polling{display:flex;align-items:center;gap:10px;padding:12px;background:rgba(249,115,22,.05);border:1px solid rgba(249,115,22,.15);border-radius:8px;margin-top:12px;font-size:.83rem}
+    .pulse-dot{width:8px;height:8px;border-radius:50%;background:var(--accent);animation:pulse 1.2s ease-in-out infinite;flex-shrink:0}
+    @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.8)}}
   </style>
 </head>
 <body>
 <div class="app-wrap">
   <aside class="sidebar" id="sidebar">
-    <a href="/dashboard.html" class="sb-logo"><svg width="22" height="22" viewBox="0 0 28 28" fill="none"><path d="M14 2L26 8V20L14 26L2 20V8L14 2Z" stroke="currentColor" stroke-width="1.5"/><path d="M14 8L20 11V17L14 20L8 17V11L14 8Z" fill="currentColor" opacity=".5"/><circle cx="14" cy="14" r="2.2" fill="currentColor"/></svg>CloudPress</a>
+    <a href="/dashboard.html" class="sb-logo">
+      <svg width="22" height="22" viewBox="0 0 28 28" fill="none">
+        <path d="M14 2L26 8V20L14 26L2 20V8L14 2Z" stroke="currentColor" stroke-width="1.5"/>
+        <path d="M14 8L20 11V17L14 20L8 17V11L14 8Z" fill="currentColor" opacity=".5"/>
+        <circle cx="14" cy="14" r="2.2" fill="currentColor"/>
+      </svg>CloudPress
+    </a>
     <nav class="sb-nav">
       <div class="sb-section"><div class="sb-label">메인</div>
-        <a href="/dashboard.html" class="sb-link"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="14" y="3" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="3" y="14" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="14" y="14" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/></svg>대시보드</a>
-        <a href="/create.html" class="sb-link active"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.5"/><path d="M12 8v8M8 12h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>사이트 추가</a>
+        <a href="/dashboard.html" class="sb-link">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="14" y="3" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="3" y="14" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="14" y="14" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/></svg>
+          대시보드
+        </a>
+        <a href="/create.html" class="sb-link active">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.5"/><path d="M12 8v8M8 12h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          사이트 추가
+        </a>
       </div>
-      <div class="sb-section"><button class="sb-link danger" onclick="CP.logout()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><polyline points="16 17 21 12 16 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="21" y1="12" x2="9" y2="12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>로그아웃</button></div>
+      <div class="sb-section">
+        <button class="sb-link danger" onclick="CP.logout()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><polyline points="16 17 21 12 16 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="21" y1="12" x2="9" y2="12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          로그아웃
+        </button>
+      </div>
     </nav>
-    <div class="sb-user"><div class="sb-avatar" id="sbAvatar">?</div><div class="sb-uinfo"><div class="sb-uname" id="sbName">—</div><div class="sb-uemail" id="sbEmail">—</div></div></div>
+    <div class="sb-user">
+      <div class="sb-avatar" id="sbAvatar">?</div>
+      <div class="sb-uinfo"><div class="sb-uname" id="sbName">—</div><div class="sb-uemail" id="sbEmail">—</div></div>
+    </div>
   </aside>
   <div class="sidebar-overlay" id="overlay" onclick="closeSidebar()"></div>
+
   <main class="main">
     <div class="topbar">
       <div style="display:flex;align-items:center;gap:14px">
-        <button class="sidebar-toggle" onclick="openSidebar()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M3 12h18M3 6h18M3 18h18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
-        <span class="topbar-title">CMS 사이트 구축</span>
+        <button class="sidebar-toggle" onclick="openSidebar()">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M3 12h18M3 6h18M3 18h18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </button>
+        <span class="topbar-title">WordPress 사이트 구축</span>
       </div>
       <a href="/dashboard.html" class="btn btn-ghost btn-sm">← 대시보드</a>
     </div>
+
     <div class="content">
       <div class="wizard">
+        <!-- 단계 표시 -->
         <div class="steps" id="stepsBar">
-          <div class="stp active" id="s1i"><div class="stp-num">1</div><svg class="stp-ck" width="24" height="24" viewBox="0 0 24 24" fill="none"><polyline points="20 6 9 17 4 12" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>사이트 정보</div>
+          <div class="stp active" id="s1i">
+            <div class="stp-num">1</div>
+            <svg class="stp-ck" width="24" height="24" viewBox="0 0 24 24" fill="none"><polyline points="20 6 9 17 4 12" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>
+            사이트 정보
+          </div>
           <div class="stp-sep"></div>
-          <div class="stp" id="s2i"><div class="stp-num">2</div><svg class="stp-ck" width="24" height="24" viewBox="0 0 24 24" fill="none"><polyline points="20 6 9 17 4 12" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>완료</div>
+          <div class="stp" id="s2i">
+            <div class="stp-num">2</div>
+            <svg class="stp-ck" width="24" height="24" viewBox="0 0 24 24" fill="none"><polyline points="20 6 9 17 4 12" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>
+            설치 중
+          </div>
+          <div class="stp-sep"></div>
+          <div class="stp" id="s3i">
+            <div class="stp-num">3</div>
+            <svg class="stp-ck" width="24" height="24" viewBox="0 0 24 24" fill="none"><polyline points="20 6 9 17 4 12" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>
+            완료
+          </div>
         </div>
 
-        <!-- Step 1 -->
+        <!-- Step 1: 사이트 정보 입력 -->
         <div id="step1">
-          <div id="noApiWarn" style="display:none;background:rgba(239,68,68,.07);border:1px solid rgba(239,68,68,.2);border-radius:10px;padding:14px;margin-bottom:16px;font-size:.84rem">
-            ⚠️ Cloudflare API 키가 설정되지 않았습니다. <a href="/account.html" style="color:var(--accent)">내 계정 → Cloudflare API 설정</a>에서 먼저 API 키를 등록해주세요.
-          </div>
-          <div class="card" style="padding:26px">
-            <h2 style="font-family:var(--font-head);font-size:1.05rem;font-weight:700;margin-bottom:20px">🚀 CloudPress CMS 사이트 구축</h2>
+          <div class="card" style="padding:28px">
+            <div class="hosting-badge">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.5"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" stroke="currentColor" stroke-width="1.5"/></svg>
+              무료 WordPress 호스팅 자동 설치
+            </div>
+
+            <h2 style="font-family:var(--font-head);font-size:1.1rem;font-weight:700;margin-bottom:8px">🚀 WordPress 사이트 자동 구축</h2>
+            <p style="color:var(--muted);font-size:.85rem;margin-bottom:20px">버튼 하나로 무료 호스팅에 WordPress가 자동으로 설치됩니다.</p>
+
+            <ul class="feature-list">
+              <li>무료 호스팅 계정 자동 생성 (랜덤 선택)</li>
+              <li>Softaculous로 WordPress 자동 설치</li>
+              <li>Breeze 캐시 플러그인 자동 설치 및 활성화</li>
+              <li>SSL 인증서 자동 발급</li>
+              <li>Cloudflare CDN 자동 연동 + 캐싱 최적화</li>
+            </ul>
 
             <!-- 사이트 이름 -->
             <div class="field">
               <label>사이트 이름 <span style="color:var(--error)">*</span></label>
               <input type="text" id="siteName" placeholder="예: 내 블로그" maxlength="60"/>
-              <div class="hint" style="margin-top:6px">사이트 이름으로 <strong>.pages.dev</strong> 도메인이 자동 생성됩니다</div>
+              <div class="hint" style="margin-top:6px">사이트 이름을 기반으로 도메인이 자동 생성됩니다</div>
             </div>
 
-            <!-- 관리자 계정 설정 -->
+            <!-- WordPress 관리자 계정 설정 -->
             <div class="admin-section">
-              <div class="admin-section-title">🔐 CMS 관리자 계정 설정</div>
+              <div class="admin-section-title">🔐 WordPress 관리자 계정 설정</div>
               <div class="field" style="margin-bottom:12px">
                 <label>관리자 아이디 <span style="color:var(--error)">*</span></label>
                 <input type="text" id="adminLogin" placeholder="admin" maxlength="40" value="admin" autocomplete="username"/>
-                <div class="hint">영문/숫자/언더바만 사용 가능 (3자 이상)</div>
-              </div>
-              <div class="field" style="margin-bottom:12px">
-                <label>관리자 이메일</label>
-                <input type="email" id="adminEmail" placeholder="admin@example.com" maxlength="100" autocomplete="email"/>
-              </div>
-              <div class="field" style="margin-bottom:0">
-                <label>관리자 비밀번호 <span style="color:var(--error)">*</span></label>
-                <div class="pw-wrap">
-                  <input type="password" id="adminPw" class="pw-inp" placeholder="8자 이상 (미입력 시 자동 생성)" maxlength="64" autocomplete="new-password"/>
-                  <button type="button" class="eye-btn" onclick="togglePwVis('adminPw',this)" title="비밀번호 보기/숨기기">
-                    <svg id="eyeAdminPw" width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.5"/></svg>
-                  </button>
-                </div>
-                <div class="hint">비어있으면 안전한 비밀번호가 자동 생성됩니다</div>
+                <div class="hint">영문/숫자/언더바 (3자 이상)</div>
               </div>
             </div>
 
-            <!-- CMS 버전 선택 -->
-            <div class="field">
-              <label>CMS 버전 선택 <span style="font-size:.76rem;color:var(--muted)">(관리자가 배포한 버전)</span></label>
-              <div class="ver-select" id="verSelect">
-                <div style="color:var(--muted);font-size:.84rem;padding:8px 0">버전 목록 로딩 중...</div>
-              </div>
-            </div>
+            <div id="errMsg" style="display:none;background:rgba(239,68,68,.07);border:1px solid rgba(239,68,68,.2);border-radius:8px;padding:12px;font-size:.85rem;color:var(--error);margin-bottom:16px"></div>
 
-            <div style="background:rgba(34,197,94,.05);border:1px solid rgba(34,197,94,.15);border-radius:10px;padding:14px;margin-bottom:20px">
-              <div style="font-size:.82rem;color:var(--success);font-weight:600;margin-bottom:6px">✅ 자동 구축 포함 사항</div>
-              <div style="font-size:.8rem;color:var(--muted);line-height:1.9">
-                • Cloudflare Pages 프로젝트 자동 생성 (<strong>.pages.dev</strong> 도메인)<br>
-                • Cloudflare D1 데이터베이스 자동 생성 및 바인딩 설정<br>
-                • Cloudflare KV 스토리지 자동 생성 및 바인딩 설정<br>
-                • CMS 사이트 템플릿 자동 배포<br>
-                • CMS 데이터베이스 스키마 자동 초기화<br>
-                • 설정한 관리자 계정 자동 생성<br>
-                • SSL 인증서 자동 적용 (Cloudflare 자동 발급)
-              </div>
-            </div>
-            <div id="stepErr" style="color:var(--error);font-size:.83rem;margin-bottom:14px;display:none"></div>
-            <button class="btn btn-primary" style="width:100%" id="createBtn" onclick="doCreate()">CMS 사이트 구축하기 🚀</button>
+            <button class="btn btn-primary" id="createBtn" onclick="startCreation()" style="width:100%;justify-content:center;padding:13px">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.5"/><path d="M12 8v8M8 12h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+              WordPress 사이트 자동 구축 시작
+            </button>
           </div>
         </div>
 
-        <!-- Step 2 -->
+        <!-- Step 2: 설치 진행 -->
         <div id="step2" style="display:none">
-          <div class="card" id="provView" style="padding:32px;text-align:center">
+          <div class="card" style="padding:32px;text-align:center">
             <div class="spin"></div>
-            <h2 style="font-family:var(--font-head);font-size:1.05rem;font-weight:700;margin-bottom:6px">CloudPress CMS 구축 중...</h2>
-            <p style="color:var(--muted);font-size:.84rem;margin-bottom:4px">Cloudflare Pages · D1 DB · KV 자동 설정 + 바인딩 중</p>
-            <p style="color:var(--muted);font-size:.78rem;margin-bottom:14px">⏱ 구축에 3~8분이 소요됩니다. 페이지를 닫지 마세요.</p>
-            <div id="elapsedTimer" style="font-size:.78rem;color:var(--accent);margin-bottom:10px;font-weight:600">경과: 0분 00초</div>
-            <div class="log" id="logBox"></div>
-          </div>
-          <div class="card" id="okView" style="padding:32px;display:none">
-            <div class="success-icon"><svg width="34" height="34" viewBox="0 0 24 24" fill="none"><polyline points="20 6 9 17 4 12" stroke="#22c55e" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-            <h2 style="font-family:var(--font-head);font-size:1.15rem;font-weight:700;text-align:center;margin-bottom:6px">구축 완료! 🎉</h2>
-            <p style="color:var(--muted);font-size:.84rem;text-align:center;margin-bottom:4px">아래 정보로 CloudPress CMS 관리자에 접속하세요.</p>
-            <p style="color:var(--accent);font-size:.82rem;text-align:center;font-weight:600;margin-bottom:18px">⏱ <span id="dashCountdown">5</span>초 후 대시보드로 자동 이동합니다...</p>
-            <div class="section-card" id="credBox"></div>
-            <div style="display:flex;gap:10px;margin-top:18px;justify-content:center">
-              <a id="adminLink" href="#" target="_blank" class="btn btn-primary">CMS 관리자 접속 →</a>
-              <a href="/dashboard.html" class="btn btn-ghost">대시보드로 바로 이동</a>
+            <h3 style="font-family:var(--font-head);font-size:1.05rem;font-weight:700;margin-bottom:8px" id="progressTitle">WordPress 설치 준비 중...</h3>
+            <p style="color:var(--muted);font-size:.85rem" id="progressDesc">무료 호스팅 계정을 생성하고 WordPress를 자동으로 설치합니다.</p>
+
+            <div class="status-polling">
+              <div class="pulse-dot"></div>
+              <span id="statusText">호스팅 계정 생성 중... (약 3~5분 소요)</span>
             </div>
-          </div>
-          <div class="card" id="errView" style="padding:32px;display:none;text-align:center">
-            <div style="font-size:2rem;margin-bottom:12px">❌</div>
-            <h2 style="font-family:var(--font-head);font-size:1.05rem;font-weight:700;margin-bottom:12px">구축 실패</h2>
-            <div id="errMsg" style="color:var(--error);font-size:.85rem;line-height:1.7;background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.2);border-radius:8px;padding:14px;margin-bottom:6px;text-align:left;word-break:break-word;white-space:pre-line"></div>
-            <div style="color:var(--muted);font-size:.78rem;margin-bottom:18px;text-align:left">
-              💡 <strong>해결 방법:</strong> 내 계정 → Cloudflare API 설정에서 Global API 키와 이메일을 <strong>다시 저장</strong>해주세요.
-            </div>
-            <div style="display:flex;gap:10px;justify-content:center">
-              <a href="/create.html" class="btn btn-primary btn-sm">← 다시 시도</a>
-              <a href="/account.html" class="btn btn-ghost btn-sm">API 키 설정</a>
+
+            <div class="log" id="logBox">
+              <div class="cur">▶ 사이트 생성 요청 전송됨</div>
+              <div class="cur">▶ 무료 호스팅 업체 자동 선택 중...</div>
             </div>
           </div>
         </div>
+
+        <!-- Step 3: 완료 -->
+        <div id="step3" style="display:none">
+          <div class="card" style="padding:32px;text-align:center">
+            <div class="success-icon">
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="none"><polyline points="20 6 9 17 4 12" stroke="#22c55e" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+            <h3 style="font-family:var(--font-head);font-size:1.15rem;font-weight:700;margin-bottom:6px">WordPress 설치 완료! 🎉</h3>
+            <p style="color:var(--muted);font-size:.85rem;margin-bottom:24px" id="successDesc">WordPress가 성공적으로 설치되었습니다.</p>
+
+            <!-- WordPress 접속 링크 -->
+            <div style="display:flex;gap:10px;justify-content:center;margin-bottom:28px;flex-wrap:wrap">
+              <a id="wpSiteLink" href="#" target="_blank" class="wp-link">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.5"/><path d="M2 12h20" stroke="currentColor" stroke-width="1.5"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" stroke="currentColor" stroke-width="1.5"/></svg>
+                내 WordPress 사이트 방문
+              </a>
+              <a id="wpAdminLink" href="#" target="_blank" class="wp-link wp-link-admin">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="14" y="3" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="3" y="14" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="14" y="14" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/></svg>
+                WordPress 관리자
+              </a>
+            </div>
+
+            <!-- 관리자 정보 -->
+            <div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:18px;text-align:left;margin-bottom:20px">
+              <div style="font-size:.82rem;font-weight:700;color:var(--muted);margin-bottom:12px;text-transform:uppercase;letter-spacing:.05em">WordPress 로그인 정보</div>
+
+              <div class="cred-row">
+                <div class="cred-label">🌐 사이트 URL</div>
+                <div class="cred-val" id="credSiteUrl">—</div>
+                <button class="copy-btn" onclick="copyText('credSiteUrl')">복사</button>
+              </div>
+              <div class="cred-row">
+                <div class="cred-label">⚙️ 관리자 URL</div>
+                <div class="cred-val" id="credAdminUrl">—</div>
+                <button class="copy-btn" onclick="copyText('credAdminUrl')">복사</button>
+              </div>
+              <div class="cred-row">
+                <div class="cred-label">👤 아이디</div>
+                <div class="cred-val" id="credUser">—</div>
+                <button class="copy-btn" onclick="copyText('credUser')">복사</button>
+              </div>
+              <div class="cred-row">
+                <div class="cred-label">🔑 비밀번호</div>
+                <div class="pw-wrap">
+                  <input type="password" class="pw-inp" id="credPw" readonly/>
+                  <button class="eye-btn" onclick="togglePw()" title="비밀번호 보기/숨기기">
+                    <svg id="eyeIco" width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.5"/></svg>
+                  </button>
+                  <button class="copy-btn" onclick="copyText('credPw', true)">복사</button>
+                </div>
+              </div>
+              <div class="cred-row">
+                <div class="cred-label">🏠 호스팅</div>
+                <div class="cred-val" id="credHost">—</div>
+              </div>
+              <div class="cred-row">
+                <div class="cred-label">🔐 SSL</div>
+                <div class="cred-val" id="credSsl">—</div>
+              </div>
+              <div class="cred-row">
+                <div class="cred-label">⚡ CDN</div>
+                <div class="cred-val" id="credCdn">—</div>
+              </div>
+              <div class="cred-row">
+                <div class="cred-label">💨 Breeze</div>
+                <div class="cred-val" id="credBreeze">—</div>
+              </div>
+            </div>
+
+            <div style="background:rgba(234,179,8,.06);border:1px solid rgba(234,179,8,.2);border-radius:8px;padding:12px;font-size:.8rem;color:var(--muted);text-align:left;margin-bottom:20px">
+              ⚠️ <strong>중요:</strong> 위 비밀번호를 안전한 곳에 저장하세요. 대시보드에서도 언제든지 확인할 수 있습니다.
+            </div>
+
+            <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+              <a href="/dashboard.html" class="btn btn-ghost">대시보드로 이동</a>
+              <button class="btn btn-primary" onclick="resetWizard()">새 사이트 추가</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 실패 상태 -->
+        <div id="stepFail" style="display:none">
+          <div class="card" style="padding:32px;text-align:center">
+            <div style="width:76px;height:76px;border-radius:50%;background:rgba(239,68,68,.1);border:2px solid rgba(239,68,68,.25);display:flex;align-items:center;justify-content:center;margin:0 auto 20px">
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="#ef4444" stroke-width="2"/><line x1="15" y1="9" x2="9" y2="15" stroke="#ef4444" stroke-width="2" stroke-linecap="round"/><line x1="9" y1="9" x2="15" y2="15" stroke="#ef4444" stroke-width="2" stroke-linecap="round"/></svg>
+            </div>
+            <h3 style="font-family:var(--font-head);font-size:1.1rem;font-weight:700;margin-bottom:8px;color:var(--error)">설치 실패</h3>
+            <p style="color:var(--muted);font-size:.85rem;margin-bottom:20px" id="failMsg">WordPress 설치 중 오류가 발생했습니다.</p>
+            <div style="display:flex;gap:10px;justify-content:center">
+              <button class="btn btn-primary" onclick="resetWizard()">다시 시도</button>
+              <a href="/dashboard.html" class="btn btn-ghost">대시보드로</a>
+            </div>
+          </div>
+        </div>
+
       </div>
     </div>
   </main>
 </div>
-<script src="/app.js"></script>
+
+<script src="app.js"></script>
 <script>
-let selVersion=null;
+let currentSiteId = null;
+let pollInterval = null;
 
-function togglePwVis(inputId,btn){
-  const inp=document.getElementById(inputId);
-  const shown=inp.type==='text';
-  inp.type=shown?'password':'text';
-  const svg=btn.querySelector('svg');
-  if(shown){
-    svg.innerHTML='<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="1" y1="1" x2="23" y2="23" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>';
-  }else{
-    svg.innerHTML='<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.5"/>';
+async function startCreation() {
+  const siteName = document.getElementById('siteName').value.trim();
+  const adminLogin = document.getElementById('adminLogin').value.trim();
+  const errEl = document.getElementById('errMsg');
+
+  errEl.style.display = 'none';
+
+  if (!siteName) {
+    showErr('사이트 이름을 입력해주세요.');
+    return;
   }
-}
-
-async function init(){
-  const user=await CP.requireAuth();if(!user)return;
-  document.getElementById('sbAvatar').textContent=user.name[0].toUpperCase();
-  document.getElementById('sbName').textContent=user.name;
-  document.getElementById('sbEmail').textContent=user.email;
-  const profile=await CP.getProfile();
-  if(profile.ok&&!profile.user.has_cf_api){
-    document.getElementById('noApiWarn').style.display='';
-    document.getElementById('createBtn').disabled=true;
-    document.getElementById('createBtn').textContent='API 키 설정 후 구축 가능';
+  if (!adminLogin || adminLogin.length < 3) {
+    showErr('관리자 아이디는 3자 이상 입력해주세요.');
+    return;
   }
-  const d=await CP.adminSettings().catch(()=>({ok:false}));
-  const verSel=document.getElementById('verSelect');
-  if(d.ok&&d.cms_versions&&d.cms_versions.length){
-    const versions=d.cms_versions;
-    verSel.innerHTML=versions.map(v=>`
-      <div class="ver-opt${v.is_latest?' sel':''}" id="ver_${v.id}" onclick="selectVersion('${v.id}','${CP.escHtml(v.version)}')">
-        ${v.is_latest?'<div class="ver-badge-latest">최신</div>':''}
-        <div class="ver-opt-name">${CP.escHtml(v.label)}</div>
-        <div class="ver-opt-desc">${CP.escHtml(v.description||'')}</div>
-      </div>`).join('');
-    const latest=versions.find(v=>v.is_latest)||versions[0];
-    if(latest)selectVersion(latest.id,latest.version);
-  }else{
-    selVersion='1.0.0';
-    verSel.innerHTML=`<div class="ver-opt sel" style="grid-column:1/-1"><div class="ver-badge-latest">최신</div><div class="ver-opt-name">CloudPress CMS v1.0.0</div><div class="ver-opt-desc">안정 버전</div></div>`;
+  if (!/^[a-zA-Z0-9_]+$/.test(adminLogin)) {
+    showErr('관리자 아이디는 영문/숫자/언더바만 사용 가능합니다.');
+    return;
   }
-}
 
-function selectVersion(id,ver){
-  selVersion=ver;
-  document.querySelectorAll('.ver-opt').forEach(el=>el.classList.remove('sel'));
-  document.getElementById('ver_'+id)?.classList.add('sel');
-}
+  document.getElementById('createBtn').disabled = true;
+  goStep(2);
 
-async function doCreate(){
-  const name=document.getElementById('siteName').value.trim();
-  const adminLogin=document.getElementById('adminLogin').value.trim();
-  const adminEmail=document.getElementById('adminEmail').value.trim();
-  const adminPw=document.getElementById('adminPw').value;
-  const errEl=document.getElementById('stepErr');errEl.style.display='none';
+  try {
+    const token = CP.getToken();
+    const res = await fetch('/api/sites', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify({ siteName, adminLogin }),
+    });
+    const data = await res.json();
 
-  if(!name){errEl.textContent='사이트 이름을 입력해주세요.';errEl.style.display='';return;}
-  if(!adminLogin||adminLogin.length<3){errEl.textContent='관리자 아이디는 3자 이상이어야 합니다.';errEl.style.display='';return;}
-  if(adminEmail&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(adminEmail)){errEl.textContent='올바른 이메일 형식이 아닙니다.';errEl.style.display='';return;}
-  if(adminPw&&adminPw.length<8){errEl.textContent='비밀번호는 8자 이상이어야 합니다.';errEl.style.display='';return;}
-
-  document.getElementById('step1').style.display='none';
-  document.getElementById('step2').style.display='';
-  document.getElementById('s1i').className='stp done';
-  document.getElementById('s2i').className='stp active';
-
-  const logBox=document.getElementById('logBox');logBox.innerHTML='';
-  const addLog=(msg,cls='')=>{const div=document.createElement('div');div.className=cls;div.textContent=msg;logBox.appendChild(div);logBox.scrollTop=logBox.scrollHeight;};
-
-  const fakeSteps=[
-    {msg:'① Cloudflare API 인증 확인 중...',delay:0},
-    {msg:'② Pages 프로젝트 생성 중...',delay:8000},
-    {msg:'③ KV Namespace 생성 중...',delay:18000},
-    {msg:'④ D1 데이터베이스 생성 중...',delay:28000},
-    {msg:'⑤ CMS 스키마 초기화 중...',delay:45000},
-    {msg:'⑥ CMS 설정 저장 중...',delay:70000},
-    {msg:'⑦ 사이트 파일 배포 + 바인딩 자동 설정 중...',delay:100000},
-    {msg:'⑧ 구축 확인 중...',delay:150000},
-  ];
-  const fakeTimers=fakeSteps.map(s=>setTimeout(()=>addLog(s.msg,'cur'),s.delay));
-
-  const startTime=Date.now();
-  const timerEl=document.getElementById('elapsedTimer');
-  const timerInterval=setInterval(()=>{
-    const sec=Math.floor((Date.now()-startTime)/1000);
-    const m=Math.floor(sec/60),s=sec%60;
-    if(timerEl)timerEl.textContent=`경과: ${m}분 ${String(s).padStart(2,'0')}초`;
-  },1000);
-
-  const payload={name,cms_version:selVersion||'1.0.0',admin_login:adminLogin};
-  if(adminEmail)payload.admin_email=adminEmail;
-  if(adminPw)payload.admin_password=adminPw;
-
-  const r=await CP.createSite(payload);
-  fakeTimers.forEach(t=>clearTimeout(t));
-  clearInterval(timerInterval);
-
-  if(r.ok){
-    // background:true면 폴링으로 완료 대기
-    if(r.background){
-      addLog('⏳ 백그라운드에서 구축 중... 완료까지 3~8분 소요됩니다.','cur');
-      const siteId=r.site?.id;
-      if(siteId){
-        let elapsed=0;
-        const poll=setInterval(async()=>{
-          elapsed+=10;
-          addLog(`   ⏱ 경과 ${elapsed}초...`,'cur');
-          try{
-            const status=await CP.getSiteStatus(siteId);
-            if(status.ok&&status.site?.status==='active'){
-              clearInterval(poll);
-              // active 완료 처리
-              r.site=status.site;
-              r.cms_password=status.site.cms_password||r.cms_password;
-              finishSuccess(r,name,adminLogin);
-            }else if(status.ok&&status.site?.status==='error'){
-              clearInterval(poll);
-              document.getElementById('provView').style.display='none';
-              document.getElementById('errView').style.display='';
-              document.getElementById('errMsg').textContent='구축 중 오류가 발생했습니다. 다시 시도해주세요.';
-            }
-          }catch(_){}
-          if(elapsed>600){clearInterval(poll);addLog('⚠ 폴링 타임아웃. 대시보드에서 상태를 확인하세요.','warn');}
-        },10000);
-      }
+    if (!data.ok) {
+      showFail(data.error || '사이트 생성 요청 실패');
       return;
     }
-    logBox.innerHTML='';
-    if(r.logs&&r.logs.length){
-      r.logs.forEach(l=>{
-        const cls=l.startsWith('✅')?'ok':l.includes('⚠')||l.includes('warn')?'warn':l.startsWith('   ✓')||l.startsWith('✓')?'ok':'cur';
-        addLog(l,cls);
+
+    currentSiteId = data.siteId;
+    addLog(`✅ 사이트 생성 요청 완료 (ID: ${data.siteId})`);
+    addLog(`🎯 호스팅 업체: ${data.provider}`);
+    addLog(`⏳ WordPress 자동 설치 시작...`);
+
+    // 상태 폴링 시작
+    startPolling(data.siteId);
+
+  } catch (e) {
+    showFail('네트워크 오류: ' + e.message);
+  }
+}
+
+function startPolling(siteId) {
+  let dots = 0;
+  const stages = [
+    { status: 'pending', msg: '요청 대기 중...' },
+    { status: 'provisioning', msg: '호스팅 계정 생성 중...' },
+    { status: 'installing_wp', msg: 'Softaculous WordPress 설치 중...' },
+    { status: 'active', msg: '완료!' },
+    { status: 'failed', msg: '설치 실패' },
+  ];
+
+  pollInterval = setInterval(async () => {
+    try {
+      const token = CP.getToken();
+      const res = await fetch(`/api/sites/${siteId}`, {
+        headers: { 'Authorization': 'Bearer ' + token },
       });
-    }else{addLog('✅ 구축 완료!','ok');}
-    document.getElementById('s2i').className='stp done';
+      const data = await res.json();
+      if (!data.ok) return;
 
-    const site=r.site||{};
-    const siteUrl=site.cms_url||`https://${site.subdomain}.pages.dev`;
-    const adminUrl=site.cms_admin_url||(siteUrl+'/wp-admin/');
-    const finalPw=r.cms_password||site.cms_password||'';
-    const finalLogin=site.cms_username||adminLogin||'admin';
+      const site = data.site;
+      const status = site.status;
 
-    document.getElementById('provView').style.display='none';
-    document.getElementById('okView').style.display='';
-    document.getElementById('adminLink').href=adminUrl;
+      // 상태 텍스트 업데이트
+      const stage = stages.find(s => s.status === status);
+      if (stage) {
+        document.getElementById('statusText').textContent = stage.msg;
+      }
 
-    try{sessionStorage.setItem('cp_new_site_creds',JSON.stringify({id:site.id,url:siteUrl,adminUrl,username:finalLogin,password:finalPw,version:site.cms_version||'1.0.0'}));}catch(_){}
+      if (status === 'provisioning') {
+        addLog(`🔧 호스팅 계정 생성 중... (${site.hosting_provider})`);
+        document.getElementById('progressTitle').textContent = '호스팅 계정 생성 중...';
+      } else if (status === 'installing_wp') {
+        addLog('📦 Softaculous로 WordPress 설치 중...');
+        addLog('💨 Breeze 캐시 플러그인 설치 중...');
+        document.getElementById('progressTitle').textContent = 'WordPress 설치 중...';
+      } else if (status === 'active') {
+        clearInterval(pollInterval);
+        addLog('🔒 SSL 인증서 발급...');
+        addLog('⚡ Cloudflare CDN 연동...');
+        addLog('✅ 모든 설치 완료!');
+        showSuccess(site);
+      } else if (status === 'failed') {
+        clearInterval(pollInterval);
+        showFail(site.error_message || 'WordPress 설치에 실패했습니다.');
+      }
+    } catch (e) {}
+  }, 5000);
+}
 
-    document.getElementById('credBox').innerHTML=`
-      <div class="cred-row"><span class="cred-label">사이트 이름</span><span class="cred-val">${CP.escHtml(site.name||name)}</span></div>
-      <div class="cred-row"><span class="cred-label">사이트 URL</span><span class="cred-val"><a href="${CP.escHtml(siteUrl)}" target="_blank" style="color:var(--accent)">${CP.escHtml(siteUrl)}</a></span><button class="copy-btn" onclick="copyText('${CP.escHtml(siteUrl)}',this)">복사</button></div>
-      <div class="cred-row"><span class="cred-label">관리자 URL</span><span class="cred-val"><a href="${CP.escHtml(adminUrl)}" target="_blank" style="color:var(--accent)">${CP.escHtml(adminUrl)}</a></span><button class="copy-btn" onclick="copyText('${CP.escHtml(adminUrl)}',this)">복사</button></div>
-      <div class="cred-row"><span class="cred-label">아이디</span><span class="cred-val">${CP.escHtml(finalLogin)}</span><button class="copy-btn" onclick="copyText('${CP.escHtml(finalLogin)}',this)">복사</button></div>
-      <div class="cred-row"><span class="cred-label">비밀번호</span>
-        <div class="pw-wrap"><span class="cred-val" id="pwDisplayVal" style="font-family:monospace">••••••••</span>
-        <button class="eye-btn" onclick="toggleResultPw(${JSON.stringify(finalPw)})" title="비밀번호 보기/숨기기">
-          <svg id="eyeResult" width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.5"/></svg>
-        </button></div>
-        <button class="copy-btn" onclick="copyText(${JSON.stringify(finalPw)},this)">복사</button>
-      </div>
-      <div class="cred-row"><span class="cred-label">CMS 버전</span><span class="cred-val">${CP.escHtml(site.cms_version||'1.0.0')}</span></div>`;
+function showSuccess(site) {
+  goStep(3);
 
-    let countdown=5;
-    const cdEl=document.getElementById('dashCountdown');
-    const cdInterval=setInterval(()=>{
-      countdown--;if(cdEl)cdEl.textContent=countdown;
-      if(countdown<=0){clearInterval(cdInterval);window.location.href='/dashboard.html';}
-    },1000);
-  }else{
-    logBox.innerHTML='';
-    if(r.logs&&r.logs.length)r.logs.forEach(l=>addLog(l,l.includes('✗')||l.includes('❌')?'warn':'cur'));
-    document.getElementById('provView').style.display='none';
-    document.getElementById('errView').style.display='';
-    document.getElementById('errMsg').textContent=r.error||'알 수 없는 오류가 발생했습니다.';
+  document.getElementById('credSiteUrl').textContent = site.wp_url || '—';
+  document.getElementById('credAdminUrl').textContent = site.wp_admin_url || '—';
+  document.getElementById('credUser').textContent = site.wp_username || '—';
+  document.getElementById('credPw').value = site.wp_password || '—';
+  document.getElementById('credHost').textContent = site.hosting_provider || '—';
+  document.getElementById('credSsl').textContent = site.ssl_active ? '✅ 활성화됨' : '⏳ 설정 중';
+  document.getElementById('credCdn').textContent = site.cloudflare_zone_id ? '✅ Cloudflare CDN 연결됨' : '⏳ 연결 중';
+  document.getElementById('credBreeze').textContent = site.breeze_installed ? '✅ 설치됨 (캐시 활성화)' : '⏳ 설치 중';
+
+  if (site.wp_url) {
+    document.getElementById('wpSiteLink').href = site.wp_url;
+    document.getElementById('wpAdminLink').href = site.wp_admin_url || site.wp_url + '/wp-admin/';
+  }
+
+  document.getElementById('successDesc').textContent = 
+    `${site.name} 사이트가 ${site.hosting_provider}에 성공적으로 설치되었습니다.`;
+}
+
+function showFail(msg) {
+  clearInterval(pollInterval);
+  document.getElementById('stepFail').style.display = '';
+  document.getElementById('step2').style.display = 'none';
+  document.getElementById('failMsg').textContent = msg;
+  document.getElementById('s2i').className = 'stp';
+}
+
+function showErr(msg) {
+  const el = document.getElementById('errMsg');
+  el.textContent = msg;
+  el.style.display = '';
+  document.getElementById('createBtn').disabled = false;
+}
+
+function addLog(msg) {
+  const box = document.getElementById('logBox');
+  const div = document.createElement('div');
+  div.className = msg.startsWith('✅') || msg.startsWith('🎉') ? 'ok' : 
+                  msg.startsWith('❌') ? 'err' : 'cur';
+  div.textContent = msg;
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
+}
+
+function goStep(n) {
+  ['step1','step2','step3','stepFail'].forEach(id => {
+    document.getElementById(id).style.display = 'none';
+  });
+  document.getElementById('step' + n).style.display = '';
+
+  // 스텝 인디케이터 업데이트
+  for (let i = 1; i <= 3; i++) {
+    const el = document.getElementById('s' + i + 'i');
+    if (i < n) el.className = 'stp done';
+    else if (i === n) el.className = 'stp active';
+    else el.className = 'stp';
   }
 }
 
-let pwResultShown=false;
-function toggleResultPw(pw){
-  pwResultShown=!pwResultShown;
-  const el=document.getElementById('pwDisplayVal');
-  if(el)el.textContent=pwResultShown?pw:'••••••••';
-  const svg=document.getElementById('eyeResult');
-  if(svg){
-    if(pwResultShown){svg.innerHTML='<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="1" y1="1" x2="23" y2="23" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>';}
-    else{svg.innerHTML='<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.5"/>';}
+function resetWizard() {
+  clearInterval(pollInterval);
+  currentSiteId = null;
+  document.getElementById('siteName').value = '';
+  document.getElementById('adminLogin').value = 'admin';
+  document.getElementById('createBtn').disabled = false;
+  document.getElementById('logBox').innerHTML = '';
+  goStep(1);
+}
+
+function togglePw() {
+  const inp = document.getElementById('credPw');
+  const ico = document.getElementById('eyeIco');
+  if (inp.type === 'password') {
+    inp.type = 'text';
+    ico.innerHTML = '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="1" y1="1" x2="23" y2="23" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>';
+  } else {
+    inp.type = 'password';
+    ico.innerHTML = '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.5"/>';
   }
 }
-init();
+
+function copyText(id, isInput = false) {
+  const el = document.getElementById(id);
+  const text = isInput ? el.value : el.textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    // 복사 완료 피드백
+    const btn = el.parentElement.querySelector('.copy-btn') || el.nextElementSibling;
+    if (btn) {
+      const orig = btn.textContent;
+      btn.textContent = '✓';
+      setTimeout(() => btn.textContent = orig, 1500);
+    }
+  }).catch(() => {});
+}
+
+// 초기화
+(async () => {
+  const u = await CP.requireAuth();
+  if (!u) return;
+  document.getElementById('sbName').textContent = u.name || '—';
+  document.getElementById('sbEmail').textContent = u.email || '—';
+  document.getElementById('sbAvatar').textContent = (u.name || 'U')[0].toUpperCase();
+})();
 </script>
 </body>
 </html>
