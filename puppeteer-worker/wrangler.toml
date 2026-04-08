@@ -1,6 +1,6 @@
 name = "cloudpress-puppet"
 main = "index.js"
-compatibility_date = "2024-09-23"
+compatibility_date = "2024-11-01"
 compatibility_flags = ["nodejs_compat"]
 
 # Cloudflare Browser Rendering API 바인딩
@@ -10,5 +10,7 @@ binding = "MYBROWSER"
 [vars]
 WORKER_SECRET = "Swsh120327!"
 
-# 배포: wrangler deploy (puppeteer-worker/ 디렉토리에서)
-# 주의: Cloudflare Workers Browser Rendering은 유료 플랜 필요
+# 배포 방법:
+#   cd puppeteer-worker
+#   npm install
+#   npx wrangler deploy
