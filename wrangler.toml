@@ -6,12 +6,12 @@ pages_build_output_dir = "."
 [[d1_databases]]
 binding = "DB"
 database_name = "cloudpress-db"
-database_id = "YOUR_D1_DATABASE_ID"
+database_id = "0b38eb6c-9304-443a-bcb6-53e6275f6603"
 
 # KV 네임스페이스 (세션)
 [[kv_namespaces]]
 binding = "SESSIONS"
-id = "YOUR_KV_NAMESPACE_ID"
+id = "9cb18ceb35d24067a124b6c05e29915f"
 
 [vars]
 # 사이트 도메인
