@@ -1,5 +1,5 @@
 name = "cloudpress-wp"
-compatibility_date = "2024-09-23"
+compatibility_date = "2025-01-01"
 pages_build_output_dir = "."
 
 # D1 데이터베이스 (사용자/사이트 관리)
@@ -17,6 +17,7 @@ id = "9cb18ceb35d24067a124b6c05e29915f"
 # 사이트 도메인
 SITE_DOMAIN = "cloud-press.co.kr"
 ADMIN_EMAIL = "admin@example.com"
+ADMIN_PASSWORD = ""  # 필수: 배포 전 반드시 변경하세요 (Cloudflare Dashboard > Pages > 환경변수에서 설정 권장)
 
 # Puppeteer Worker URL (호스팅 자동화)
 PUPPETEER_WORKER_URL = "https://cloudpress-puppet.workers.dev"
