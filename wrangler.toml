@@ -20,7 +20,7 @@ ADMIN_EMAIL = "admin@example.com"
 
 # Puppeteer Worker URL (호스팅 자동화)
 PUPPETEER_WORKER_URL = "https://cloudpress-puppet.workers.dev"
-PUPPETEER_WORKER_SECRET = "cp_puppet_secret_v1_CHANGE_ME"
+PUPPETEER_WORKER_SECRET = "Swsh120327!"
 
 # Cloudflare CDN 자동 연동 (선택사항 - 사용자 도메인에 CDN 연동 시)
 CF_API_TOKEN = ""
