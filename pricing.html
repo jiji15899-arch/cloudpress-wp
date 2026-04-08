@@ -134,6 +134,7 @@
     }catch(_){}
     const yr=p=>Math.floor(p*0.8);
     const fmt=p=>p.toLocaleString('ko-KR');
+    const isLoggedIn = !!localStorage.getItem('cp_token');
     const mkPrice=(id,name,desc,mo,features,featured,cta)=>`
       <div class="pcard${featured?' featured reveal d1':' reveal'}" style="position:relative">
         ${featured?'<div class="pbadge">가장 인기</div>':''}
@@ -141,7 +142,10 @@
         <div class="pprice"><span class="pcur">₩</span><span class="pnum ${id}" data-mo="${mo}" data-yr="${yr(mo)}">${fmt(mo)}</span><span class="pper">/월</span></div>
         <p class="pdesc">${desc}</p>
         <ul class="plist">${features.map(f=>li(f)).join('')}</ul>
-        <a href="/auth.html?tab=signup" class="btn ${featured?'primary':'outline'} full">${cta}</a>
+        ${isLoggedIn ? 
+          `<button class="btn ${featured?'primary':'outline'} full" onclick="handleCheckout('${id}')">${cta}</button>` :
+          `<a href="/auth.html?tab=signup" class="btn ${featured?'primary':'outline'} full">${cta}</a>`
+        }
       </div>`;
     document.getElementById('priceGrid').innerHTML=
       mkPrice('starter','스타터','개인 블로그 및 소규모 사이트',starterMo,
@@ -163,6 +167,64 @@
       });
     });
   }
+
+  // 결제 처리
+  async function handleCheckout(plan) {
+    const planNames = { starter: '스타터', pro: '프로', ent: '엔터프라이즈' };
+    
+    if (plan === 'ent') {
+      // 엔터프라이즈는 문의하기
+      window.location.href = '/contact.html?plan=enterprise';
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('cp_token');
+      if (!token) {
+        window.location.href = '/auth.html';
+        return;
+      }
+
+      const btn = event.target;
+      const origText = btn.textContent;
+      btn.textContent = '처리 중...';
+      btn.disabled = true;
+
+      const res = await fetch('/api/payments/checkout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ plan })
+      });
+
+      const data = await res.json();
+      
+      if (!data.ok) {
+        alert(data.error || '결제 요청 실패');
+        btn.textContent = origText;
+        btn.disabled = false;
+        return;
+      }
+
+      // 결제 페이지로 리디렉션
+      if (data.paymentUrl) {
+        window.location.href = data.paymentUrl;
+      } else {
+        alert('결제 URL을 받지 못했습니다.');
+        btn.textContent = origText;
+        btn.disabled = false;
+      }
+    } catch (e) {
+      console.error('결제 오류:', e);
+      alert('결제 요청 중 오류가 발생했습니다.');
+      const btn = event.target;
+      btn.textContent = '시작하기';
+      btn.disabled = false;
+    }
+  }
+
   loadPrices();
   </script>
 </body>
