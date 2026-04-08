@@ -53,7 +53,7 @@ async function ensureSitesColumns(DB) {
     `ALTER TABLE sites ADD COLUMN hosting_email TEXT`,
     `ALTER TABLE sites ADD COLUMN hosting_password TEXT`,
     `ALTER TABLE sites ADD COLUMN hosting_domain TEXT`,
-    `ALTER TABLE sites ADD COLUMN subdomain TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE sites ADD COLUMN subdomain TEXT`,
     `ALTER TABLE sites ADD COLUMN cpanel_url TEXT`,
     `ALTER TABLE sites ADD COLUMN wp_url TEXT`,
     `ALTER TABLE sites ADD COLUMN wp_admin_url TEXT`,
@@ -359,14 +359,12 @@ export async function onRequestPost({ request, env }) {
       `INSERT INTO sites (
         id, user_id, name,
         hosting_provider, hosting_email, hosting_password,
-        subdomain,
         wp_username, wp_password, wp_admin_email,
         status, plan
-      ) VALUES (?,?,?,?,?,?,?,?,?,?,'provisioning',?)`
+      ) VALUES (?,?,?,?,?,?,?,?,?,'provisioning',?)`
     ).bind(
       siteId, user.id, siteName.trim(),
       provider, hostingEmail, hostingPw,
-      '',
       adminLogin, wpAdminPw, wpAdminEmail,
       user.plan,
     ).run();
