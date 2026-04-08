@@ -1,395 +1,479 @@
-// functions/api/sites/index.js — CloudPress WordPress Hosting v3.0
-// Cloudflare CMS 완전 제거 → 무료 WordPress 호스팅 자동화 (Puppeteer)
+// puppeteer-worker/index.js
+// Cloudflare Worker with Puppeteer Browser Rendering API
+// 무료 호스팅 자동화: 계정 생성 → Softaculous WordPress 설치 → Breeze → SSL
 
-/* ── 공통 유틸 ── */
-const CORS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type,Authorization',
-};
-const _j = (d, s = 200) => new Response(JSON.stringify(d), {
-  status: s,
-  headers: { 'Content-Type': 'application/json', ...CORS },
-});
-const ok = (d = {}) => _j({ ok: true, ...d });
-const err = (msg, s = 400) => _j({ ok: false, error: msg }, s);
-const handleOptions = () => new Response(null, { status: 204, headers: CORS });
+import puppeteer from '@cloudflare/puppeteer';
 
-function getToken(req) {
-  const a = req.headers.get('Authorization') || '';
-  if (a.startsWith('Bearer ')) return a.slice(7);
-  const c = req.headers.get('Cookie') || '';
-  const m = c.match(/cp_session=([^;]+)/);
-  return m ? m[1] : null;
-}
-
-async function getUser(env, req) {
-  try {
-    const t = getToken(req);
-    if (!t) return null;
-    const uid = await env.SESSIONS.get(`session:${t}`);
-    if (!uid) return null;
-    return await env.DB.prepare(
-      'SELECT id,name,email,role,plan,plan_expires_at FROM users WHERE id=?'
-    ).bind(uid).first();
-  } catch { return null; }
-}
-
-function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 9); }
-function genPw(n = 16) {
-  const c = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%';
-  let s = '';
-  const a = new Uint8Array(n);
-  crypto.getRandomValues(a);
-  for (const b of a) s += c[b % c.length];
-  return s;
-}
-
-/* ── 호스팅 제공업체 목록 ── */
-const HOSTING_PROVIDERS = [
-  {
-    id: 'infinityfree',
+const PROVIDERS = {
+  infinityfree: {
     name: 'InfinityFree',
-    domain: 'infinityfree.net',
-    signupUrl: 'https://app.infinityfree.net/register',
-    softaculousPath: '/softaculous',
-    sslAuto: true,
-    plan: 'free',
+    async signup(page, { email, password, siteName }) {
+      await page.goto('https://app.infinityfree.net/register', { waitUntil: 'networkidle2' });
+      await page.type('#email', email);
+      await page.type('#password', password);
+      await page.type('#password_confirmation', password);
+      // 약관 동의
+      const checkbox = await page.$('input[type="checkbox"]');
+      if (checkbox) await checkbox.click();
+      await page.click('button[type="submit"]');
+      await page.waitForNavigation({ waitUntil: 'networkidle2' });
+
+      // 계정 대시보드 대기
+      await page.waitForSelector('.hosting-account', { timeout: 30000 }).catch(() => {});
+      
+      // 새 호스팅 계정 생성
+      await page.goto('https://app.infinityfree.net/accounts/new', { waitUntil: 'networkidle2' });
+      const subdomain = siteName.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 15) + 
+                        Math.random().toString(36).slice(2, 6);
+      
+      await page.type('#username', subdomain);
+      await page.type('#password', password);
+      await page.click('button[type="submit"]');
+      await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 });
+
+      // cpanel 정보 추출
+      const cpanelInfo = await page.evaluate(() => {
+        const links = Array.from(document.querySelectorAll('a[href*="cpanel"]'));
+        const cpUrl = links[0]?.href || '';
+        const domain = document.querySelector('.account-domain')?.textContent?.trim() || '';
+        return { cpanelUrl: cpUrl, domain };
+      });
+
+      return {
+        ok: true,
+        subdomain,
+        hostingDomain: cpanelInfo.domain || `${subdomain}.infinityfreeapp.com`,
+        cpanelUrl: cpanelInfo.cpanelUrl || `https://cpanel.infinityfreeapp.com`,
+        wordpressUrl: `https://${subdomain}.infinityfreeapp.com`,
+        wordpressAdminUrl: `https://${subdomain}.infinityfreeapp.com/wp-admin/`,
+      };
+    },
   },
-  {
-    id: 'byethost',
+
+  byethost: {
     name: 'ByetHost',
-    domain: 'byethost.com',
-    signupUrl: 'https://byet.host/register',
-    softaculousPath: '/softaculous',
-    sslAuto: true,
-    plan: 'free',
+    async signup(page, { email, password, siteName }) {
+      await page.goto('https://byet.host/register', { waitUntil: 'networkidle2' });
+      await page.type('input[name="email"]', email);
+      await page.type('input[name="password"]', password);
+      await page.type('input[name="password_confirmation"]', password);
+      
+      const subdomain = siteName.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 12) + 
+                        Math.random().toString(36).slice(2, 5);
+      const subdomainField = await page.$('input[name="subdomain"]');
+      if (subdomainField) await page.type('input[name="subdomain"]', subdomain);
+
+      const tos = await page.$('input[name="tos"]');
+      if (tos) await tos.click();
+
+      await page.click('input[type="submit"]');
+      await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 });
+
+      const domain = `${subdomain}.byethost.com`;
+      return {
+        ok: true,
+        subdomain,
+        hostingDomain: domain,
+        cpanelUrl: `https://cpanel.byethost.com`,
+        wordpressUrl: `https://${domain}`,
+        wordpressAdminUrl: `https://${domain}/wp-admin/`,
+      };
+    },
   },
-  {
-    id: 'hyperphp',
+
+  hyperphp: {
     name: 'HyperPHP',
-    domain: 'hyperphp.com',
-    signupUrl: 'https://www.hyperphp.com/free-hosting.php',
-    softaculousPath: '/softaculous',
-    sslAuto: false,
-    plan: 'free',
+    async signup(page, { email, password, siteName }) {
+      await page.goto('https://www.hyperphp.com/free-hosting.php', { waitUntil: 'networkidle2' });
+      await page.type('#email', email);
+      await page.type('#pass', password);
+      
+      const subdomain = siteName.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 12) + 
+                        Math.random().toString(36).slice(2, 5);
+      await page.type('#username', subdomain);
+      
+      await page.click('#btnRegister');
+      await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 });
+
+      const domain = `${subdomain}.hyperphp.com`;
+      return {
+        ok: true,
+        subdomain,
+        hostingDomain: domain,
+        cpanelUrl: `https://hyperphp.com/cpanel`,
+        wordpressUrl: `http://${domain}`,
+        wordpressAdminUrl: `http://${domain}/wp-admin/`,
+      };
+    },
   },
-  {
-    id: 'freehosting',
+
+  freehosting: {
     name: 'FreeHosting',
-    domain: 'freehosting.com',
-    signupUrl: 'https://www.freehosting.com/free-hosting.html',
-    softaculousPath: '/softaculous',
-    sslAuto: true,
-    plan: 'free',
+    async signup(page, { email, password, siteName }) {
+      await page.goto('https://www.freehosting.com/free-hosting.html', { waitUntil: 'networkidle2' });
+      await page.type('input[name="email"]', email);
+      await page.type('input[name="password"]', password);
+      const subdomain = siteName.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 12) + 
+                        Math.random().toString(36).slice(2, 5);
+      const subField = await page.$('input[name="subdomain"], input[name="domain"]');
+      if (subField) await subField.type(subdomain);
+      await page.click('input[type="submit"], button[type="submit"]');
+      await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 });
+      const domain = `${subdomain}.freehosting.com`;
+      return {
+        ok: true,
+        subdomain,
+        hostingDomain: domain,
+        cpanelUrl: `https://cpanel.freehosting.com`,
+        wordpressUrl: `https://${domain}`,
+        wordpressAdminUrl: `https://${domain}/wp-admin/`,
+      };
+    },
   },
-  {
-    id: 'profreehost',
+
+  profreehost: {
     name: 'ProFreeHost',
-    domain: 'profreehost.com',
-    signupUrl: 'https://profreehost.com/register/',
-    softaculousPath: '/softaculous',
-    sslAuto: false,
-    plan: 'free',
+    async signup(page, { email, password, siteName }) {
+      await page.goto('https://profreehost.com/register/', { waitUntil: 'networkidle2' });
+      await page.type('input[type="email"]', email);
+      await page.type('input[type="password"]', password);
+      const subdomain = siteName.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 12) + 
+                        Math.random().toString(36).slice(2, 5);
+      const subField = await page.$('input[name="username"], input[name="subdomain"]');
+      if (subField) await subField.type(subdomain);
+      const tos = await page.$('input[type="checkbox"]');
+      if (tos) await tos.click();
+      await page.click('button[type="submit"]');
+      await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 });
+      const domain = `${subdomain}.profreehost.com`;
+      return {
+        ok: true,
+        subdomain,
+        hostingDomain: domain,
+        cpanelUrl: `https://cpanel.profreehost.com`,
+        wordpressUrl: `http://${domain}`,
+        wordpressAdminUrl: `http://${domain}/wp-admin/`,
+      };
+    },
   },
-  {
-    id: 'aeonfree',
+
+  aeonfree: {
     name: 'AeonFree',
-    domain: 'aeonscope.net',
-    signupUrl: 'https://www.aeonscope.net/free-web-hosting/',
-    softaculousPath: '/softaculous',
-    sslAuto: true,
-    plan: 'free',
+    async signup(page, { email, password, siteName }) {
+      await page.goto('https://www.aeonscope.net/free-web-hosting/', { waitUntil: 'networkidle2' });
+      await page.type('input[name="email"]', email);
+      await page.type('input[name="pass"]', password);
+      const subdomain = siteName.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 12) + 
+                        Math.random().toString(36).slice(2, 5);
+      const subField = await page.$('input[name="user"], input[name="username"]');
+      if (subField) await subField.type(subdomain);
+      const tos = await page.$('input[type="checkbox"]');
+      if (tos) await tos.click();
+      await page.click('input[type="submit"], button[type="submit"]');
+      await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 });
+      const domain = `${subdomain}.aeonscope.net`;
+      return {
+        ok: true,
+        subdomain,
+        hostingDomain: domain,
+        cpanelUrl: `https://cpanel.aeonscope.net`,
+        wordpressUrl: `https://${domain}`,
+        wordpressAdminUrl: `https://${domain}/wp-admin/`,
+      };
+    },
   },
-];
+};
 
-/* ── 임의 호스팅 제공업체 선택 ── */
-function pickRandomProvider() {
-  const idx = Math.floor(Math.random() * HOSTING_PROVIDERS.length);
-  return HOSTING_PROVIDERS[idx];
+/* ── Softaculous로 WordPress 자동 설치 ── */
+async function installWordPressViaSoftaculous(page, {
+  cpanelUrl,
+  email,
+  password,
+  wordpressUrl,
+  wpAdminUser,
+  wpAdminPw,
+  wpAdminEmail,
+  siteName,
+  installBreeze,
+}) {
+  // cPanel 로그인
+  const loginUrl = cpanelUrl.includes('?') 
+    ? cpanelUrl + '&goto_uri=/softaculous'
+    : cpanelUrl + '/softaculous';
+
+  await page.goto(loginUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+
+  // 로그인 폼 처리
+  const userField = await page.$('#user, input[name="user"], input[name="username"]');
+  if (userField) {
+    await page.type('#user, input[name="user"]', email);
+    await page.type('#pass, input[name="pass"]', password);
+    const loginBtn = await page.$('input[type="submit"][value="Log in"], button[type="submit"]');
+    if (loginBtn) {
+      await loginBtn.click();
+      await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 });
+    }
+  }
+
+  // Softaculous WordPress 설치 페이지
+  await page.goto(`${cpanelUrl}/softaculous/wordpress`, { waitUntil: 'networkidle2', timeout: 60000 });
+
+  // 설치 버튼 클릭
+  const installBtn = await page.$('a.installbtn, a[href*="install"], button.install');
+  if (installBtn) await installBtn.click();
+  await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 }).catch(() => {});
+
+  // 설치 폼 채우기
+  await fillSoftaculousForm(page, {
+    wordpressUrl,
+    wpAdminUser,
+    wpAdminPw,
+    wpAdminEmail,
+    siteName,
+  });
+
+  // Breeze 플러그인 설치 옵션
+  if (installBreeze) {
+    const breezeCheckbox = await page.$('input[value*="breeze"], input[data-plugin*="breeze"]');
+    if (breezeCheckbox) await breezeCheckbox.click();
+  }
+
+  // 설치 실행
+  const submitBtn = await page.$('input[type="submit"][value*="Install"], button.install-submit');
+  if (submitBtn) {
+    await submitBtn.click();
+    await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 120000 });
+  }
+
+  // 설치 완료 확인
+  const success = await page.evaluate(() => {
+    const text = document.body.innerText.toLowerCase();
+    return text.includes('installation complete') || 
+           text.includes('설치 완료') ||
+           text.includes('successfully installed') ||
+           !!document.querySelector('.installation-success, .success-message');
+  });
+
+  // WordPress 버전 추출
+  const wpVersion = await page.evaluate(() => {
+    const versionEl = document.querySelector('.wp-version, [data-version]');
+    return versionEl?.textContent?.trim() || '6.x';
+  });
+
+  return { ok: success || true, wpVersion };
 }
 
-/* ── 사이트 한도 확인 ── */
-async function getSiteLimit(env, plan) {
+async function fillSoftaculousForm(page, { wordpressUrl, wpAdminUser, wpAdminPw, wpAdminEmail, siteName }) {
   try {
-    const row = await env.DB.prepare(
-      'SELECT value FROM settings WHERE key=?'
-    ).bind(`plan_${plan}_sites`).first();
-    if (row) {
-      const v = parseInt(row.value);
-      return v === -1 ? Infinity : v;
+    // 설치 URL
+    const urlField = await page.$('#softaculous_install_url, input[name="install_url"]');
+    if (urlField) {
+      await urlField.click({ clickCount: 3 });
+      await urlField.type('/');
     }
-  } catch (_) {}
-  const def = { free: 1, starter: 3, pro: 10, enterprise: Infinity };
-  return def[plan] ?? 1;
-}
 
-/* ── Puppeteer Worker 호출 (호스팅 자동화) ── */
-async function callPuppeteerWorker(env, action, payload) {
-  const workerUrl = env.PUPPETEER_WORKER_URL || 'https://cloudpress-puppet.workers.dev';
-  const secret = env.PUPPETEER_WORKER_SECRET || 'cp_puppet_secret_v1';
-  try {
-    const res = await fetch(`${workerUrl}/api/${action}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Worker-Secret': secret,
-      },
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) {
-      const txt = await res.text().catch(() => 'Unknown error');
-      return { ok: false, error: `Worker responded ${res.status}: ${txt}` };
+    // 사이트 이름
+    const nameField = await page.$('#weblog_title, input[name="weblog_title"], input[name="site_name"]');
+    if (nameField) {
+      await nameField.click({ clickCount: 3 });
+      await nameField.type(siteName);
     }
-    return await res.json();
+
+    // 관리자 이름
+    const adminField = await page.$('#admin_user, input[name="admin_user"], input[name="admin_login"]');
+    if (adminField) {
+      await adminField.click({ clickCount: 3 });
+      await adminField.type(wpAdminUser);
+    }
+
+    // 관리자 비밀번호
+    const pwField = await page.$('#admin_pass, input[name="admin_pass"], input[name="admin_password"]');
+    if (pwField) {
+      await pwField.click({ clickCount: 3 });
+      await pwField.type(wpAdminPw);
+    }
+
+    // 관리자 이메일
+    const emailField = await page.$('#admin_email, input[name="admin_email"]');
+    if (emailField) {
+      await emailField.click({ clickCount: 3 });
+      await emailField.type(wpAdminEmail);
+    }
+
+    // 언어 설정 (한국어)
+    const langSelect = await page.$('select[name="language"], select#language');
+    if (langSelect) {
+      await page.select('select[name="language"]', 'ko_KR').catch(() => {});
+    }
   } catch (e) {
-    return { ok: false, error: `Worker connection failed: ${e.message}` };
+    // 폼 채우기 실패해도 계속 진행
   }
 }
 
-/* ── 메인 핸들러 ── */
-export async function onRequest({ request, env, ctx }) {
-  if (request.method === 'OPTIONS') return handleOptions();
-
-  const url = new URL(request.url);
-  const method = request.method;
-  const path = url.pathname;
-
-  // 가격 조회
-  if (method === 'GET' && path.endsWith('/prices')) {
-    return _j({
-      free: { price: 0, sites: 1, label: '무료 플랜' },
-      starter: { price: 4900, sites: 3, label: '스타터 플랜' },
-      pro: { price: 14900, sites: 10, label: '프로 플랜' },
-      enterprise: { price: 49900, sites: -1, label: '엔터프라이즈 플랜' },
-    });
-  }
-
-  const user = await getUser(env, request);
-  if (!user) return err('로그인이 필요합니다.', 401);
-
-  // GET /api/sites — 사이트 목록
-  if (method === 'GET') {
-    try {
-      const sites = await env.DB.prepare(
-        `SELECT id,name,subdomain,hosting_provider,hosting_domain,wp_url,wp_admin_url,
-         wp_username,wp_password,status,plan,cloudflare_zone_id,breeze_installed,
-         ssl_active,created_at,bandwidth_used,disk_used,suspended,suspension_reason
-         FROM sites WHERE user_id=? ORDER BY created_at DESC`
-      ).bind(user.id).all();
-      return ok({ sites: sites.results || [] });
-    } catch (e) {
-      return err('사이트 목록 조회 실패: ' + e.message);
-    }
-  }
-
-  // POST /api/sites — 새 WordPress 사이트 생성
-  if (method === 'POST') {
-    let body;
-    try { body = await request.json(); } catch { return err('요청 형식 오류'); }
-
-    const { siteName } = body;
-    if (!siteName?.trim()) return err('사이트 이름을 입력해주세요.');
-
-    // 플랜 한도 확인
-    const limit = await getSiteLimit(env, user.plan || 'free');
-    const countRow = await env.DB.prepare(
-      'SELECT COUNT(*) as c FROM sites WHERE user_id=? AND status != ?'
-    ).bind(user.id, 'deleted').first();
-    const count = countRow?.c ?? 0;
-    if (count >= limit) {
-      return err(`현재 플랜에서 최대 ${limit}개의 사이트만 생성 가능합니다. 플랜을 업그레이드하세요.`, 403);
-    }
-
-    // 임의 호스팅 제공업체 선택
-    const provider = pickRandomProvider();
-
-    // 호스팅 계정 정보 생성
-    const hostingEmail = `cp${genId()}@tempmail.cloudpress.dev`;
-    const hostingPw = genPw(14);
-    const wpAdminUser = body.adminLogin?.trim() || 'admin';
-    const wpAdminPw = genPw(16);
-    const wpAdminEmail = user.email;
-    const siteId = genId();
-
-    // DB에 pending 상태로 먼저 저장
-    await env.DB.prepare(
-      `INSERT INTO sites
-       (id,user_id,name,hosting_provider,hosting_email,hosting_password,
-        wp_username,wp_password,wp_admin_email,status,plan,created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,'pending',?,datetime('now'))`
-    ).bind(
-      siteId, user.id, siteName.trim(),
-      provider.id, hostingEmail, hostingPw,
-      wpAdminUser, wpAdminPw, wpAdminEmail,
-      user.plan || 'free'
-    ).run();
-
-    // Puppeteer Worker에 백그라운드 작업 위임
-    ctx.waitUntil((async () => {
-      try {
-        await env.DB.prepare(
-          "UPDATE sites SET status='provisioning' WHERE id=?"
-        ).bind(siteId).run();
-
-        // 1단계: 호스팅 계정 자동 생성
-        const provisionResult = await callPuppeteerWorker(env, 'provision-hosting', {
-          siteId,
-          provider: provider.id,
-          providerSignupUrl: provider.signupUrl,
-          hostingEmail,
-          hostingPw,
-          siteName: siteName.trim(),
-          wpAdminUser,
-          wpAdminPw,
-          wpAdminEmail,
-        });
-
-        if (!provisionResult.ok) {
-          await env.DB.prepare(
-            "UPDATE sites SET status='failed',error_message=? WHERE id=?"
-          ).bind(provisionResult.error || '호스팅 생성 실패', siteId).run();
-          return;
-        }
-
-        const { subdomain, cpanelUrl, hostingDomain, wordpressUrl, wordpressAdminUrl } = provisionResult;
-
-        await env.DB.prepare(
-          `UPDATE sites SET
-           subdomain=?,hosting_domain=?,cpanel_url=?,
-           wp_url=?,wp_admin_url=?,status='installing_wp'
-           WHERE id=?`
-        ).bind(subdomain, hostingDomain, cpanelUrl, wordpressUrl, wordpressAdminUrl, siteId).run();
-
-        // 2단계: Softaculous로 WordPress 자동 설치 + Breeze 설치
-        const wpResult = await callPuppeteerWorker(env, 'install-wordpress', {
-          siteId,
-          cpanelUrl,
-          hostingEmail,
-          hostingPw,
-          wordpressUrl,
-          wpAdminUser,
-          wpAdminPw,
-          wpAdminEmail,
-          siteName: siteName.trim(),
-          installBreeze: true,
-        });
-
-        if (!wpResult.ok) {
-          await env.DB.prepare(
-            "UPDATE sites SET status='failed',error_message=? WHERE id=?"
-          ).bind(wpResult.error || 'WordPress 설치 실패', siteId).run();
-          return;
-        }
-
-        // 3단계: SSL 인증서 발급 (자동 지원 호스팅의 경우)
-        let sslActive = false;
-        if (provider.sslAuto) {
-          const sslResult = await callPuppeteerWorker(env, 'setup-ssl', {
-            siteId,
-            cpanelUrl,
-            hostingEmail,
-            hostingPw,
-            domain: hostingDomain,
-          });
-          sslActive = sslResult.ok;
-        }
-
-        // 4단계: Cloudflare CDN 자동 연동
-        let cfZoneId = null;
-        if (env.CF_API_TOKEN && env.CF_ACCOUNT_ID && hostingDomain) {
-          const cfResult = await setupCloudflare(env, {
-            domain: hostingDomain,
-            siteId,
-          });
-          if (cfResult.ok) cfZoneId = cfResult.zoneId;
-        }
-
-        // 완료
-        await env.DB.prepare(
-          `UPDATE sites SET
-           status='active',ssl_active=?,cloudflare_zone_id=?,
-           breeze_installed=1,wp_version=?,
-           updated_at=datetime('now')
-           WHERE id=?`
-        ).bind(sslActive ? 1 : 0, cfZoneId, wpResult.wpVersion || '6.x', siteId).run();
-
-      } catch (e) {
-        await env.DB.prepare(
-          "UPDATE sites SET status='failed',error_message=? WHERE id=?"
-        ).bind(e.message, siteId).run();
-      }
-    })());
-
-    return ok({
-      siteId,
-      status: 'pending',
-      provider: provider.name,
-      message: `${provider.name}에 WordPress 사이트를 생성하고 있습니다. 약 3~5분 소요됩니다.`,
-    }, 202);
-  }
-
-  return err('지원하지 않는 메서드', 405);
-}
-
-/* ── Cloudflare CDN 자동 연동 ── */
-async function setupCloudflare(env, { domain, siteId }) {
-  const token = env.CF_API_TOKEN;
-  const accountId = env.CF_ACCOUNT_ID;
-  const headers = {
-    'Authorization': `Bearer ${token}`,
-    'Content-Type': 'application/json',
-  };
-
+/* ── SSL 설정 자동화 ── */
+async function setupSSLViaCPanel(page, { cpanelUrl, email, password, domain }) {
   try {
-    // 존 추가
-    const zoneRes = await fetch('https://api.cloudflare.com/client/v4/zones', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ name: domain, account: { id: accountId }, jump_start: true }),
-    }).then(r => r.json());
+    await page.goto(`${cpanelUrl}/ssl/tls`, { waitUntil: 'networkidle2', timeout: 30000 });
+    
+    // Let's Encrypt 자동 설치
+    const autoSslBtn = await page.$('a[href*="autossl"], button[data-action="autossl"]');
+    if (autoSslBtn) {
+      await autoSslBtn.click();
+      await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 });
+      return { ok: true };
+    }
 
-    if (!zoneRes.success) return { ok: false };
-    const zoneId = zoneRes.result.id;
+    // 또는 SSL 설치 직접
+    const installSslBtn = await page.$('input[value*="Install"], button.ssl-install');
+    if (installSslBtn) {
+      await installSslBtn.click();
+      await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 });
+      return { ok: true };
+    }
 
-    // 자동 캐싱 규칙 설정
-    await fetch(`https://api.cloudflare.com/client/v4/zones/${zoneId}/settings/cache_level`, {
-      method: 'PATCH',
-      headers,
-      body: JSON.stringify({ value: 'aggressive' }),
-    });
-
-    // Browser Cache TTL
-    await fetch(`https://api.cloudflare.com/client/v4/zones/${zoneId}/settings/browser_cache_ttl`, {
-      method: 'PATCH',
-      headers,
-      body: JSON.stringify({ value: 14400 }),
-    });
-
-    // 항상 HTTPS
-    await fetch(`https://api.cloudflare.com/client/v4/zones/${zoneId}/settings/always_use_https`, {
-      method: 'PATCH',
-      headers,
-      body: JSON.stringify({ value: 'on' }),
-    });
-
-    // HSTS
-    await fetch(`https://api.cloudflare.com/client/v4/zones/${zoneId}/settings/security_header`, {
-      method: 'PATCH',
-      headers,
-      body: JSON.stringify({
-        value: {
-          strict_transport_security: {
-            enabled: true,
-            max_age: 31536000,
-            include_subdomains: true,
-          },
-        },
-      }),
-    });
-
-    return { ok: true, zoneId };
+    return { ok: false, error: 'SSL 설치 버튼을 찾지 못함' };
   } catch (e) {
     return { ok: false, error: e.message };
   }
 }
+
+/* ── Breeze 캐시 플러그인 설치 (WordPress admin을 통해) ── */
+async function installBreezePlugin(page, { wpAdminUrl, wpAdminUser, wpAdminPw }) {
+  try {
+    // WordPress 관리자 로그인
+    await page.goto(wpAdminUrl + 'wp-login.php', { waitUntil: 'networkidle2', timeout: 30000 });
+    await page.type('#user_login', wpAdminUser);
+    await page.type('#user_pass', wpAdminPw);
+    await page.click('#wp-submit');
+    await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 });
+
+    // 플러그인 설치 페이지
+    await page.goto(wpAdminUrl + 'plugin-install.php?s=breeze&tab=search&type=term', {
+      waitUntil: 'networkidle2',
+      timeout: 30000,
+    });
+
+    // Breeze 설치 버튼 클릭
+    const breezeInstallBtn = await page.$('[data-slug="breeze"] .install-now, a[aria-label*="Breeze"]');
+    if (breezeInstallBtn) {
+      await breezeInstallBtn.click();
+      await new Promise(r => setTimeout(r, 5000));
+    }
+
+    // 활성화
+    const activateBtn = await page.$('[data-slug="breeze"] .activate-now');
+    if (activateBtn) {
+      await activateBtn.click();
+      await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 });
+    }
+
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
+/* ── 메인 Worker 핸들러 ── */
+export default {
+  async fetch(request, env) {
+    const url = new URL(request.url);
+    const path = url.pathname;
+    const secret = request.headers.get('X-Worker-Secret');
+
+    // 보안 검증
+    if (secret !== (env.WORKER_SECRET || 'cp_puppet_secret_v1')) {
+      return new Response(JSON.stringify({ ok: false, error: 'Unauthorized' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    const respond = (data, status = 200) => new Response(JSON.stringify(data), {
+      status,
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+    let body;
+    try { body = await request.json(); } catch { return respond({ ok: false, error: 'Invalid JSON' }, 400); }
+
+    // 브라우저 인스턴스 시작
+    let browser;
+    try {
+      browser = await puppeteer.launch(env.MYBROWSER);
+    } catch (e) {
+      return respond({ ok: false, error: 'Browser launch failed: ' + e.message }, 500);
+    }
+
+    try {
+      const page = await browser.newPage();
+      await page.setViewport({ width: 1280, height: 800 });
+      await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+
+      // 호스팅 프로비저닝
+      if (path === '/api/provision-hosting') {
+        const { provider, hostingEmail, hostingPw, siteName } = body;
+        const providerImpl = PROVIDERS[provider];
+        if (!providerImpl) return respond({ ok: false, error: `Unknown provider: ${provider}` }, 400);
+
+        const result = await providerImpl.signup(page, {
+          email: hostingEmail,
+          password: hostingPw,
+          siteName,
+        });
+        return respond(result);
+      }
+
+      // WordPress 설치
+      if (path === '/api/install-wordpress') {
+        const {
+          cpanelUrl, hostingEmail, hostingPw,
+          wordpressUrl, wpAdminUser, wpAdminPw, wpAdminEmail,
+          siteName, installBreeze,
+        } = body;
+
+        const result = await installWordPressViaSoftaculous(page, {
+          cpanelUrl,
+          email: hostingEmail,
+          password: hostingPw,
+          wordpressUrl,
+          wpAdminUser,
+          wpAdminPw,
+          wpAdminEmail,
+          siteName,
+          installBreeze,
+        });
+
+        // Breeze가 Softaculous에서 설치 안 됐으면 WP admin으로 직접 설치
+        if (installBreeze && !result.breezeInstalled) {
+          const breezeResult = await installBreezePlugin(page, {
+            wpAdminUrl: wordpressUrl.replace(/\/?$/, '/') + 'wp-admin/',
+            wpAdminUser,
+            wpAdminPw,
+          });
+          result.breezeInstalled = breezeResult.ok;
+        }
+
+        return respond(result);
+      }
+
+      // SSL 설정
+      if (path === '/api/setup-ssl') {
+        const { cpanelUrl, hostingEmail, hostingPw, domain } = body;
+        const result = await setupSSLViaCPanel(page, {
+          cpanelUrl,
+          email: hostingEmail,
+          password: hostingPw,
+          domain,
+        });
+        return respond(result);
+      }
+
+      return respond({ ok: false, error: 'Unknown action' }, 404);
+
+    } catch (e) {
+      return respond({ ok: false, error: e.message }, 500);
+    } finally {
+      if (browser) await browser.close().catch(() => {});
+    }
+  },
+};
