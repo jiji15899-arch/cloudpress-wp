@@ -179,7 +179,7 @@ async function loadSites(){
       </div>`;
     }).join('');
 
-    sites.filter(s=>s.status==='provisioning').forEach(s=>pollStatus(s.id));
+    sites.filter(s=>['provisioning','installing_wp','pending'].includes(s.status)).forEach(s=>pollStatus(s.id));
   } catch(e) {
     console.error('사이트 로딩 오류:', e);
     const el=document.getElementById('sitesList');
@@ -193,7 +193,7 @@ async function pollStatus(id){
     try {
       const d=await CP.getSite(id);
       if(!d.ok)return;
-      if(d.site.status==='active'||d.site.status==='error'){
+      if(d.site.status==='active'||d.site.status==='failed'){
         await loadSites();
         if(d.site.status==='active') showToast('CMS 구축 완료! 🎉','success');
         else showToast('구축 중 오류 발생','error');

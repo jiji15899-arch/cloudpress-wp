@@ -87,9 +87,20 @@ async function loadSite() {
   const siteId = params.get('id');
   if (!siteId) { document.getElementById('content').innerHTML = '<p style="color:var(--error);text-align:center;padding:40px">사이트 ID가 없습니다.</p>'; return; }
 
-  const token = CP.getToken();
-  const res = await fetch('/api/sites/' + siteId, { headers: { 'Authorization': 'Bearer ' + token } });
-  const data = await res.json();
+  let data;
+  try {
+    const token = CP.getToken();
+    const res = await fetch('/api/sites/' + siteId, { headers: { 'Authorization': 'Bearer ' + token } });
+    const ct = res.headers.get('content-type') || '';
+    if (!ct.includes('application/json')) {
+      document.getElementById('content').innerHTML = `<p style="color:var(--error);text-align:center;padding:40px">서버 응답 오류 (${res.status}). 잠시 후 다시 시도해주세요.</p>`;
+      return;
+    }
+    data = await res.json();
+  } catch(e) {
+    document.getElementById('content').innerHTML = `<p style="color:var(--error);text-align:center;padding:40px">네트워크 오류: ${e.message}</p>`;
+    return;
+  }
   if (!data.ok) { document.getElementById('content').innerHTML = `<p style="color:var(--error);text-align:center;padding:40px">${data.error || '사이트를 불러올 수 없습니다.'}</p>`; return; }
 
   const site = data.site;
@@ -137,7 +148,7 @@ async function loadSite() {
       <div class="info-row"><div class="info-label">SSL 인증서</div><div class="info-val">${site.ssl_active ? '✅ 활성화됨' : '⏳ 준비 중'}</div></div>
       <div class="info-row"><div class="info-label">Cloudflare CDN</div><div class="info-val">${site.cloudflare_zone_id ? '✅ 연결됨' : '—'}</div></div>
       <div class="info-row"><div class="info-label">Breeze 캐시</div><div class="info-val">${site.breeze_installed ? '✅ 설치됨' : '—'}</div></div>
-      <div class="info-row"><div class="info-label">생성일</div><div class="info-val">${new Date(site.created_at).toLocaleString('ko-KR')}</div></div>
+      <div class="info-row"><div class="info-label">생성일</div><div class="info-val">${(site.created_at ? new Date(isNaN(site.created_at) ? site.created_at : site.created_at * 1000).toLocaleString('ko-KR') : '—')}</div></div>
     </div>
 
     <div class="info-card">
@@ -174,13 +185,19 @@ function togglePw() {
 async function deleteSite(id, name) {
   if (!confirm(`"${name}" 사이트를 정말 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.`)) return;
   const token = CP.getToken();
-  const res = await fetch('/api/sites/' + id, {
-    method: 'DELETE',
-    headers: { 'Authorization': 'Bearer ' + token },
-  });
-  const data = await res.json();
-  if (data.ok) location.href = '/dashboard.html';
-  else alert('삭제 실패: ' + (data.error || ''));
+  let delData;
+  try {
+    const res = await fetch('/api/sites/' + id, {
+      method: 'DELETE',
+      headers: { 'Authorization': 'Bearer ' + token },
+    });
+    delData = await res.json();
+  } catch(e) {
+    alert('삭제 중 오류: ' + e.message);
+    return;
+  }
+  if (delData.ok) location.href = '/dashboard.html';
+  else alert('삭제 실패: ' + (delData.error || ''));
 }
 
 (async () => {
