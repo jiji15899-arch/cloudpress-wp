@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>서비스 일시 제한 — CloudPress</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #f8f9fa;
+      --surface: #ffffff;
+      --text: #1a1a2e;
+      --muted: #6b7280;
+      --border: #e5e7eb;
+      --accent: #f97316;
+      --error: #ef4444;
+      --warning: #f59e0b;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .container {
+      max-width: 520px;
+      width: 100%;
+      text-align: center;
+    }
+    .icon-wrap {
+      width: 100px;
+      height: 100px;
+      border-radius: 50%;
+      background: rgba(245, 158, 11, 0.1);
+      border: 2px solid rgba(245, 158, 11, 0.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 28px;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 40px 32px;
+      box-shadow: 0 4px 24px rgba(0,0,0,.06);
+    }
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin-bottom: 12px;
+      color: var(--text);
+    }
+    p {
+      color: var(--muted);
+      font-size: .9rem;
+      line-height: 1.7;
+      margin-bottom: 8px;
+    }
+    .reason-box {
+      background: rgba(245, 158, 11, 0.06);
+      border: 1px solid rgba(245, 158, 11, 0.2);
+      border-radius: 10px;
+      padding: 14px 18px;
+      margin: 20px 0;
+      font-size: .85rem;
+      text-align: left;
+    }
+    .reason-label {
+      font-weight: 700;
+      color: var(--warning);
+      margin-bottom: 6px;
+      font-size: .78rem;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+    }
+    .reason-text {
+      color: var(--text);
+      font-size: .88rem;
+    }
+    .actions {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-top: 24px;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: .88rem;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      border: none;
+      transition: all .15s;
+    }
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+    }
+    .btn-primary:hover { opacity: .9; color: #fff; text-decoration: none; }
+    .btn-ghost {
+      background: transparent;
+      color: var(--muted);
+      border: 1px solid var(--border);
+    }
+    .btn-ghost:hover { border-color: var(--accent); color: var(--accent); text-decoration: none; }
+    .info-list {
+      list-style: none;
+      text-align: left;
+      margin: 16px 0;
+      padding: 0;
+    }
+    .info-list li {
+      padding: 6px 0;
+      font-size: .83rem;
+      color: var(--muted);
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    .info-list li:last-child { border: none; }
+    .info-list li::before { content: '→'; color: var(--warning); flex-shrink: 0; }
+    .logo {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin-bottom: 28px;
+      font-weight: 700;
+      font-size: 1.1rem;
+      color: var(--text);
+      text-decoration: none;
+    }
+    .logo svg { color: var(--accent); }
+  </style>
+</head>
+<body>
+<div class="container">
+  <a href="/" class="logo">
+    <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+      <path d="M14 2L26 8V20L14 26L2 20V8L14 2Z" stroke="currentColor" stroke-width="1.5"/>
+      <path d="M14 8L20 11V17L14 20L8 17V11L14 8Z" fill="currentColor" opacity=".5"/>
+      <circle cx="14" cy="14" r="2.2" fill="currentColor"/>
+    </svg>
+    CloudPress
+  </a>
+
+  <div class="card">
+    <div class="icon-wrap">
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none">
+        <circle cx="12" cy="12" r="10" stroke="#f59e0b" stroke-width="1.5"/>
+        <line x1="12" y1="8" x2="12" y2="12" stroke="#f59e0b" stroke-width="2" stroke-linecap="round"/>
+        <circle cx="12" cy="16" r="1" fill="#f59e0b"/>
+      </svg>
+    </div>
+
+    <h1>호스팅이 일시 제한되었습니다</h1>
+    <p>요청하신 사이트의 호스팅이 현재 제한 상태입니다.</p>
+    <p>무료 호스팅 제공업체의 자원 제한 정책에 따라 임시적으로 제한될 수 있습니다.</p>
+
+    <div class="reason-box" id="reasonBox" style="display:none">
+      <div class="reason-label">⚠️ 제한 사유</div>
+      <div class="reason-text" id="reasonText">—</div>
+    </div>
+
+    <ul class="info-list">
+      <li>무료 호스팅은 트래픽/디스크 제한이 있습니다</li>
+      <li>대역폭 초과 시 일시적으로 접속이 제한될 수 있습니다</li>
+      <li>문제가 지속되면 플랜 업그레이드를 고려해보세요</li>
+      <li>고객센터를 통해 문의하시면 빠르게 도와드립니다</li>
+    </ul>
+
+    <div class="actions">
+      <a href="/dashboard.html" class="btn btn-primary">대시보드로 이동</a>
+      <a href="/pricing.html" class="btn btn-ghost">플랜 업그레이드</a>
+      <a href="/contact.html" class="btn btn-ghost">고객센터 문의</a>
+    </div>
+  </div>
+</div>
+
+<script>
+  // URL 파라미터에서 사유 추출
+  const params = new URLSearchParams(location.search);
+  const reason = params.get('reason');
+  const siteId = params.get('site');
+
+  if (reason) {
+    document.getElementById('reasonBox').style.display = '';
+    document.getElementById('reasonText').textContent = decodeURIComponent(reason);
+  }
+
+  // 사이트 정보 조회
+  if (siteId) {
+    const token = localStorage.getItem('cp_token') || sessionStorage.getItem('cp_token');
+    if (token) {
+      fetch('/api/sites/' + siteId, {
+        headers: { 'Authorization': 'Bearer ' + token }
+      })
+      .then(r => r.json())
+      .then(data => {
+        if (data.site?.suspension_reason) {
+          document.getElementById('reasonBox').style.display = '';
+          document.getElementById('reasonText').textContent = data.site.suspension_reason;
+        }
+      })
+      .catch(() => {});
+    }
+  }
+</script>
+</body>
+</html>
