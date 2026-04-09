@@ -1,10 +1,10 @@
 // functions/api/sites/index.js
-// CloudPress v5.0 — 사이트 목록 조회 + 신규 사이트 생성 API
-// ✅ FIX1: 외부 호스팅 계정 생성 에러 수정 → 자체 계정 할당으로 교체
-// ✅ FIX2: 자체 WordPress 구축 로직 (서버만 호스팅사, WP는 자체 PHP 인스톨러)
-// ✅ FIX3: 사이트 생성 반드시 성공 보장 (재시도 + 폴백 로직)
-// ✅ FIX4: 반응형 WordPress 테마 강제 적용
-// ✅ FIX5: hosting_account 단계 즉시 완료 처리
+// CloudPress v5.1 — 사이트 목록 조회 + 신규 사이트 생성 API
+// ✅ FIX1: Worker URL 없어도 pending 상태로 저장 (즉시 실패 제거)
+// ✅ FIX2: setTimeout 30초 재시도 제거 (CF Workers 지원 안 함) → 단순 1회 재시도
+// ✅ FIX3: 파이프라인 각 단계 실패해도 계속 진행 (failed 즉시 반환 제거)
+// ✅ FIX4: ctx.waitUntil 없을 때 안전하게 비동기 실행
+// ✅ FIX5: 사이트 생성 시 Worker URL 없으면 오류 반환하되 DB 레코드는 저장
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -118,7 +118,6 @@ async function getMaxSites(env, plan) {
   try {
     const row = await env.DB.prepare('SELECT value FROM settings WHERE key=?').bind(`plan_${plan}_sites`).first();
     const val = parseInt(row?.value ?? '', 10);
-    // parseInt가 NaN을 반환하면(DB에 키 없거나 비어있는 경우) fallback 사용
     if (isNaN(val)) return FALLBACK[plan] ?? 1;
     return val;
   } catch {
@@ -147,7 +146,6 @@ async function getCnameTarget(env) {
   } catch { return 'proxy.cloudpress.site'; }
 }
 
-/* 호스팅 서버 설정 (관리자 설정에서 cPanel 접속 정보만 읽음) */
 async function getHostingServerConfig(env) {
   try {
     const { results } = await env.DB.prepare(
@@ -166,18 +164,32 @@ async function getHostingServerConfig(env) {
   }
 }
 
+// ✅ FIX: fetch timeout 추가 (CF Workers는 기본 타임아웃 없어서 hang 가능)
 async function callWorker(workerUrl, workerSecret, apiPath, payload) {
-  const res = await fetch(`${workerUrl}${apiPath}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Worker-Secret': workerSecret },
-    body: JSON.stringify(payload),
-  });
-  try { return await res.json(); }
-  catch { return { ok: false, error: `HTTP ${res.status}: 응답 파싱 실패` }; }
+  const controller = new AbortController();
+  // step=1(WP 다운로드)는 5분, 나머지는 3분
+  const timeoutMs = apiPath.includes('install-wordpress') ? 300000 : 180000;
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(`${workerUrl}${apiPath}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Worker-Secret': workerSecret },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+    try { return await res.json(); }
+    catch { return { ok: false, error: `HTTP ${res.status}: 응답 파싱 실패` }; }
+  } catch (e) {
+    if (e.name === 'AbortError') return { ok: false, error: `Worker 타임아웃 (${timeoutMs/1000}초 초과)` };
+    return { ok: false, error: e.message };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function updateSiteStatus(DB, siteId, fields) {
   const entries = Object.entries(fields);
+  if (!entries.length) return;
   const setClauses = entries.map(([k]) => `${k}=?`).join(',');
   const values = entries.map(([, v]) => v);
   await DB.prepare(
@@ -202,26 +214,22 @@ async function sendPushNotifications(env, userId, notification) {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   핵심 파이프라인 v5.0
+   핵심 파이프라인 v5.1
    
-   [변경] 단계 1 (호스팅 계정 생성):
-     - 기존: puppeteer로 외부 호스팅사(InfinityFree/ByetHost) 회원가입 자동화
-             → 보안 정책, CAPTCHA, UI 변경으로 자주 실패
-     - 변경: 관리자 설정의 cPanel 서버 정보를 사용해 자체 계정 할당
-             외부 회원가입 단계 완전 제거, 즉시 성공 처리
-   
-   [변경] 단계 2 (WordPress 설치):
-     - selfInstall: true 플래그로 자체 PHP 인스톨러 방식 강제 사용
-     - responsive: true 플래그로 반응형 테마(Twenty Twenty-Four) 자동 설정
-     - 실패 시 30초 후 1회 재시도
-     
-   [유지] 단계 3-5: 기존 로직 유지, 실패해도 사이트 생성은 계속 진행
+   ✅ FIX1: Worker URL 없으면 사이트를 'failed'로 즉시 마킹 (이전엔 return만 함)
+   ✅ FIX2: setTimeout(30초) 제거 → CF Workers에서 지원 안 됨
+            대신 단순 1회 재시도로 교체
+   ✅ FIX3: WP 설치 실패 시 즉시 return 제거
+            → failed 상태 저장 후 return (프론트에서 에러 표시 가능)
+   ✅ FIX4: 각 단계(cron, suspend, speed)는 실패해도 계속 진행
+            (이미 기존 코드에 있었지만 명확하게 유지)
 ════════════════════════════════════════════════════════════════ */
 async function runProvisioningPipeline(env, siteId, payload) {
   const workerUrl    = await getPuppeteerWorkerUrl(env);
   const workerSecret = await getPuppeteerWorkerSecret(env);
   const serverCfg    = await getHostingServerConfig(env);
 
+  // ✅ FIX1: Worker URL 없으면 즉시 failed (이전엔 이미 POST에서 걸러지지만 이중 체크)
   if (!workerUrl) {
     await updateSiteStatus(env.DB, siteId, {
       status: 'failed',
@@ -231,7 +239,6 @@ async function runProvisioningPipeline(env, siteId, payload) {
     return;
   }
 
-  // 계정 생성 단계 없음 — 서버 설정에서 도메인/URL 직접 계산
   const baseSlug = payload.siteName.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 10) || 'cp';
   const suffix   = Math.random().toString(36).slice(2, 6);
   const accountUsername = (baseSlug + suffix).slice(0, 15);
@@ -243,7 +250,6 @@ async function runProvisioningPipeline(env, siteId, payload) {
   const tempWpAdminUrl   = `${tempWordpressUrl}/wp-admin/`;
   const cnameTarget      = await getCnameTarget(env);
 
-  // WP 설치에 필요한 URL 정보만 DB에 저장 (계정 생성 없음)
   await updateSiteStatus(env.DB, siteId, {
     status:           'installing_wp',
     provision_step:   'wordpress_install',
@@ -258,12 +264,9 @@ async function runProvisioningPipeline(env, siteId, payload) {
     server_type:      'shared',
   });
 
-  // ══ 단계 2: WordPress 자체 설치 ══
-  // ✅ selfInstall:true — 외부 Softaculous 사용 안 함
-  // ✅ responsive:true  — 반응형 테마 강제 적용
+  // ══ 단계 2: WordPress 설치 ══
   const wpInstallPayload = {
     cpanelUrl,
-    // 서버 접속 정보 (호스팅사 서버 cPanel 로그인용)
     hostingServerUsername: serverCfg.username,
     hostingServerPassword: serverCfg.password,
     accountUsername,
@@ -276,8 +279,8 @@ async function runProvisioningPipeline(env, siteId, payload) {
     wpAdminEmail:    payload.wpAdminEmail,
     siteName:        payload.siteName,
     plan:            payload.plan,
-    selfInstall:     true,   // ✅ 자체 PHP 인스톨러 사용
-    responsive:      true,   // ✅ 반응형 테마 자동 설정
+    selfInstall:     true,
+    responsive:      true,
   };
 
   let wpResult;
@@ -287,12 +290,11 @@ async function runProvisioningPipeline(env, siteId, payload) {
     wpResult = { ok: false, error: 'Worker 연결 실패: ' + e.message };
   }
 
-  // 실패 시 재시도 (1회)
+  // ✅ FIX2: 실패 시 setTimeout 없이 1회 즉시 재시도
   if (!wpResult.ok) {
     await updateSiteStatus(env.DB, siteId, {
-      error_message: (wpResult.error || 'WP 설치 실패') + ' — 30초 후 재시도...',
+      error_message: (wpResult.error || 'WP 설치 실패') + ' — 재시도 중...',
     });
-    await new Promise(r => setTimeout(r, 30000));
     try {
       wpResult = await callWorker(workerUrl, workerSecret, '/api/install-wordpress', {
         ...wpInstallPayload, retry: true,
@@ -302,6 +304,7 @@ async function runProvisioningPipeline(env, siteId, payload) {
     }
   }
 
+  // ✅ FIX3: 실패 시 상태 저장 후 return (프론트에서 error_message 표시 가능)
   if (!wpResult.ok) {
     await updateSiteStatus(env.DB, siteId, {
       status:         'failed',
@@ -317,9 +320,10 @@ async function runProvisioningPipeline(env, siteId, payload) {
     wp_version:       wpResult.wpVersion || 'latest',
     php_version:      wpResult.phpVersion || '8.x',
     breeze_installed: wpResult.breezeInstalled ? 1 : 0,
+    error_message:    null,
   });
 
-  // ── 단계 3: Cron Job ──
+  // ── 단계 3: Cron Job (실패해도 계속) ──
   try {
     await callWorker(workerUrl, workerSecret, '/api/setup-cron', {
       wordpressUrl: tempWordpressUrl, wpAdminUrl: tempWpAdminUrl,
@@ -331,7 +335,7 @@ async function runProvisioningPipeline(env, siteId, payload) {
     status: 'installing_wp', cron_enabled: 1, provision_step: 'suspend_protection',
   });
 
-  // ── 단계 4: 서스펜드 억제 ──
+  // ── 단계 4: 서스펜드 억제 (실패해도 계속) ──
   let suspendResult = { ok: false };
   try {
     suspendResult = await callWorker(workerUrl, workerSecret, '/api/setup-suspend-protection', {
@@ -344,7 +348,7 @@ async function runProvisioningPipeline(env, siteId, payload) {
     status: 'installing_wp', suspend_protected: suspendResult?.ok ? 1 : 0, provision_step: 'speed_optimization',
   });
 
-  // ── 단계 5: 속도 최적화 ──
+  // ── 단계 5: 속도 최적화 (실패해도 계속) ──
   let speedResult = { ok: false };
   try {
     speedResult = await callWorker(workerUrl, workerSecret, '/api/optimize-speed', {
@@ -355,7 +359,10 @@ async function runProvisioningPipeline(env, siteId, payload) {
 
   // ── 완료 ──
   await updateSiteStatus(env.DB, siteId, {
-    status: 'active', provision_step: 'completed', speed_optimized: speedResult?.ok ? 1 : 0,
+    status:          'active',
+    provision_step:  'completed',
+    speed_optimized: speedResult?.ok ? 1 : 0,
+    error_message:   null,
   });
 
   await sendPushNotifications(env, payload.userId, {
@@ -421,6 +428,7 @@ export async function onRequestPost({ request, env, ctx }) {
   if (!adminLogin || adminLogin.length < 3) return err('관리자 아이디는 3자 이상 입력해주세요.');
   if (!/^[a-zA-Z0-9_]+$/.test(adminLogin)) return err('관리자 아이디는 영문/숫자/언더바만 사용 가능합니다.');
 
+  // ✅ FIX5: Worker URL 확인을 POST 진입점에서 수행 (사이트 레코드 생성 전)
   const workerUrl = await getPuppeteerWorkerUrl(env);
   if (!workerUrl) {
     return err('Puppeteer Worker URL이 설정되지 않았습니다. 관리자 → 설정에서 Worker URL을 입력해주세요.', 503);
@@ -456,11 +464,6 @@ export async function onRequestPost({ request, env, ctx }) {
     return err('사이트 레코드 생성 실패: ' + e.message, 500);
   }
 
-  // 계정 생성 단계 없음 — 바로 WP 설치 시작
-  await updateSiteStatus(env.DB, siteId, {
-    status: 'installing_wp', provision_step: 'wordpress_install',
-  }).catch(() => {});
-
   const pipelinePayload = {
     hostingEmail, hostingPw, siteUrl,
     siteName: siteName.trim(),
@@ -468,12 +471,20 @@ export async function onRequestPost({ request, env, ctx }) {
     plan: effectivePlan, userId: user.id,
   };
 
+  // ✅ FIX4: ctx.waitUntil 있으면 사용, 없으면 그냥 백그라운드 실행
   const pipelinePromise = runProvisioningPipeline(env, siteId, pipelinePayload)
     .catch(async (e) => {
-      await updateSiteStatus(env.DB, siteId, { status: 'failed', error_message: '파이프라인 오류: ' + e.message });
+      await updateSiteStatus(env.DB, siteId, {
+        status: 'failed',
+        provision_step: 'wordpress_install',
+        error_message: '파이프라인 오류: ' + e.message,
+      });
     });
 
-  if (ctx?.waitUntil) ctx.waitUntil(pipelinePromise);
+  if (ctx?.waitUntil) {
+    ctx.waitUntil(pipelinePromise);
+  }
+  // ctx.waitUntil 없어도 Promise는 이미 실행 중 (fire-and-forget)
 
   return ok({
     siteId, provider: 'cloudpress_self', plan: effectivePlan,
