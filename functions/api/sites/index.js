@@ -362,6 +362,7 @@ async function runProvisioningPipeline(env, siteId, payload) {
   }
 
   await updateSiteStatus(env.DB, siteId, {
+    status: 'installing_wp',
     provision_step: 'cron_setup',
     wp_version: wpResult.wpVersion || 'latest',
     php_version: wpResult.phpVersion || '8.x',
@@ -382,6 +383,7 @@ async function runProvisioningPipeline(env, siteId, payload) {
   }
 
   await updateSiteStatus(env.DB, siteId, {
+    status: 'installing_wp',
     cron_enabled: 1,
     provision_step: 'suspend_protection',
   });
@@ -400,6 +402,7 @@ async function runProvisioningPipeline(env, siteId, payload) {
   }
 
   await updateSiteStatus(env.DB, siteId, {
+    status: 'installing_wp',
     suspend_protected: suspendResult?.ok ? 1 : 0,
     provision_step: 'speed_optimization',
   });
