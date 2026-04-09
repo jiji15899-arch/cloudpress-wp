@@ -174,6 +174,12 @@ INSERT OR IGNORE INTO settings (key, value) VALUES
   ('puppeteer_worker_url',    ''),
   ('puppeteer_worker_secret', ''),
 
+  -- ✅ 호스팅 서버 접근 설정 (getHostingServerConfig에서 사용)
+  ('hosting_cpanel_url',       ''),   -- cPanel URL (예: https://cpanel.example.com:2083)
+  ('hosting_server_username',  ''),   -- cPanel 관리자 계정
+  ('hosting_server_password',  ''),   -- cPanel 관리자 비밀번호
+  ('hosting_server_domain',    ''),   -- 서버 기본 도메인
+
   -- Cloudflare
   ('cloudflare_cdn_enabled',  '1'),
   ('auto_ssl',                '1'),
