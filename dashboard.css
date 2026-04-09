@@ -253,3 +253,330 @@ html,body{height:100%;font-family:var(--font-body);background:var(--bg);color:va
 .field input:focus,.field select:focus,.field textarea:focus{border-color:var(--accent)}
 .field textarea{resize:vertical;min-height:80px}
 .field .hint{font-size:.77rem;color:var(--muted);margin-top:4px}
+
+
+/* ═══════════════════════════════════════════════
+   CloudPress v5.0 — 반응형 (Responsive)
+   모바일 / 태블릿 / 데스크톱 완전 지원
+═══════════════════════════════════════════════ */
+
+/* ── 태블릿 (769px ~ 1024px) ── */
+@media (max-width: 1024px) {
+  .sidebar {
+    transform: translateX(-100%);
+    position: fixed;
+    z-index: 1000;
+    height: 100vh;
+    transition: transform 0.25s ease;
+  }
+  .sidebar.open {
+    transform: translateX(0);
+  }
+  .sidebar-overlay {
+    display: block;
+  }
+  .main {
+    margin-left: 0 !important;
+    width: 100% !important;
+  }
+  .sidebar-toggle {
+    display: flex !important;
+  }
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+  .sites-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+
+/* ── 모바일 (~ 768px) ── */
+@media (max-width: 768px) {
+  :root {
+    --sidebar-w: 260px;
+  }
+
+  body {
+    font-size: 15px;
+  }
+
+  /* 사이드바 */
+  .sidebar {
+    width: var(--sidebar-w);
+    transform: translateX(-100%);
+  }
+
+  /* 메인 레이아웃 */
+  .main {
+    margin-left: 0 !important;
+    padding: 0 !important;
+  }
+
+  .topbar {
+    padding: 12px 16px !important;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .topbar-title {
+    font-size: 1rem !important;
+  }
+
+  .content {
+    padding: 16px !important;
+  }
+
+  /* 카드 */
+  .card {
+    padding: 16px !important;
+    border-radius: 12px !important;
+  }
+
+  /* 통계 그리드 */
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 10px !important;
+  }
+
+  /* 사이트 카드 그리드 */
+  .sites-grid {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+
+  /* 사이트 카드 */
+  .site-card {
+    padding: 14px !important;
+  }
+
+  /* 테이블 */
+  .table-wrap, table {
+    overflow-x: auto;
+    display: block;
+    max-width: 100%;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* 버튼 */
+  .btn {
+    min-height: 40px;
+    padding: 8px 16px !important;
+    font-size: 0.85rem !important;
+  }
+
+  .btn-lg {
+    min-height: 48px;
+    padding: 12px 24px !important;
+    font-size: 0.95rem !important;
+    width: 100%;
+  }
+
+  /* 폼 */
+  .form-group {
+    margin-bottom: 14px !important;
+  }
+
+  input, select, textarea {
+    font-size: 16px !important; /* iOS 자동 줌 방지 */
+    padding: 10px 12px !important;
+  }
+
+  /* 위저드 (사이트 생성) */
+  .wizard {
+    padding: 0 !important;
+  }
+
+  .steps {
+    padding: 0 4px !important;
+    margin-bottom: 20px !important;
+  }
+
+  .stp {
+    font-size: 0.75rem !important;
+  }
+
+  /* 로그 박스 */
+  .log {
+    height: 140px !important;
+    font-size: 0.72rem !important;
+  }
+
+  /* 인증 페이지 */
+  .auth-card {
+    margin: 16px !important;
+    padding: 24px 20px !important;
+    border-radius: 16px !important;
+  }
+
+  /* 가격 카드 */
+  .pricing-grid {
+    grid-template-columns: 1fr !important;
+    gap: 16px !important;
+  }
+
+  /* 어드민 테이블 */
+  .admin-table {
+    font-size: 0.78rem !important;
+  }
+
+  .admin-table td, .admin-table th {
+    padding: 8px 10px !important;
+  }
+
+  /* 모달 */
+  .modal-box {
+    margin: 16px !important;
+    max-width: calc(100vw - 32px) !important;
+    padding: 20px !important;
+  }
+
+  /* 배지/태그 */
+  .badge, .tag {
+    font-size: 0.7rem !important;
+    padding: 2px 8px !important;
+  }
+
+  /* 크레덴셜 행 */
+  .cred-row {
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+  }
+
+  .cred-label {
+    width: 100% !important;
+    font-size: 0.72rem !important;
+  }
+
+  /* spec 배지 */
+  .spec-badges {
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+  }
+
+  /* 알림 배너 */
+  .notif-banner {
+    flex-wrap: wrap !important;
+  }
+
+  /* 프로비저닝 단계 */
+  .provision-step {
+    font-size: 0.78rem !important;
+  }
+
+  /* 헤더 flex */
+  .topbar > div {
+    gap: 8px !important;
+  }
+
+  /* 성공 아이콘 */
+  .success-icon {
+    width: 60px !important;
+    height: 60px !important;
+  }
+
+  /* WP 링크 버튼 */
+  .wp-link {
+    font-size: 0.82rem !important;
+    padding: 10px 16px !important;
+  }
+}
+
+/* ── 소형 모바일 (~ 480px) ── */
+@media (max-width: 480px) {
+  .content {
+    padding: 12px !important;
+  }
+
+  .stats-grid {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 8px !important;
+  }
+
+  .card {
+    padding: 14px !important;
+  }
+
+  h1, .page-title {
+    font-size: 1.3rem !important;
+  }
+
+  h2 {
+    font-size: 1.1rem !important;
+  }
+
+  .topbar-title {
+    font-size: 0.9rem !important;
+  }
+
+  .site-card .site-name {
+    font-size: 0.9rem !important;
+  }
+
+  .btn-group {
+    flex-direction: column !important;
+    gap: 8px !important;
+  }
+
+  .btn-group .btn {
+    width: 100% !important;
+  }
+}
+
+/* ── 터치 디바이스 UX 개선 ── */
+@media (hover: none) and (pointer: coarse) {
+  .btn, button, a, [role="button"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* 탭 가독성 */
+  .sb-link {
+    padding: 12px 16px !important;
+  }
+
+  /* 스크롤 스냅 */
+  .sites-grid {
+    scroll-snap-type: x mandatory;
+  }
+}
+
+/* ── 사이드바 오버레이 ── */
+.sidebar-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  z-index: 999;
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+
+@media (max-width: 1024px) {
+  .sidebar-overlay.active {
+    display: block;
+  }
+}
+
+/* ── 사이드바 토글 버튼 ── */
+.sidebar-toggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--text);
+  flex-shrink: 0;
+}
+
+@media (max-width: 1024px) {
+  .sidebar-toggle {
+    display: flex;
+  }
+}
