@@ -9,19 +9,49 @@
   <style>
     .info-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:24px;margin-bottom:20px}
     .info-title{font-family:var(--font-head);font-weight:700;font-size:.95rem;margin-bottom:16px;display:flex;align-items:center;gap:8px}
-    .info-row{display:flex;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)}
+    .info-row{display:flex;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--border)}
     .info-row:last-child{border:none}
-    .info-label{font-size:.8rem;color:var(--muted);width:140px;flex-shrink:0}
+    .info-label{font-size:.8rem;color:var(--muted);width:150px;flex-shrink:0;padding-top:2px}
     .info-val{flex:1;font-size:.88rem;font-weight:600;word-break:break-all}
     .status-badge{display:inline-flex;align-items:center;gap:5px;padding:4px 12px;border-radius:20px;font-size:.75rem;font-weight:700}
     .status-active{background:rgba(34,197,94,.1);color:#16a34a}
     .status-pending,.status-provisioning,.status-installing_wp{background:rgba(249,115,22,.1);color:var(--accent)}
     .status-failed{background:rgba(239,68,68,.1);color:var(--error)}
     .status-suspended{background:rgba(245,158,11,.1);color:var(--warning)}
-    .wp-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}
+    .wp-actions{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}
     .suspended-banner{background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.25);border-radius:10px;padding:16px;margin-bottom:20px}
     .pw-field{display:flex;align-items:center;gap:8px}
     .pw-field input{flex:1;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:.85rem;font-weight:600;color:var(--text)}
+
+    /* ── 도메인 관련 스타일 ── */
+    .domain-item{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--border)}
+    .domain-item:last-child{border:none}
+    .domain-name{flex:1;font-size:.9rem;font-weight:600;word-break:break-all}
+    .domain-tag{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:12px;font-size:.72rem;font-weight:700;white-space:nowrap}
+    .tag-primary{background:rgba(34,197,94,.1);color:#16a34a}
+    .tag-sub{background:rgba(99,102,241,.1);color:#4f46e5}
+    .tag-pending{background:rgba(249,115,22,.1);color:var(--accent)}
+    .tag-active{background:rgba(34,197,94,.1);color:#16a34a}
+    .tag-failed{background:rgba(239,68,68,.1);color:var(--error)}
+    .domain-actions{display:flex;gap:6px}
+    .cname-box{background:var(--bg);border:1px solid var(--border2);border-radius:10px;padding:16px;margin-top:12px}
+    .cname-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)}
+    .cname-row:last-child{border:none}
+    .cname-label{font-size:.75rem;color:var(--muted);width:70px;flex-shrink:0}
+    .cname-val{flex:1;font-family:monospace;font-size:.85rem;font-weight:600;word-break:break-all}
+    .copy-btn{padding:3px 8px;background:var(--surface2);border:1px solid var(--border2);border-radius:6px;color:var(--muted);font-size:.72rem;cursor:pointer;white-space:nowrap;flex-shrink:0}
+    .copy-btn:hover{border-color:var(--accent);color:var(--accent)}
+    .add-domain-form{margin-top:16px;display:flex;gap:8px}
+    .add-domain-form input{flex:1;background:var(--bg);border:1px solid var(--border2);border-radius:8px;padding:9px 12px;color:var(--text);font-size:.88rem;outline:none}
+    .add-domain-form input:focus{border-color:var(--accent)}
+    .domain-verify-result{padding:10px 14px;border-radius:8px;font-size:.83rem;margin-top:10px}
+    .verify-ok{background:rgba(34,197,94,.07);border:1px solid rgba(34,197,94,.2);color:#15803d}
+    .verify-fail{background:rgba(249,115,22,.07);border:1px solid rgba(249,115,22,.2);color:var(--accent)}
+    .spec-pill{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;font-size:.74rem;font-weight:700;margin:2px}
+    .spec-pill.php{background:rgba(139,92,246,.1);color:#7c3aed}
+    .spec-pill.tz{background:rgba(16,185,129,.1);color:#059669}
+    .spec-pill.wp{background:rgba(59,130,246,.1);color:#2563eb}
+    .spec-pill.mysql{background:rgba(245,158,11,.1);color:#d97706}
   </style>
 </head>
 <body>
@@ -78,6 +108,10 @@ const STATUS_LABELS = {
   active: '활성', failed: '실패', deleted: '삭제됨',
 };
 
+let currentSite = null;
+let currentDomains = [];
+let currentCnameTarget = '';
+
 function esc(s) {
   return String(s || '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 }
@@ -85,7 +119,10 @@ function esc(s) {
 async function loadSite() {
   const params = new URLSearchParams(location.search);
   const siteId = params.get('id');
-  if (!siteId) { document.getElementById('content').innerHTML = '<p style="color:var(--error);text-align:center;padding:40px">사이트 ID가 없습니다.</p>'; return; }
+  if (!siteId) {
+    document.getElementById('content').innerHTML = '<p style="color:var(--error);text-align:center;padding:40px">사이트 ID가 없습니다.</p>';
+    return;
+  }
 
   let data;
   try {
@@ -93,7 +130,7 @@ async function loadSite() {
     const res = await fetch('/api/sites/' + siteId, { headers: { 'Authorization': 'Bearer ' + token } });
     const ct = res.headers.get('content-type') || '';
     if (!ct.includes('application/json')) {
-      document.getElementById('content').innerHTML = `<p style="color:var(--error);text-align:center;padding:40px">서버 응답 오류 (${res.status}). 잠시 후 다시 시도해주세요.</p>`;
+      document.getElementById('content').innerHTML = `<p style="color:var(--error);text-align:center;padding:40px">서버 응답 오류 (${res.status}).</p>`;
       return;
     }
     data = await res.json();
@@ -101,15 +138,30 @@ async function loadSite() {
     document.getElementById('content').innerHTML = `<p style="color:var(--error);text-align:center;padding:40px">네트워크 오류: ${e.message}</p>`;
     return;
   }
-  if (!data.ok) { document.getElementById('content').innerHTML = `<p style="color:var(--error);text-align:center;padding:40px">${data.error || '사이트를 불러올 수 없습니다.'}</p>`; return; }
 
-  const site = data.site;
+  if (!data.ok) {
+    document.getElementById('content').innerHTML = `<p style="color:var(--error);text-align:center;padding:40px">${data.error || '사이트를 불러올 수 없습니다.'}</p>`;
+    return;
+  }
+
+  currentSite = data.site;
+  const site = currentSite;
+
   document.getElementById('pageTitle').textContent = site.name || '사이트 상세';
   document.title = site.name + ' — CloudPress';
 
   const statusLabel = STATUS_LABELS[site.status] || site.status;
   const statusCls = site.suspended ? 'status-suspended' : `status-${site.status}`;
   const isActive = site.status === 'active' && !site.suspended;
+
+  // PHP/WP/TZ 정보 알약
+  const specPills = isActive ? `
+    <div style="margin-bottom:12px">
+      ${site.php_version ? `<span class="spec-pill php">⚡ PHP ${site.php_version}</span>` : '<span class="spec-pill php">⚡ PHP 8.3</span>'}
+      ${site.wp_version ? `<span class="spec-pill wp">📦 WP ${site.wp_version}</span>` : '<span class="spec-pill wp">📦 WP 최신</span>'}
+      <span class="spec-pill tz">🕐 KST (Asia/Seoul)</span>
+      <span class="spec-pill mysql">🗄️ MySQL +9:00</span>
+    </div>` : '';
 
   const suspendedHtml = site.suspended ? `
     <div class="suspended-banner">
@@ -120,37 +172,57 @@ async function loadSite() {
       </div>
     </div>` : '';
 
+  const siteUrl = site.primary_domain
+    ? `https://${site.primary_domain}`
+    : (site.wp_url || '');
+
   document.getElementById('content').innerHTML = `
     ${suspendedHtml}
 
+    <!-- 사이트 정보 -->
     <div class="info-card">
       <div class="info-title">
         🌐 WordPress 사이트 정보
         <span class="status-badge ${statusCls}">${site.suspended ? '일시 정지' : statusLabel}</span>
       </div>
 
+      ${specPills}
+
       ${isActive ? `
       <div class="wp-actions">
-        <a href="${esc(site.wp_url)}" target="_blank" class="btn btn-ghost">
+        <a href="${esc(siteUrl || site.wp_url || '#')}" target="_blank" class="btn btn-ghost">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" stroke="currentColor" stroke-width="1.5"/><polyline points="15 3 21 3 21 9" stroke="currentColor" stroke-width="1.5"/><line x1="10" y1="14" x2="21" y2="3" stroke="currentColor" stroke-width="1.5"/></svg>
           사이트 방문
         </a>
-        <a href="${esc(site.wp_admin_url || site.wp_url + '/wp-admin/')}" target="_blank" class="btn btn-primary">
+        <a href="${esc(site.wp_admin_url || (site.wp_url ? site.wp_url + '/wp-admin/' : '#'))}" target="_blank" class="btn btn-primary">
           ⚙️ WordPress 관리자
         </a>
       </div>` : ''}
 
       <div class="info-row"><div class="info-label">사이트 이름</div><div class="info-val">${esc(site.name)}</div></div>
-      <div class="info-row"><div class="info-label">사이트 URL</div><div class="info-val"><a href="${esc(site.wp_url || '')}" target="_blank" style="color:var(--accent)">${esc(site.wp_url || '생성 중...')}</a></div></div>
-      <div class="info-row"><div class="info-label">관리자 URL</div><div class="info-val"><a href="${esc(site.wp_admin_url || '')}" target="_blank" style="color:var(--accent)">${esc(site.wp_admin_url || '생성 중...')}</a></div></div>
+      <div class="info-row">
+        <div class="info-label">현재 주소 (URL)</div>
+        <div class="info-val">
+          <a href="${esc(siteUrl || site.wp_url || '#')}" target="_blank" style="color:var(--accent)">${esc(siteUrl || site.wp_url || '생성 중...')}</a>
+          ${site.primary_domain && site.primary_domain !== site.hosting_domain ? '<span class="domain-tag tag-primary" style="margin-left:6px">주도메인</span>' : '<span class="domain-tag tag-sub" style="margin-left:6px">서브도메인</span>'}
+        </div>
+      </div>
+      <div class="info-row"><div class="info-label">관리자 URL</div><div class="info-val"><a href="${esc(site.wp_admin_url || '#')}" target="_blank" style="color:var(--accent)">${esc(site.wp_admin_url || '생성 중...')}</a></div></div>
       <div class="info-row"><div class="info-label">호스팅 업체</div><div class="info-val">${PROVIDER_NAMES[site.hosting_provider] || site.hosting_provider || '—'}</div></div>
-      <div class="info-row"><div class="info-label">WordPress 버전</div><div class="info-val">${esc(site.wp_version || '—')}</div></div>
+      <div class="info-row"><div class="info-label">기본 서브도메인</div><div class="info-val">${esc(site.hosting_domain || site.wp_url || '—')}</div></div>
+      <div class="info-row"><div class="info-label">PHP 버전</div><div class="info-val">${esc(site.php_version || 'PHP 8.3 (최신)')} ✅</div></div>
+      <div class="info-row"><div class="info-label">WordPress 버전</div><div class="info-val">${esc(site.wp_version || '최신 (한국어)')} ✅</div></div>
+      <div class="info-row"><div class="info-label">PHP 시간대</div><div class="info-val">Asia/Seoul (KST, UTC+9) ✅</div></div>
+      <div class="info-row"><div class="info-label">MySQL 시간대</div><div class="info-val">+9:00 (KST) ✅</div></div>
       <div class="info-row"><div class="info-label">SSL 인증서</div><div class="info-val">${site.ssl_active ? '✅ 활성화됨' : '⏳ 준비 중'}</div></div>
-      <div class="info-row"><div class="info-label">Cloudflare CDN</div><div class="info-val">${site.cloudflare_zone_id ? '✅ 연결됨' : '—'}</div></div>
       <div class="info-row"><div class="info-label">Breeze 캐시</div><div class="info-val">${site.breeze_installed ? '✅ 설치됨' : '—'}</div></div>
-      <div class="info-row"><div class="info-label">생성일</div><div class="info-val">${(site.created_at ? new Date(isNaN(site.created_at) ? site.created_at : site.created_at * 1000).toLocaleString('ko-KR') : '—')}</div></div>
+      <div class="info-row"><div class="info-label">Cron Job</div><div class="info-val">${site.cron_enabled ? '✅ 활성화됨' : '—'}</div></div>
+      <div class="info-row"><div class="info-label">서스펜드 억제</div><div class="info-val">${site.suspend_protected ? '✅ 활성화됨' : '기본 설정'}</div></div>
+      <div class="info-row"><div class="info-label">속도 최적화</div><div class="info-val">${site.speed_optimized ? '✅ 최적화됨' : '—'}</div></div>
+      <div class="info-row"><div class="info-label">생성일</div><div class="info-val">${site.created_at ? new Date(isNaN(site.created_at) ? site.created_at : site.created_at * 1000).toLocaleString('ko-KR') : '—'}</div></div>
     </div>
 
+    <!-- 로그인 정보 -->
     <div class="info-card">
       <div class="info-title">🔐 WordPress 로그인 정보</div>
       <div class="info-row"><div class="info-label">관리자 아이디</div><div class="info-val">${esc(site.wp_username || '—')}</div></div>
@@ -169,12 +241,308 @@ async function loadSite() {
       </div>
     </div>
 
+    <!-- 도메인 관리 (활성 사이트만) -->
+    ${isActive ? `
+    <div class="info-card" id="domainSection">
+      <div class="info-title">
+        🌐 도메인 관리
+        <span style="font-size:.75rem;font-weight:400;color:var(--muted);margin-left:4px">나만의 도메인 연결</span>
+      </div>
+
+      <div style="font-size:.83rem;color:var(--muted);margin-bottom:16px">
+        현재 호스팅사의 서브도메인(<code style="background:var(--bg);padding:1px 5px;border-radius:4px">${esc(site.hosting_domain || site.wp_url || '')}</code>)이 기본 주소입니다.
+        나만의 도메인을 추가하고, CNAME 인증 후 주도메인으로 설정할 수 있습니다.
+      </div>
+
+      <!-- 도메인 목록 -->
+      <div id="domainList">
+        <div style="text-align:center;padding:20px;color:var(--muted);font-size:.85rem">로딩 중...</div>
+      </div>
+
+      <!-- 도메인 추가 폼 -->
+      <div style="margin-top:20px;border-top:1px solid var(--border);padding-top:16px">
+        <div style="font-size:.85rem;font-weight:700;margin-bottom:10px">➕ 도메인 추가</div>
+        <div class="add-domain-form">
+          <input type="text" id="newDomainInput" placeholder="예: example.com 또는 www.example.com" autocomplete="off"/>
+          <button class="btn btn-primary btn-sm" onclick="addDomain('${site.id}')">추가</button>
+        </div>
+        <div id="addDomainResult" style="display:none"></div>
+      </div>
+    </div>` : ''}
+
+    <!-- 위험 구역 -->
     <div class="info-card">
       <div class="info-title" style="color:var(--error)">⚠️ 위험 구역</div>
       <p style="font-size:.84rem;color:var(--muted);margin-bottom:14px">이 사이트를 삭제하면 모든 데이터가 제거되며 되돌릴 수 없습니다.</p>
       <button class="btn btn-ghost" style="color:var(--error);border-color:rgba(239,68,68,.3)" onclick="deleteSite('${site.id}','${esc(site.name)}')">이 사이트 삭제</button>
     </div>
   `;
+
+  // 도메인 목록 로드
+  if (isActive) {
+    await loadDomains(site.id);
+  }
+}
+
+/* ══════════════════════════════════════════
+   도메인 관리
+   ✅ 수정6: 서브도메인 기본 → 도메인 추가 → CNAME 인증 → 주도메인 설정
+══════════════════════════════════════════ */
+
+async function loadDomains(siteId) {
+  try {
+    const token = CP.getToken();
+    const res = await fetch(`/api/sites/${siteId}/domains`, {
+      headers: { 'Authorization': 'Bearer ' + token },
+    });
+    const data = await res.json();
+    if (!data.ok) {
+      document.getElementById('domainList').innerHTML = '<p style="color:var(--muted);font-size:.84rem">도메인 목록을 불러올 수 없습니다.</p>';
+      return;
+    }
+    currentDomains = data.domains || [];
+    currentCnameTarget = data.cnameTarget || '';
+    renderDomainList(siteId, currentDomains, data.subdomain, data.primaryDomain, currentCnameTarget);
+  } catch (e) {
+    document.getElementById('domainList').innerHTML = `<p style="color:var(--muted);font-size:.84rem">오류: ${e.message}</p>`;
+  }
+}
+
+function renderDomainList(siteId, domains, subdomain, primaryDomain, cnameTarget) {
+  const listEl = document.getElementById('domainList');
+  if (!listEl) return;
+
+  let html = '';
+
+  // 기본 서브도메인 (항상 표시)
+  const subUrl = subdomain || '';
+  const isSubPrimary = !primaryDomain || primaryDomain === (currentSite.hosting_domain || '') || primaryDomain === subUrl.replace(/^https?:\/\//, '');
+  html += `
+    <div class="domain-item">
+      <div style="flex:1">
+        <div class="domain-name">${esc(subUrl)}</div>
+        <div style="font-size:.75rem;color:var(--muted);margin-top:2px">호스팅사 제공 서브도메인 (기본)</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <span class="domain-tag tag-sub">서브도메인</span>
+        ${isSubPrimary ? '<span class="domain-tag tag-primary">주도메인</span>' : ''}
+      </div>
+    </div>`;
+
+  // 추가된 도메인들
+  if (domains.length === 0) {
+    html += `<div style="padding:16px 0;font-size:.83rem;color:var(--muted);text-align:center;border-top:1px solid var(--border)">추가된 도메인이 없습니다.</div>`;
+  } else {
+    for (const d of domains) {
+      const statusTagMap = {
+        pending: '<span class="domain-tag tag-pending">CNAME 대기</span>',
+        active:  '<span class="domain-tag tag-active">✅ 인증 완료</span>',
+        failed:  '<span class="domain-tag tag-failed">인증 실패</span>',
+      };
+      const statusTag = statusTagMap[d.status] || '';
+      const isPrimary = d.is_primary;
+
+      html += `
+        <div class="domain-item" id="dom-${esc(d.id)}">
+          <div style="flex:1">
+            <div class="domain-name">${esc(d.domain)}</div>
+            <div style="display:flex;align-items:center;gap:6px;margin-top:4px">
+              ${statusTag}
+              ${isPrimary ? '<span class="domain-tag tag-primary">주도메인</span>' : ''}
+              ${d.verified_at ? `<span style="font-size:.72rem;color:var(--muted)">인증: ${new Date(d.verified_at).toLocaleDateString('ko-KR')}</span>` : ''}
+            </div>
+          </div>
+          <div class="domain-actions">
+            ${!d.cname_verified ? `
+              <button class="btn btn-ghost btn-sm" onclick="showCnameGuide('${esc(d.id)}', '${esc(d.domain)}', '${esc(d.cname_target || cnameTarget)}')">CNAME 설정</button>
+              <button class="btn btn-ghost btn-sm" onclick="verifyCname('${siteId}', '${esc(d.id)}')">인증 확인</button>
+            ` : ''}
+            ${d.cname_verified && !d.is_primary ? `
+              <button class="btn btn-primary btn-sm" onclick="setPrimaryDomain('${siteId}', '${esc(d.id)}', '${esc(d.domain)}')">주도메인 설정</button>
+            ` : ''}
+            ${!d.is_primary ? `<button class="btn btn-ghost btn-sm" style="color:var(--error)" onclick="removeDomain('${siteId}', '${esc(d.id)}', '${esc(d.domain)}')">삭제</button>` : ''}
+          </div>
+        </div>
+        ${d.status === 'pending' ? renderCnameGuide(d.domain, d.cname_target || cnameTarget, d.id) : ''}
+      `;
+    }
+  }
+
+  listEl.innerHTML = html;
+}
+
+function renderCnameGuide(domain, cnameTarget, domId) {
+  const isWww = domain.startsWith('www.');
+  const host = isWww ? 'www' : '@';
+  return `
+    <div class="cname-box" id="cname-guide-${domId}" style="display:none">
+      <div style="font-size:.82rem;font-weight:700;margin-bottom:10px;color:var(--accent)">📋 DNS 설정 가이드 — CNAME 레코드 추가</div>
+      <div style="font-size:.8rem;color:var(--muted);margin-bottom:10px">
+        도메인 등록 업체(가비아, 카페24, Cloudflare 등)의 DNS 관리 페이지에서 아래 CNAME 레코드를 추가해주세요.
+      </div>
+      <div class="cname-row">
+        <div class="cname-label">유형</div>
+        <div class="cname-val">CNAME</div>
+      </div>
+      <div class="cname-row">
+        <div class="cname-label">호스트</div>
+        <div class="cname-val">${esc(host)}</div>
+        <button class="copy-btn" onclick="copyVal('${esc(host)}')">복사</button>
+      </div>
+      <div class="cname-row">
+        <div class="cname-label">값 (Value)</div>
+        <div class="cname-val">${esc(cnameTarget)}</div>
+        <button class="copy-btn" onclick="copyVal('${esc(cnameTarget)}')">복사</button>
+      </div>
+      <div class="cname-row">
+        <div class="cname-label">TTL</div>
+        <div class="cname-val">3600 (또는 Auto)</div>
+      </div>
+      <div style="margin-top:10px;padding:8px 10px;background:rgba(249,115,22,.05);border-radius:6px;font-size:.77rem;color:var(--muted)">
+        ⏱ DNS 전파는 최대 48시간 소요됩니다. 보통 1~2시간 내에 적용됩니다.<br>
+        설정 후 "인증 확인" 버튼을 눌러주세요.
+      </div>
+    </div>
+  `;
+}
+
+function showCnameGuide(domId, domain, cnameTarget) {
+  // 기존에 렌더된 guide가 없으면 동적으로 생성
+  let guideEl = document.getElementById(`cname-guide-${domId}`);
+  if (!guideEl) {
+    const domItem = document.getElementById(`dom-${domId}`);
+    if (domItem) {
+      const div = document.createElement('div');
+      div.innerHTML = renderCnameGuide(domain, cnameTarget, domId);
+      domItem.insertAdjacentElement('afterend', div.firstElementChild);
+      guideEl = document.getElementById(`cname-guide-${domId}`);
+    }
+  }
+  if (guideEl) {
+    const isHidden = guideEl.style.display === 'none' || !guideEl.style.display;
+    guideEl.style.display = isHidden ? '' : 'none';
+  }
+}
+
+async function addDomain(siteId) {
+  const input = document.getElementById('newDomainInput');
+  const result = document.getElementById('addDomainResult');
+  const domain = input.value.trim();
+
+  if (!domain) { showDomainResult('도메인을 입력해주세요.', false); return; }
+
+  result.style.display = 'none';
+
+  try {
+    const token = CP.getToken();
+    const res = await fetch(`/api/sites/${siteId}/domains`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify({ domain }),
+    });
+    const data = await res.json();
+
+    if (!data.ok) { showDomainResult(data.error || '도메인 추가 실패', false); return; }
+
+    showDomainResult(`✅ "${data.domain}" 도메인이 추가되었습니다. CNAME 레코드를 설정 후 "인증 확인"을 눌러주세요.`, true);
+    input.value = '';
+
+    // 도메인 목록 새로고침
+    await loadDomains(siteId);
+
+    // 새로 추가된 도메인의 CNAME 가이드 자동 표시
+    if (data.domainId) {
+      setTimeout(() => showCnameGuide(data.domainId, data.domain, data.cnameTarget || currentCnameTarget), 300);
+    }
+  } catch (e) {
+    showDomainResult('오류: ' + e.message, false);
+  }
+}
+
+async function verifyCname(siteId, domainId) {
+  const btn = document.querySelector(`#dom-${domainId} button[onclick*="verifyCname"]`);
+  if (btn) { btn.disabled = true; btn.textContent = '확인 중...'; }
+
+  try {
+    const token = CP.getToken();
+    const res = await fetch(`/api/sites/${siteId}/domains?action=verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify({ domainId }),
+    });
+    const data = await res.json();
+
+    if (data.verified) {
+      showDomainResult(`✅ CNAME 인증 성공! "${data.domain}" 도메인이 활성화되었습니다. "주도메인 설정" 버튼을 눌러 주도메인으로 설정하세요.`, true);
+    } else {
+      showDomainResult(`⏳ CNAME 레코드가 아직 전파되지 않았습니다. DNS 설정을 확인하고 잠시 후 다시 시도해주세요.\n${data.message || ''}`, false);
+    }
+
+    // 목록 새로고침
+    await loadDomains(siteId);
+  } catch (e) {
+    showDomainResult('인증 오류: ' + e.message, false);
+    if (btn) { btn.disabled = false; btn.textContent = '인증 확인'; }
+  }
+}
+
+async function setPrimaryDomain(siteId, domainId, domain) {
+  if (!confirm(`"${domain}"을(를) 주도메인으로 설정하시겠습니까?\n사이트 접속 주소가 변경됩니다.`)) return;
+
+  try {
+    const token = CP.getToken();
+    const res = await fetch(`/api/sites/${siteId}/domains?action=set-primary`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify({ domainId }),
+    });
+    const data = await res.json();
+
+    if (data.ok) {
+      showDomainResult(`✅ "${domain}"이(가) 주도메인으로 설정되었습니다! 페이지를 새로고침합니다...`, true);
+      setTimeout(() => location.reload(), 1500);
+    } else {
+      showDomainResult(data.error || '주도메인 설정 실패', false);
+    }
+  } catch (e) {
+    showDomainResult('오류: ' + e.message, false);
+  }
+}
+
+async function removeDomain(siteId, domainId, domain) {
+  if (!confirm(`"${domain}" 도메인을 삭제하시겠습니까?`)) return;
+
+  try {
+    const token = CP.getToken();
+    const res = await fetch(`/api/sites/${siteId}/domains`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify({ domainId }),
+    });
+    const data = await res.json();
+
+    if (data.ok) {
+      showDomainResult(`"${domain}" 도메인이 삭제되었습니다.`, true);
+      await loadDomains(siteId);
+    } else {
+      showDomainResult(data.error || '삭제 실패', false);
+    }
+  } catch (e) {
+    showDomainResult('오류: ' + e.message, false);
+  }
+}
+
+function showDomainResult(msg, success) {
+  const el = document.getElementById('addDomainResult');
+  if (!el) return;
+  el.className = 'domain-verify-result ' + (success ? 'verify-ok' : 'verify-fail');
+  el.textContent = msg;
+  el.style.display = '';
+  setTimeout(() => { el.style.display = 'none'; }, 8000);
+}
+
+function copyVal(val) {
+  navigator.clipboard.writeText(val).catch(() => {});
 }
 
 function togglePw() {
