@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=5.0"/>
+  <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>WordPress 사이트 구축 — CloudPress</title>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:opsz,wght@9..40,400;9..40,500&display=swap" rel="stylesheet"/>
@@ -57,6 +57,33 @@
     .spec-badge.wp{background:rgba(59,130,246,.1);color:#2563eb}
     .spec-badge.tz{background:rgba(16,185,129,.1);color:#059669}
     .spec-badge.mysql{background:rgba(245,158,11,.1);color:#d97706}
+
+    /* ── 반응형 (create.html) ── */
+    @media (max-width: 600px) {
+      .wizard { padding: 0 2px; }
+      .steps { gap: 2px; margin-bottom: 20px; }
+      .stp-sep { margin: 0 3px; }
+      .stp { font-size: .75rem; gap: 5px; }
+      .stp-num { width: 20px; height: 20px; font-size: .65rem; }
+      .card { padding: 18px 14px !important; }
+      .spec-badges { gap: 5px; }
+      .spec-badge { font-size: .68rem; padding: 3px 7px; }
+      .provision-step { padding: 6px 8px; }
+      .pstep-name { font-size: .76rem; }
+      .log { height: 130px; font-size: .72rem; }
+      .status-polling { font-size: .76rem; flex-wrap: wrap; }
+      .cred-label { width: 90px !important; font-size: .73rem; }
+      .cred-val { font-size: .8rem; }
+      .pw-inp { font-size: .82rem; padding: 7px 10px; }
+      h3 { font-size: .95rem !important; }
+      .wp-link { padding: 10px 14px; font-size: .82rem; }
+      .field input { font-size: .88rem; }
+    }
+    @media (max-width: 400px) {
+      .cred-row { flex-direction: column; align-items: flex-start; gap: 5px; }
+      .cred-val { max-width: 100%; text-align: left; }
+      .copy-btn { align-self: flex-end; }
+    }
   </style>
 </head>
 <body>
@@ -156,7 +183,7 @@
             <p style="color:var(--muted);font-size:.85rem;margin-bottom:20px">버튼 하나로 무료 호스팅에 WordPress가 자동으로 설치됩니다. 설치하는 동안 다른 탭으로 이동하셔도 됩니다.</p>
 
             <ul class="feature-list">
-              <li>무료 호스팅 계정 자동 생성 (자체 패널)</li>
+              <li>자체 호스팅 서버 계정 자동 할당</li>
               <li>WordPress 최신버전 자동 설치 (한국어 KR)</li>
               <li>PHP 8.3 최신버전 + 한국 시간(KST) 자동 설정</li>
               <li>MySQL timezone KST (+9:00) 자동 적용</li>
@@ -205,17 +232,18 @@
               <span class="spec-badge wp">WP 최신</span>
               <span class="spec-badge tz">KST</span>
               <span class="spec-badge mysql">MySQL KST</span>
+              <span class="spec-badge wp" style="background:rgba(16,185,129,.1);color:#059669">반응형</span>
             </div>
 
             <!-- 단계별 진행 표시 -->
             <div style="margin:16px 0;text-align:left">
               <div class="provision-step" id="pstep1">
                 <span class="pstep-icon">⏳</span>
-                <span class="pstep-name">1단계: 호스팅 계정 생성</span>
+                <span class="pstep-name">1단계: 호스팅 서버 계정 할당 (자체)</span>
               </div>
               <div class="provision-step" id="pstep2">
                 <span class="pstep-icon">⏳</span>
-                <span class="pstep-name">2단계: WordPress 최신버전 설치 (PHP 8.3 + 한국어 + KST)</span>
+                <span class="pstep-name">2단계: WordPress 자체 설치 (PHP 8.3 + 한국어 + 반응형)</span>
               </div>
               <div class="provision-step" id="pstep3">
                 <span class="pstep-icon">⏳</span>
@@ -233,12 +261,12 @@
 
             <div class="status-polling">
               <div class="pulse-dot"></div>
-              <span id="statusText">호스팅 계정 생성 중... (약 5~10분 소요)</span>
+              <span id="statusText">호스팅 서버 계정 할당 중... (약 5~10분 소요)</span>
             </div>
 
             <div class="log" id="logBox">
               <div class="cur">▶ 사이트 생성 요청 전송됨</div>
-              <div class="cur">▶ 무료 호스팅 업체 자동 선택 중...</div>
+              <div class="cur">▶ 호스팅 서버 계정 할당 중...</div>
             </div>
           </div>
         </div>
@@ -525,8 +553,8 @@ async function startCreation() {
 /* provision_step → 단계 UI 매핑 */
 const STEP_MAP = {
   'initializing':       { step: 0, msg: '초기화 중...',                                    title: '⏳ Worker 연결 대기 중...' },
-  'hosting_account':    { step: 1, msg: '① 호스팅 계정 생성 중...',                        title: '① 호스팅 계정 생성 중...' },
-  'wordpress_install':  { step: 2, msg: '② WordPress 설치 중 (PHP 8.3 + 한국어 + KST)...', title: '② WordPress 최신버전 설치 중...' },
+  'hosting_account':    { step: 1, msg: '① 호스팅 서버 계정 할당 중...',                    title: '① 호스팅 서버 계정 할당 중...' },
+  'wordpress_install':  { step: 2, msg: '② WordPress 자체 설치 중 (PHP 8.3 + 한국어 + 반응형)...', title: '② WordPress 자체 설치 중...' },
   'cron_setup':         { step: 3, msg: '③ Cron Job 활성화 중...',                         title: '③ Cron Job 활성화 중...' },
   'suspend_protection': { step: 4, msg: '④ 서스펜드 억제 설정 중...',                      title: '④ 서스펜드 억제 설정 중...' },
   'speed_optimization': { step: 5, msg: '⑤ 속도 최적화 적용 중...',                        title: '⑤ 속도 최적화 적용 중...' },
@@ -584,8 +612,8 @@ function startPolling(siteId) {
 
       if (provStep !== prevProvisionStep) {
         prevProvisionStep = provStep;
-        if (provStep === 'hosting_account')    addLog('🔧 [1/5] 호스팅 계정 생성 중... (' + (site.hosting_provider || '') + ')');
-        if (provStep === 'wordpress_install')  addLog('📦 [2/5] WordPress 최신버전 설치 중... (PHP 8.3 + 한국어 + KST)');
+        if (provStep === 'hosting_account')    addLog('🔧 [1/5] 호스팅 서버 계정 할당 중... (자체 처리)');
+        if (provStep === 'wordpress_install')  addLog('📦 [2/5] WordPress 자체 설치 중... (PHP 8.3 + 한국어 + 반응형)');
         if (provStep === 'cron_setup')         addLog('⏰ [3/5] Cron Job 자동 활성화 중...');
         if (provStep === 'suspend_protection') addLog('🛡️ [4/5] 서스펜드 억제 설정 중... (플랜: ' + (site.plan || 'free') + ')');
         if (provStep === 'speed_optimization') addLog('⚡ [5/5] 속도 최적화 적용 중...');

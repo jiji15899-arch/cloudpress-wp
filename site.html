@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=5.0"/>
+  <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>사이트 상세 — CloudPress</title>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:opsz,wght@9..40,400;9..40,500&display=swap" rel="stylesheet"/>
@@ -52,6 +52,23 @@
     .spec-pill.tz{background:rgba(16,185,129,.1);color:#059669}
     .spec-pill.wp{background:rgba(59,130,246,.1);color:#2563eb}
     .spec-pill.mysql{background:rgba(245,158,11,.1);color:#d97706}
+
+    /* ── 반응형 (site.html) ── */
+    @media (max-width:600px){
+      .info-label{width:100px;font-size:.75rem}
+      .info-val{font-size:.82rem}
+      .wp-actions{gap:6px}
+      .wp-actions .btn{font-size:.8rem;padding:8px 12px}
+      .domain-item{flex-wrap:wrap;gap:8px}
+      .domain-actions{width:100%;justify-content:flex-end}
+      .add-domain-form{flex-direction:column}
+      .add-domain-form input{width:100%}
+      .info-card{padding:16px}
+    }
+    @media (max-width:400px){
+      .info-row{flex-direction:column;gap:4px}
+      .info-label{width:100%;padding-bottom:2px}
+    }
   </style>
 </head>
 <body>

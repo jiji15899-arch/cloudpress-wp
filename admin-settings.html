@@ -24,6 +24,12 @@
     .stat-mini-item{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;min-width:100px;text-align:center}
     .stat-mini-num{font-size:1.4rem;font-weight:700;color:var(--accent);line-height:1}
     .stat-mini-label{font-size:.72rem;color:var(--muted);margin-top:3px}
+
+    @media(max-width:600px){
+      .field-row{grid-template-columns:1fr !important}
+      .settings-section{padding:16px}
+      .btn{width:100%;text-align:center;justify-content:center}
+    }
   </style>
 </head>
 <body>
@@ -108,14 +114,44 @@
         <button class="btn btn-primary" onclick="savePuppeteerSettings()">Worker 설정 저장</button>
       </div>
 
-      <!-- 호스팅 제공업체 설정 -->
+      <!-- 자체 호스팅 서버 설정 (v5.0: 외부 호스팅사 가입 제거 → 서버 접속 정보만 사용) -->
       <div class="settings-section">
-        <div class="settings-title">🌐 무료 호스팅 제공업체</div>
-        <p style="font-size:.83rem;color:var(--muted);margin-bottom:14px">사이트 생성 시 아래 업체 중 자동으로 선택됩니다. 활성화된 업체 중 랜덤으로 배정됩니다.</p>
-        <div class="provider-grid" id="providerGrid"></div>
-        <div style="margin-top:14px">
-          <button class="btn btn-primary" onclick="saveProviderSettings()">제공업체 설정 저장</button>
+        <div class="settings-title">🖥️ 호스팅 서버 설정 (자체 WordPress 구축)</div>
+        <p style="font-size:.83rem;color:var(--muted);margin-bottom:14px">
+          WordPress는 <strong>자체 PHP 인스톨러</strong>로 직접 설치됩니다.<br>
+          아래에 호스팅사 cPanel 서버 접속 정보만 입력하면 자동으로 사이트가 구축됩니다.<br>
+          <span style="color:var(--accent);font-weight:600">※ 외부 호스팅 회원가입은 더 이상 필요하지 않습니다.</span>
+        </p>
+        <div class="field-row" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="field">
+            <label>cPanel URL</label>
+            <input type="url" id="hosting_cpanel_url" placeholder="https://cpanel.yourdomain.com:2083"/>
+            <div class="hint">호스팅사 cPanel 접속 주소</div>
+          </div>
+          <div class="field">
+            <label>서버 도메인</label>
+            <input type="text" id="hosting_server_domain" placeholder="yourdomain.com"/>
+            <div class="hint">WordPress 사이트가 생성될 기본 도메인</div>
+          </div>
         </div>
+        <div class="field-row" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="field">
+            <label>cPanel 관리자 아이디</label>
+            <input type="text" id="hosting_server_username" placeholder="cpanel_admin"/>
+          </div>
+          <div class="field">
+            <label>cPanel 관리자 비밀번호</label>
+            <input type="password" id="hosting_server_password" placeholder="••••••••"/>
+          </div>
+        </div>
+        <div style="background:rgba(34,197,94,.05);border:1px solid rgba(34,197,94,.15);border-radius:10px;padding:12px;margin-bottom:14px;font-size:.82rem;color:var(--muted)">
+          <strong style="color:var(--success)">✅ 자체 설치 방식 안내</strong><br>
+          1. 위 cPanel 정보로 서버에 접속<br>
+          2. PHP 8.3 + WordPress 최신 한국어판 자동 다운로드 및 설치<br>
+          3. 반응형 테마(Twenty Twenty-Four) 자동 설정<br>
+          4. KST 시간대, 한국어 기본 설정 자동 적용
+        </div>
+        <button class="btn btn-primary" onclick="saveHostingServerSettings()">서버 설정 저장</button>
       </div>
 
       <!-- Cloudflare CDN 설정 -->
@@ -244,14 +280,26 @@ async function loadSettings() {
 
   setVal('cf_account_id', 'cf_account_id');
   setChk('cloudflare_cdn_enabled', 'cloudflare_cdn_enabled', true);
+  // 호스팅 서버 설정 로드
+  setVal('hosting_cpanel_url', 'hosting_cpanel_url', '');
+  setVal('hosting_server_domain', 'hosting_server_domain', '');
+  setVal('hosting_server_username', 'hosting_server_username', '');
+  const hpwEl = document.getElementById('hosting_server_password');
+  if (hpwEl) {
+    hpwEl.value = '';
+    hpwEl.placeholder = settings.hosting_server_password
+      ? '••••••••  (이미 저장됨)'
+      : '••••••••';
+  }
   setChk('auto_ssl', 'auto_ssl', true);
   setChk('auto_breeze', 'auto_breeze', true);
   setChk('maintenance_mode', 'maintenance_mode', false);
 
+  // 레거시 provider 설정 유지 (내부 사용)
   if (settings.active_providers) {
     activeProviders = new Set(settings.active_providers.split(','));
   }
-  renderProviders();
+  // renderProviders() — UI 제거됨 (v5.0 자체 설치 방식)
 }
 
 async function saveSettings(updates) {
@@ -290,6 +338,23 @@ async function savePuppeteerSettings() {
 
 async function saveProviderSettings() {
   await saveSettings({ active_providers: [...activeProviders].join(',') });
+}
+
+async function saveHostingServerSettings() {
+  const cpanelUrl = document.getElementById('hosting_cpanel_url').value.trim();
+  const domain    = document.getElementById('hosting_server_domain').value.trim();
+  const username  = document.getElementById('hosting_server_username').value.trim();
+  const password  = document.getElementById('hosting_server_password').value;
+
+  const updates = {
+    hosting_cpanel_url:       cpanelUrl,
+    hosting_server_domain:    domain,
+    hosting_server_username:  username,
+  };
+  if (password && !password.startsWith('••')) {
+    updates.hosting_server_password = password;
+  }
+  await saveSettings(updates);
 }
 
 async function saveCfSettings() {

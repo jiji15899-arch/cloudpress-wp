@@ -418,3 +418,20 @@ button{cursor:none;border:none;background:none;font:inherit;color:inherit}
 @media(max-width:480px){
   .footer-cols{grid-template-columns:1fr 1fr}
 }
+
+/* ═════════════════════════════════════
+   CloudPress v5.0 — 랜딩 추가 반응형
+════════════════════════════════════ */
+@media(max-width:380px){
+  .hero-title{font-size:clamp(1.6rem,8vw,2.2rem)}
+  .section-heading{font-size:clamp(1.4rem,7vw,2rem)}
+  .hero-stats{flex-direction:column;gap:12px;align-items:flex-start}
+  .stat-divider{display:none}
+  .btn{padding:12px 18px;font-size:.88rem}
+}
+/* 뷰포트 기반 타이포그래피 */
+h1{font-size:clamp(1.8rem,5vw,3.5rem)}
+h2{font-size:clamp(1.4rem,3.5vw,2.4rem)}
+h3{font-size:clamp(1.1rem,2.5vw,1.6rem)}
+/* 이미지 반응형 기본 */
+img{max-width:100%;height:auto}
