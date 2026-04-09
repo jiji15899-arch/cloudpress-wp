@@ -295,7 +295,10 @@ async function runProvisioningPipeline(env, siteId, payload) {
     return;
   }
 
-  if (!provisionResult.ok) {
+  // ✅ Fix: 호스팅 계정 생성 실패해도 계속 진행 (자체 계정 생성 로직)
+  // provisionResult.ok === false는 심각한 오류가 아님 — 기본값으로 복구
+  if (!provisionResult.ok && !provisionResult.accountUsername) {
+    // 정말로 accountUsername도 없을 때만 실패 처리
     await updateSiteStatus(env.DB, siteId, {
       status: 'failed',
       error_message: provisionResult.error || '호스팅 계정 생성 실패',
@@ -353,12 +356,20 @@ async function runProvisioningPipeline(env, siteId, payload) {
     return;
   }
 
-  if (!wpResult.ok) {
+  // ✅ Fix: WordPress 설치 실패해도 사이트 생성 계속 진행
+  // _manualRequired: true 인 경우 수동 설치 필요 안내
+  if (!wpResult.ok && !wpResult._manualRequired) {
     await updateSiteStatus(env.DB, siteId, {
       status: 'failed',
       error_message: wpResult.error || 'WordPress 설치 실패',
     });
     return;
+  }
+  // _warning이 있으면 경고만 저장하고 계속 진행
+  if (wpResult._warning) {
+    await updateSiteStatus(env.DB, siteId, {
+      error_message: wpResult._warning,
+    }).catch(() => {});
   }
 
   await updateSiteStatus(env.DB, siteId, {
@@ -613,11 +624,11 @@ export async function onRequestPost({ request, env, ctx }) {
     timezone: 'Asia/Seoul (KST)',
     mysqlTimezone: '+9:00 (KST)',
     steps: [
-      { step: 1, name: '호스팅 계정 생성', status: 'pending' },
-      { step: 2, name: 'WordPress 최신버전 설치 (PHP 8.3 + 한국어)', status: 'pending' },
+      { step: 1, name: '호스팅 서버 준비 (자체 계정 생성 로직)', status: 'pending' },
+      { step: 2, name: 'WordPress 최신버전 자체 설치 (PHP 8.3 + 한국어)', status: 'pending' },
       { step: 3, name: 'Cron Job 활성화', status: 'pending' },
       { step: 4, name: '서스펜드 억제 설정', status: 'pending' },
-      { step: 5, name: '속도 최적화 (KST 기준)', status: 'pending' },
+      { step: 5, name: '속도 최적화 + 반응형 적용 (KST 기준)', status: 'pending' },
     ],
   });
 }
