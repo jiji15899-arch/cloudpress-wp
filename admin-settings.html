@@ -232,6 +232,16 @@ async function loadSettings() {
   setVal('plan_pro_sites', 'plan_pro_sites', '10');
   setVal('plan_enterprise_sites', 'plan_enterprise_sites', '-1');
   setVal('puppeteer_worker_url', 'puppeteer_worker_url', 'https://cloudpress-puppet.workers.dev');
+
+  // secret은 서버에서 마스킹 반환 → 이미 저장된 경우 placeholder로 안내
+  const secretEl = document.getElementById('puppeteer_worker_secret');
+  if (secretEl) {
+    secretEl.value = '';
+    secretEl.placeholder = settings.puppeteer_worker_secret
+      ? '••••••••  (이미 저장됨, 변경하려면 새로 입력)'
+      : 'cp_puppet_secret_v1_CHANGE_ME';
+  }
+
   setVal('cf_account_id', 'cf_account_id');
   setChk('cloudflare_cdn_enabled', 'cloudflare_cdn_enabled', true);
   setChk('auto_ssl', 'auto_ssl', true);
@@ -266,11 +276,16 @@ async function savePlanSettings() {
 }
 
 async function savePuppeteerSettings() {
-  await saveSettings({
-    puppeteer_worker_url: document.getElementById('puppeteer_worker_url').value,
-  });
+  const url    = document.getElementById('puppeteer_worker_url').value.trim();
   const secret = document.getElementById('puppeteer_worker_secret').value;
-  if (secret) await saveSettings({ puppeteer_worker_secret: secret });
+
+  const updates = { puppeteer_worker_url: url };
+  // 비밀번호 필드가 마스킹 플레이스홀더가 아닌 실제 입력값일 때만 저장
+  if (secret && secret !== '••••••••') {
+    updates.puppeteer_worker_secret = secret;
+  }
+
+  await saveSettings(updates);
 }
 
 async function saveProviderSettings() {
