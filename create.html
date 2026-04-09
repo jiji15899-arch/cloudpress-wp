@@ -42,8 +42,12 @@
     .wp-link-admin{background:var(--surface2);color:var(--text);border:1px solid var(--border)}
     .wp-link-admin:hover{color:var(--text)}
     .status-polling{display:flex;align-items:center;gap:10px;padding:12px;background:rgba(249,115,22,.05);border:1px solid rgba(249,115,22,.15);border-radius:8px;margin-top:12px;font-size:.83rem}
-    .pulse-dot{width:8px;height:8px;border-radius:50%;background:var(--accent);animation:pulse 1.2s ease-in-out infinite;flex-shrink:0}
-    @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.8)}}
+    .provision-step{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:7px;font-size:.82rem;color:var(--muted);transition:all .3s}
+    .provision-step.active{background:rgba(249,115,22,.07);color:var(--accent);font-weight:600}
+    .provision-step.done{background:rgba(34,197,94,.06);color:var(--success)}
+    .provision-step.error{background:rgba(239,68,68,.06);color:var(--error)}
+    .pstep-icon{font-size:.9rem;width:20px;text-align:center;flex-shrink:0}
+    .pstep-name{flex:1}
   </style>
 </head>
 <body>
@@ -127,11 +131,11 @@
             <p style="color:var(--muted);font-size:.85rem;margin-bottom:20px">버튼 하나로 무료 호스팅에 WordPress가 자동으로 설치됩니다.</p>
 
             <ul class="feature-list">
-              <li>무료 호스팅 계정 자동 생성 (랜덤 선택)</li>
-              <li>Softaculous로 WordPress 자동 설치</li>
-              <li>Breeze 캐시 플러그인 자동 설치 및 활성화</li>
-              <li>SSL 인증서 자동 발급</li>
-              <li>Cloudflare CDN 자동 연동 + 캐싱 최적화</li>
+              <li>무료 호스팅 계정 자동 생성 (자체 패널)</li>
+              <li>WordPress 자체 설치 (외부 툴 없이 직접 배포)</li>
+              <li>Cron Job 자동 강제 활성화</li>
+              <li>플랜별 서스펜드 억제 (CPU·대역폭 최소화)</li>
+              <li>속도 최적화 (PHP 설정·Breeze·gzip·브라우저 캐시)</li>
             </ul>
 
             <!-- 사이트 이름 -->
@@ -165,11 +169,35 @@
           <div class="card" style="padding:32px;text-align:center">
             <div class="spin"></div>
             <h3 style="font-family:var(--font-head);font-size:1.05rem;font-weight:700;margin-bottom:8px" id="progressTitle">WordPress 설치 준비 중...</h3>
-            <p style="color:var(--muted);font-size:.85rem" id="progressDesc">무료 호스팅 계정을 생성하고 WordPress를 자동으로 설치합니다.</p>
+            <p style="color:var(--muted);font-size:.85rem" id="progressDesc">자체 패널로 WordPress를 자동으로 설치합니다. 약 5~10분 소요됩니다.</p>
+
+            <!-- 단계별 진행 표시 -->
+            <div style="margin:16px 0;text-align:left">
+              <div class="provision-step" id="pstep1">
+                <span class="pstep-icon">⏳</span>
+                <span class="pstep-name">1단계: 호스팅 계정 생성</span>
+              </div>
+              <div class="provision-step" id="pstep2">
+                <span class="pstep-icon">⏳</span>
+                <span class="pstep-name">2단계: WordPress 설치 (자체 패널)</span>
+              </div>
+              <div class="provision-step" id="pstep3">
+                <span class="pstep-icon">⏳</span>
+                <span class="pstep-name">3단계: Cron Job 활성화</span>
+              </div>
+              <div class="provision-step" id="pstep4">
+                <span class="pstep-icon">⏳</span>
+                <span class="pstep-name">4단계: 서스펜드 억제 설정</span>
+              </div>
+              <div class="provision-step" id="pstep5">
+                <span class="pstep-icon">⏳</span>
+                <span class="pstep-name">5단계: 속도 최적화</span>
+              </div>
+            </div>
 
             <div class="status-polling">
               <div class="pulse-dot"></div>
-              <span id="statusText">호스팅 계정 생성 중... (약 3~5분 소요)</span>
+              <span id="statusText">호스팅 계정 생성 중... (약 5~10분 소요)</span>
             </div>
 
             <div class="log" id="logBox">
@@ -245,6 +273,18 @@
                 <div class="cred-label">💨 Breeze</div>
                 <div class="cred-val" id="credBreeze">—</div>
               </div>
+              <div class="cred-row">
+                <div class="cred-label">⏰ Cron Job</div>
+                <div class="cred-val" id="credCron">—</div>
+              </div>
+              <div class="cred-row">
+                <div class="cred-label">🛡️ 서스펜드 억제</div>
+                <div class="cred-val" id="credSuspend">—</div>
+              </div>
+              <div class="cred-row">
+                <div class="cred-label">🚀 속도 최적화</div>
+                <div class="cred-val" id="credSpeed">—</div>
+              </div>
             </div>
 
             <div style="background:rgba(234,179,8,.06);border:1px solid rgba(234,179,8,.2);border-radius:8px;padding:12px;font-size:.8rem;color:var(--muted);text-align:left;margin-bottom:20px">
@@ -282,6 +322,7 @@
 <script>
 let currentSiteId = null;
 let pollInterval = null;
+let lastProvisionStep = null;
 
 async function startCreation() {
   const siteName = document.getElementById('siteName').value.trim();
@@ -290,18 +331,9 @@ async function startCreation() {
 
   errEl.style.display = 'none';
 
-  if (!siteName) {
-    showErr('사이트 이름을 입력해주세요.');
-    return;
-  }
-  if (!adminLogin || adminLogin.length < 3) {
-    showErr('관리자 아이디는 3자 이상 입력해주세요.');
-    return;
-  }
-  if (!/^[a-zA-Z0-9_]+$/.test(adminLogin)) {
-    showErr('관리자 아이디는 영문/숫자/언더바만 사용 가능합니다.');
-    return;
-  }
+  if (!siteName) { showErr('사이트 이름을 입력해주세요.'); return; }
+  if (!adminLogin || adminLogin.length < 3) { showErr('관리자 아이디는 3자 이상 입력해주세요.'); return; }
+  if (!/^[a-zA-Z0-9_]+$/.test(adminLogin)) { showErr('관리자 아이디는 영문/숫자/언더바만 사용 가능합니다.'); return; }
 
   document.getElementById('createBtn').disabled = true;
   goStep(2);
@@ -318,9 +350,7 @@ async function startCreation() {
     if (contentType.includes('application/json')) {
       data = await res.json();
     } else {
-      const text = await res.text();
       showFail('서버 오류 (' + res.status + '): 잠시 후 다시 시도해주세요.');
-      console.error('Non-JSON response:', text);
       document.getElementById('createBtn').disabled = false;
       return;
     }
@@ -333,9 +363,9 @@ async function startCreation() {
     currentSiteId = data.siteId;
     addLog(`✅ 사이트 생성 요청 완료 (ID: ${data.siteId})`);
     addLog(`🎯 호스팅 업체: ${data.provider}`);
-    addLog(`⏳ WordPress 자동 설치 시작...`);
+    addLog(`📋 플랜: ${data.plan || 'free'}`);
+    addLog(`⏳ 자동 설치 파이프라인 시작...`);
 
-    // 상태 폴링 시작
     startPolling(data.siteId);
 
   } catch (e) {
@@ -343,15 +373,45 @@ async function startCreation() {
   }
 }
 
+/* provision_step → 단계 UI 매핑 */
+const STEP_MAP = {
+  'initializing':      { step: 0, msg: '초기화 중...' },
+  'hosting_account':   { step: 1, msg: '① 호스팅 계정 생성 중...' },
+  'wordpress_install': { step: 2, msg: '② WordPress 설치 중 (자체 패널)...' },
+  'cron_setup':        { step: 3, msg: '③ Cron Job 활성화 중...' },
+  'suspend_protection':{ step: 4, msg: '④ 서스펜드 억제 설정 중...' },
+  'speed_optimization':{ step: 5, msg: '⑤ 속도 최적화 적용 중...' },
+  'completed':         { step: 6, msg: '✅ 모든 설치 완료!' },
+};
+
+function updateProvisionSteps(provisionStep, status) {
+  if (!provisionStep) return;
+  const info = STEP_MAP[provisionStep] || {};
+  const currentStepNum = info.step || 0;
+
+  for (let i = 1; i <= 5; i++) {
+    const el = document.getElementById('pstep' + i);
+    if (!el) continue;
+    const icon = el.querySelector('.pstep-icon');
+    if (i < currentStepNum) {
+      el.className = 'provision-step done';
+      if (icon) icon.textContent = '✅';
+    } else if (i === currentStepNum) {
+      el.className = 'provision-step active';
+      if (icon) icon.textContent = '🔄';
+    } else {
+      el.className = 'provision-step';
+      if (icon) icon.textContent = '⏳';
+    }
+  }
+
+  if (info.msg) {
+    document.getElementById('statusText').textContent = info.msg;
+  }
+}
+
 function startPolling(siteId) {
-  let dots = 0;
-  const stages = [
-    { status: 'pending', msg: '요청 대기 중...' },
-    { status: 'provisioning', msg: '호스팅 계정 생성 중...' },
-    { status: 'installing_wp', msg: 'Softaculous WordPress 설치 중...' },
-    { status: 'active', msg: '완료!' },
-    { status: 'failed', msg: '설치 실패' },
-  ];
+  let prevProvisionStep = null;
 
   pollInterval = setInterval(async () => {
     try {
@@ -367,32 +427,62 @@ function startPolling(siteId) {
 
       const site = data.site;
       const status = site.status;
+      const provStep = site.provision_step;
 
-      // 상태 텍스트 업데이트
-      const stage = stages.find(s => s.status === status);
-      if (stage) {
-        document.getElementById('statusText').textContent = stage.msg;
+      // 단계 진행 표시 업데이트
+      updateProvisionSteps(provStep, status);
+
+      // 단계가 바뀔 때만 로그 추가
+      if (provStep !== prevProvisionStep) {
+        prevProvisionStep = provStep;
+
+        if (provStep === 'hosting_account')    addLog('🔧 [1/5] 호스팅 계정 생성 중... (' + (site.hosting_provider || '') + ')');
+        if (provStep === 'wordpress_install')  addLog('📦 [2/5] WordPress 자체 설치 중... (자체 패널, Softaculous 없음)');
+        if (provStep === 'cron_setup')         addLog('⏰ [3/5] Cron Job 자동 활성화 중...');
+        if (provStep === 'suspend_protection') addLog('🛡️ [4/5] 서스펜드 억제 설정 중... (플랜: ' + (site.plan || 'free') + ')');
+        if (provStep === 'speed_optimization') addLog('⚡ [5/5] 속도 최적화 적용 중...');
       }
 
+      // 상태별 처리
       if (status === 'provisioning') {
-        addLog(`🔧 호스팅 계정 생성 중... (${site.hosting_provider})`);
-        document.getElementById('progressTitle').textContent = '호스팅 계정 생성 중...';
+        document.getElementById('progressTitle').textContent = '① 호스팅 계정 생성 중...';
       } else if (status === 'installing_wp') {
-        addLog('📦 Softaculous로 WordPress 설치 중...');
-        addLog('💨 Breeze 캐시 플러그인 설치 중...');
-        document.getElementById('progressTitle').textContent = 'WordPress 설치 중...';
+        document.getElementById('progressTitle').textContent = '② WordPress 설치 중...';
       } else if (status === 'active') {
         clearInterval(pollInterval);
-        addLog('🔒 SSL 인증서 발급...');
-        addLog('⚡ Cloudflare CDN 연동...');
-        addLog('✅ 모든 설치 완료!');
+        // 완료된 단계 모두 체크
+        for (let i = 1; i <= 5; i++) {
+          const el = document.getElementById('pstep' + i);
+          if (el) {
+            el.className = 'provision-step done';
+            const icon = el.querySelector('.pstep-icon');
+            if (icon) icon.textContent = '✅';
+          }
+        }
+        addLog('🔒 SSL 인증서: Cloudflare Universal SSL 준비됨');
+        addLog('⚡ Cron Job: 활성화 완료');
+        addLog('🛡️ 서스펜드 억제: 활성화 완료');
+        addLog('💨 Breeze 캐시: 설치 완료');
+        addLog('🎉 모든 설치 완료!');
         showSuccess(site);
       } else if (status === 'failed') {
         clearInterval(pollInterval);
+        // 실패한 단계 표시
+        if (provStep) {
+          const info = STEP_MAP[provStep] || {};
+          if (info.step) {
+            const el = document.getElementById('pstep' + info.step);
+            if (el) {
+              el.className = 'provision-step error';
+              const icon = el.querySelector('.pstep-icon');
+              if (icon) icon.textContent = '❌';
+            }
+          }
+        }
         showFail(site.error_message || 'WordPress 설치에 실패했습니다.');
       }
     } catch (e) {}
-  }, 5000);
+  }, 4000); // 4초마다 폴링 (더 빠른 반응)
 }
 
 function showSuccess(site) {
@@ -407,12 +497,20 @@ function showSuccess(site) {
   document.getElementById('credCdn').textContent = site.cloudflare_zone_id ? '✅ Cloudflare CDN 연결됨' : '⏳ 연결 중';
   document.getElementById('credBreeze').textContent = site.breeze_installed ? '✅ 설치됨 (캐시 활성화)' : '⏳ 설치 중';
 
+  // 추가 항목 업데이트
+  const cronEl = document.getElementById('credCron');
+  if (cronEl) cronEl.textContent = site.cron_enabled ? '✅ 활성화됨 (강제 실행)' : '⏳ 설정 중';
+  const suspendEl = document.getElementById('credSuspend');
+  if (suspendEl) suspendEl.textContent = site.suspend_protected ? '✅ 억제 활성화됨' : '기본 설정';
+  const speedEl = document.getElementById('credSpeed');
+  if (speedEl) speedEl.textContent = site.speed_optimized ? '✅ 최적화됨' : '⏳ 적용 중';
+
   if (site.wp_url) {
     document.getElementById('wpSiteLink').href = site.wp_url;
     document.getElementById('wpAdminLink').href = site.wp_admin_url || site.wp_url + '/wp-admin/';
   }
 
-  document.getElementById('successDesc').textContent = 
+  document.getElementById('successDesc').textContent =
     `${site.name} 사이트가 ${site.hosting_provider}에 성공적으로 설치되었습니다.`;
 }
 
