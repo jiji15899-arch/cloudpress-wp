@@ -114,12 +114,15 @@ async function ensureSitesColumns(DB) {
 }
 
 async function getMaxSites(env, plan) {
+  const FALLBACK = { free: 1, starter: 3, pro: 10, enterprise: -1 };
   try {
     const row = await env.DB.prepare('SELECT value FROM settings WHERE key=?').bind(`plan_${plan}_sites`).first();
-    const val = parseInt(row?.value ?? '-1');
+    const val = parseInt(row?.value ?? '', 10);
+    // parseInt가 NaN을 반환하면(DB에 키 없거나 비어있는 경우) fallback 사용
+    if (isNaN(val)) return FALLBACK[plan] ?? 1;
     return val;
   } catch {
-    return { free: 1, starter: 3, pro: 10, enterprise: -1 }[plan] ?? 1;
+    return FALLBACK[plan] ?? 1;
   }
 }
 
