@@ -524,13 +524,13 @@ async function startCreation() {
 
 /* provision_step → 단계 UI 매핑 */
 const STEP_MAP = {
-  'initializing':       { step: 0, msg: '초기화 중...' },
-  'hosting_account':    { step: 1, msg: '① 호스팅 계정 생성 중...' },
-  'wordpress_install':  { step: 2, msg: '② WordPress 설치 중 (PHP 8.3 + 한국어 + KST)...' },
-  'cron_setup':         { step: 3, msg: '③ Cron Job 활성화 중...' },
-  'suspend_protection': { step: 4, msg: '④ 서스펜드 억제 설정 중...' },
-  'speed_optimization': { step: 5, msg: '⑤ 속도 최적화 적용 중...' },
-  'completed':          { step: 6, msg: '✅ 모든 설치 완료!' },
+  'initializing':       { step: 0, msg: '초기화 중...',                                    title: '⏳ Worker 연결 대기 중...' },
+  'hosting_account':    { step: 1, msg: '① 호스팅 계정 생성 중...',                        title: '① 호스팅 계정 생성 중...' },
+  'wordpress_install':  { step: 2, msg: '② WordPress 설치 중 (PHP 8.3 + 한국어 + KST)...', title: '② WordPress 최신버전 설치 중...' },
+  'cron_setup':         { step: 3, msg: '③ Cron Job 활성화 중...',                         title: '③ Cron Job 활성화 중...' },
+  'suspend_protection': { step: 4, msg: '④ 서스펜드 억제 설정 중...',                      title: '④ 서스펜드 억제 설정 중...' },
+  'speed_optimization': { step: 5, msg: '⑤ 속도 최적화 적용 중...',                        title: '⑤ 속도 최적화 적용 중...' },
+  'completed':          { step: 6, msg: '✅ 모든 설치 완료!',                               title: '✅ 모든 설치 완료!' },
 };
 
 function updateProvisionSteps(provisionStep, status) {
@@ -542,7 +542,10 @@ function updateProvisionSteps(provisionStep, status) {
     const el = document.getElementById('pstep' + i);
     if (!el) continue;
     const icon = el.querySelector('.pstep-icon');
-    if (i < currentStepNum) {
+    if (status === 'active') {
+      el.className = 'provision-step done';
+      if (icon) icon.textContent = '✅';
+    } else if (i < currentStepNum) {
       el.className = 'provision-step done';
       if (icon) icon.textContent = '✅';
     } else if (i === currentStepNum) {
@@ -554,9 +557,8 @@ function updateProvisionSteps(provisionStep, status) {
     }
   }
 
-  if (info.msg) {
-    document.getElementById('statusText').textContent = info.msg;
-  }
+  if (info.msg)   document.getElementById('statusText').textContent   = info.msg;
+  if (info.title) document.getElementById('progressTitle').textContent = info.title;
 }
 
 function startPolling(siteId) {
@@ -589,13 +591,7 @@ function startPolling(siteId) {
         if (provStep === 'speed_optimization') addLog('⚡ [5/5] 속도 최적화 적용 중...');
       }
 
-      if (status === 'pending' || (provStep === 'initializing')) {
-        document.getElementById('progressTitle').textContent = '⏳ Worker 연결 대기 중...';
-      } else if (status === 'provisioning') {
-        document.getElementById('progressTitle').textContent = '① 호스팅 계정 생성 중...';
-      } else if (status === 'installing_wp') {
-        document.getElementById('progressTitle').textContent = '② WordPress 최신버전 설치 중...';
-      } else if (status === 'active') {
+      if (status === 'active') {
         clearInterval(pollInterval);
         pollInterval = null;
 
