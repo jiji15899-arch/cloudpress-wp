@@ -271,12 +271,13 @@ async function runProvisioningPipeline(env, siteId, payload) {
   if (!workerUrl) {
     await updateSiteStatus(env.DB, siteId, {
       status: 'failed',
+      provision_step: 'hosting_account',
       error_message: 'Worker URL 미설정 — 관리자 → 설정에서 Worker URL을 입력해주세요.',
     });
     return;
   }
 
-  // ── 단계 1: 호스팅 계정 생성 ──
+  // ── 단계 1: 호스팅 계정 생성 ── (initializing → provisioning 전환)
   await updateSiteStatus(env.DB, siteId, {
     status: 'provisioning',
     provision_step: 'hosting_account',
@@ -520,7 +521,7 @@ export async function onRequestPost({ request, env, ctx }) {
   if (!adminLogin || adminLogin.length < 3) return err('관리자 아이디는 3자 이상 입력해주세요.');
   if (!/^[a-zA-Z0-9_]+$/.test(adminLogin)) return err('관리자 아이디는 영문/숫자/언더바만 사용 가능합니다.');
 
-  // Worker URL 확인
+  // Worker URL 확인 (사이트 생성 전 — DB 레코드 없는 상태)
   const workerUrl = await getPuppeteerWorkerUrl(env);
   if (!workerUrl) {
     return err(
