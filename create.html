@@ -513,6 +513,7 @@ async function startCreation() {
     addLog(`📦 WP: ${data.wpVersion || '최신버전 (한국어)'}`);
     addLog(`🕐 시간대: ${data.timezone || 'Asia/Seoul (KST)'}`);
     addLog(`⏳ 백그라운드 설치 파이프라인 시작...`);
+    addLog(`🔄 Worker 연결 중... (최대 60초 대기)`);
 
     startPolling(data.siteId);
 
