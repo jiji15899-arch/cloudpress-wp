@@ -585,8 +585,19 @@ function updateProvisionSteps(provisionStep, status) {
 
 function startPolling(siteId) {
   let prevProvisionStep = null;
+  let pollCount = 0;
+  const MAX_POLLS = 180; // 최대 12분 (4초 * 180)
 
   pollInterval = setInterval(async () => {
+    // ✅ FIX: 타임아웃 — 무한 폴링 방지
+    pollCount++;
+    if (pollCount > MAX_POLLS) {
+      clearInterval(pollInterval);
+      pollInterval = null;
+      showFail('설치 시간이 초과되었습니다 (12분). 관리자에게 문의하거나 다시 시도해주세요.');
+      return;
+    }
+
     try {
       const token = CP.getToken();
       const res = await fetch(`/api/sites/${siteId}`, {
@@ -609,6 +620,8 @@ function startPolling(siteId) {
         if (provStep === 'wordpress_install' || provStep === 'hosting_account') addLog('📦 [1/4] WordPress 설치 중... (PHP 8.3 + 한국어 + 반응형)');
         if (provStep === 'cron_setup')         addLog('🔧 [2/4] 플러그인 및 환경 설정 중...');
         if (provStep === 'suspend_protection' || provStep === 'speed_optimization') addLog('⚡ [3/4] 속도 최적화 적용 중...');
+        // ✅ FIX: error_message가 있으면 로그에 표시 (재시도 중 상태 확인용)
+        if (site.error_message && status !== 'failed') addLog('⚠️ ' + site.error_message);
       }
 
       if (status === 'active') {
@@ -633,7 +646,6 @@ function startPolling(siteId) {
         addLog('💨 Breeze 캐시: 설치 완료');
         addLog('🎉 모든 설치 완료!');
 
-        // ✅ 수정5: 크롬 알림 발송
         showBrowserNotification(
           '✅ WordPress 설치 완료!',
           `"${site.name}" 사이트가 성공적으로 설치되었습니다.`,
@@ -659,7 +671,10 @@ function startPolling(siteId) {
         }
         showFail(site.error_message || 'WordPress 설치에 실패했습니다.');
       }
-    } catch (e) {}
+    } catch (e) {
+      // ✅ FIX: 폴링 에러 무시하되 콘솔에는 남김 (디버깅용)
+      console.warn('폴링 오류:', e);
+    }
   }, 4000);
 }
 
