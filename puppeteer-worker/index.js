@@ -1163,10 +1163,23 @@ async function uploadInstallerViaCPanel(page, {
     await sleep(1500);
 
     // 로그인 폼이 있으면 로그인
-    const userInput = await page.$('#user, input[name="user"], input[name="username"]').catch(() => null);
+    const loginSelectors = ['#user', 'input[name="user"]', 'input[name="username"]'];
+    let userInput = null;
+    for (const sel of loginSelectors) {
+      userInput = await page.$(sel).catch(() => null);
+      if (userInput) break;
+    }
     if (userInput) {
-      await safeType(page, '#user, input[name="user"], input[name="username"]', accountUsername);
-      await safeType(page, '#pass, input[name="pass"], input[name="password"]', password);
+      // 첫 번째로 찾은 셀렉터를 개별적으로 사용
+      const userSel = loginSelectors.find(async s => await page.$(s).catch(() => null));
+      const passSels = ['#pass', 'input[name="pass"]', 'input[name="password"]'];
+      let passSel = '#pass';
+      for (const s of passSels) {
+        const el = await page.$(s).catch(() => null);
+        if (el) { passSel = s; break; }
+      }
+      await safeType(page, loginSelectors.find(s => s) || '#user', accountUsername);
+      await safeType(page, passSel, password);
       await page.click('input[type="submit"], button[type="submit"]').catch(() => {});
       await page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 20000 }).catch(() => {});
       await sleep(2000);
