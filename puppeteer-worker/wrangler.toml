@@ -1,3 +1,4 @@
+# puppeteer-worker/wrangler.toml — CloudPress v4.0
 name = "cloudpress-puppet"
 main = "index.js"
 compatibility_date = "2024-11-01"
@@ -8,7 +9,11 @@ compatibility_flags = ["nodejs_compat"]
 binding = "MYBROWSER"
 
 [vars]
+# Worker 시크릿 (메인 Functions와 일치해야 함)
 WORKER_SECRET = "Swsh120327!"
+
+# CNAME 타겟 (도메인 연결 시 DNS 안내에 사용)
+CNAME_TARGET = "proxy.cloudpress.site"
 
 # 배포 방법:
 #   cd puppeteer-worker
