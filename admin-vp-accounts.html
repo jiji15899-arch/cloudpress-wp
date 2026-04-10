@@ -24,6 +24,14 @@
     .modal-header{font-family:var(--font-head);font-weight:700;font-size:1.2rem;margin-bottom:20px}
     .field-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
     @media(max-width:600px){.field-row{grid-template-columns:1fr}}
+    .file-upload-area{border:2px dashed var(--border);border-radius:8px;padding:16px;text-align:center;cursor:pointer;transition:border-color .2s}
+    .file-upload-area:hover{border-color:var(--primary)}
+    .file-upload-area input[type="file"]{display:none}
+    .file-upload-label{display:flex;flex-direction:column;align-items:center;gap:8px;cursor:pointer;font-size:.85rem;color:var(--muted)}
+    .file-upload-label .upload-icon{font-size:2rem}
+    .file-selected{font-size:.82rem;color:var(--primary);font-weight:500;margin-top:6px;word-break:break-all}
+    .upload-progress{display:none;margin-top:8px}
+    .upload-progress progress{width:100%;height:6px;border-radius:3px}
   </style>
 </head>
 <body>
@@ -93,7 +101,8 @@
     <div class="modal-header">
       <span id="modalTitle">VP 계정 추가</span>
     </div>
-    <form id="vpForm" onsubmit="saveAccount(event)">
+    <!-- form 태그 제거 → div로 변경, onsubmit 제거 -->
+    <div id="vpForm">
       <input type="hidden" id="accountId"/>
       
       <div class="field">
@@ -108,7 +117,7 @@
         </div>
         <div class="field">
           <label>VP 비밀번호 *</label>
-          <input type="password" id="vp_password" required placeholder="••••••••"/>
+          <input type="password" id="vp_password" placeholder="••••••••"/>
         </div>
       </div>
 
@@ -149,26 +158,46 @@
         </div>
       </div>
 
+      <!-- 복제 ZIP: URL 입력 → 파일 업로드로 변경 -->
       <div class="field">
-        <label>복제 ZIP URL 🎯</label>
-        <input type="url" id="clone_zip_url" placeholder="https://example.com/template.zip"/>
-        <div class="hint">
-          사이트 생성 시 복제할 WordPress ZIP 파일의 다운로드 URL<br>
-          이 URL의 ZIP 파일을 다운로드하여 새 사이트를 생성합니다.
+        <label>복제 ZIP 파일 🎯</label>
+        <div class="file-upload-area" id="dropZone" onclick="document.getElementById('clone_zip_file').click()">
+          <label class="file-upload-label">
+            <span class="upload-icon">📦</span>
+            <span>클릭하거나 ZIP 파일을 드래그하여 업로드</span>
+            <span style="font-size:.75rem">.zip 파일만 허용 · 최대 500MB</span>
+          </label>
+          <input type="file" id="clone_zip_file" accept=".zip" onchange="onFileSelected(this)"/>
+        </div>
+        <div id="fileSelectedName" class="file-selected" style="display:none"></div>
+        <div id="currentZipInfo" style="display:none;margin-top:8px;padding:8px 12px;background:var(--surface2);border-radius:6px;font-size:.8rem">
+          <span style="color:var(--muted)">현재 ZIP: </span>
+          <span id="currentZipLabel" style="font-family:monospace;word-break:break-all"></span>
+          <button type="button" class="btn sm danger" style="margin-left:8px;padding:2px 8px;font-size:.75rem" onclick="clearZip()">제거</button>
+        </div>
+        <div class="upload-progress" id="uploadProgress">
+          <progress id="uploadBar" value="0" max="100"></progress>
+          <div id="uploadStatus" style="font-size:.78rem;color:var(--muted);margin-top:4px;text-align:center">업로드 중...</div>
+        </div>
+        <div class="hint" style="margin-top:6px">
+          사이트 생성 시 복제할 WordPress ZIP 파일<br>
+          업로드된 파일은 서버에 저장되어 새 사이트 생성에 사용됩니다.
         </div>
       </div>
 
       <div style="display:flex;gap:10px;margin-top:24px">
-        <button type="submit" class="btn primary" style="flex:1">저장</button>
+        <button type="button" class="btn primary" onclick="saveAccount()" style="flex:1">저장</button>
         <button type="button" class="btn" onclick="hideModal()" style="flex:1">취소</button>
       </div>
-    </form>
+    </div>
   </div>
 </div>
 
 <script src="app.js"></script>
 <script>
 let accounts = [];
+let pendingZipFile = null;   // 새로 선택된 파일 객체
+let removeCurrentZip = false; // 기존 ZIP 제거 플래그
 
 async function loadAccounts() {
   try {
@@ -176,12 +205,12 @@ async function loadAccounts() {
     if (!res.ok) throw new Error(res.error || '계정 조회 실패');
     accounts = res.accounts || [];
     renderAccounts();
-  } catch (e) {
-    showToast(e.message, 'error');
+  } catch (err) {
+    showToast(err.message, 'error');
     document.getElementById('accounts-container').innerHTML = `
       <div style="text-align:center;padding:40px;color:var(--muted)">
         <div style="font-size:3rem;margin-bottom:10px">❌</div>
-        <div>계정 조회 실패: ${e.message}</div>
+        <div>계정 조회 실패: ${err.message}</div>
       </div>
     `;
   }
@@ -234,7 +263,7 @@ function renderAccounts() {
 
       ${acc.clone_zip_url ? `
         <div style="background:var(--surface2);border-radius:8px;padding:10px;margin-bottom:12px;font-size:.82rem">
-          <div style="color:var(--muted);margin-bottom:4px">📦 복제 ZIP URL:</div>
+          <div style="color:var(--muted);margin-bottom:4px">📦 복제 ZIP:</div>
           <div style="word-break:break-all;font-family:monospace;font-size:.75rem">${acc.clone_zip_url}</div>
         </div>
       ` : ''}
@@ -252,9 +281,58 @@ function renderAccounts() {
 
 function showCreateModal() {
   document.getElementById('modalTitle').textContent = 'VP 계정 추가';
-  document.getElementById('vpForm').reset();
-  document.getElementById('accountId').value = '';
+  resetForm();
   document.getElementById('vpModal').classList.add('show');
+}
+
+function resetForm() {
+  document.getElementById('accountId').value = '';
+  document.getElementById('label').value = '';
+  document.getElementById('vp_username').value = '';
+  document.getElementById('vp_password').value = '';
+  document.getElementById('panel_url').value = '';
+  document.getElementById('server_domain').value = '';
+  document.getElementById('web_root').value = '';
+  document.getElementById('php_bin').value = '';
+  document.getElementById('mysql_host').value = '';
+  document.getElementById('max_sites').value = '';
+  resetZipUI();
+}
+
+function resetZipUI() {
+  pendingZipFile = null;
+  removeCurrentZip = false;
+  document.getElementById('clone_zip_file').value = '';
+  document.getElementById('fileSelectedName').style.display = 'none';
+  document.getElementById('fileSelectedName').textContent = '';
+  document.getElementById('currentZipInfo').style.display = 'none';
+  document.getElementById('uploadProgress').style.display = 'none';
+  document.getElementById('uploadBar').value = 0;
+}
+
+function onFileSelected(input) {
+  const file = input.files[0];
+  if (!file) return;
+  if (!file.name.endsWith('.zip')) {
+    showToast('ZIP 파일만 업로드할 수 있습니다.', 'error');
+    input.value = '';
+    return;
+  }
+  pendingZipFile = file;
+  removeCurrentZip = false;
+  const nameEl = document.getElementById('fileSelectedName');
+  nameEl.textContent = `📎 ${file.name} (${(file.size / 1024 / 1024).toFixed(1)} MB)`;
+  nameEl.style.display = 'block';
+  // 기존 ZIP 표시 숨기기
+  document.getElementById('currentZipInfo').style.display = 'none';
+}
+
+function clearZip() {
+  removeCurrentZip = true;
+  pendingZipFile = null;
+  document.getElementById('clone_zip_file').value = '';
+  document.getElementById('fileSelectedName').style.display = 'none';
+  document.getElementById('currentZipInfo').style.display = 'none';
 }
 
 function editAccount(id) {
@@ -265,48 +343,115 @@ function editAccount(id) {
   document.getElementById('accountId').value = acc.id;
   document.getElementById('label').value = acc.label;
   document.getElementById('vp_username').value = acc.vp_username;
-  document.getElementById('vp_password').value = ''; // 보안상 비워둠
+  document.getElementById('vp_password').value = '';
   document.getElementById('panel_url').value = acc.panel_url;
   document.getElementById('server_domain').value = acc.server_domain;
   document.getElementById('web_root').value = acc.web_root || '';
   document.getElementById('php_bin').value = acc.php_bin || '';
   document.getElementById('mysql_host').value = acc.mysql_host || '';
-  document.getElementById('clone_zip_url').value = acc.clone_zip_url || '';
   document.getElementById('max_sites').value = acc.max_sites || '';
+
+  // ZIP 기존 파일 표시
+  resetZipUI();
+  if (acc.clone_zip_url) {
+    const zipLabel = acc.clone_zip_url.split('/').pop() || acc.clone_zip_url;
+    document.getElementById('currentZipLabel').textContent = zipLabel;
+    document.getElementById('currentZipInfo').style.display = 'block';
+  }
+
   document.getElementById('vpModal').classList.add('show');
 }
 
 function hideModal() {
   document.getElementById('vpModal').classList.remove('show');
+  resetZipUI();
 }
 
-async function saveAccount(e) {
-  e.preventDefault();
-  
+async function uploadZipFile(file, onProgress) {
+  return new Promise((resolve, reject) => {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/admin/vp-accounts/upload-zip');
+
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) onProgress(Math.round(e.loaded / e.total * 100));
+    };
+
+    xhr.onload = () => {
+      try {
+        const data = JSON.parse(xhr.responseText);
+        if (xhr.status >= 200 && xhr.status < 300 && data.ok) {
+          resolve(data.url);
+        } else {
+          reject(new Error(data.error || '파일 업로드 실패'));
+        }
+      } catch {
+        reject(new Error('서버 응답 파싱 실패'));
+      }
+    };
+
+    xhr.onerror = () => reject(new Error('네트워크 오류'));
+    xhr.send(formData);
+  });
+}
+
+async function saveAccount() {
+  // 필수 입력값 검증
+  const label = document.getElementById('label').value.trim();
+  const vp_username = document.getElementById('vp_username').value.trim();
+  const panel_url = document.getElementById('panel_url').value.trim();
+  const server_domain = document.getElementById('server_domain').value.trim();
   const accountId = document.getElementById('accountId').value;
   const isEdit = !!accountId;
 
+  if (!label || !vp_username || !panel_url || !server_domain) {
+    showToast('필수 항목을 모두 입력해주세요.', 'error');
+    return;
+  }
+
   const data = {
-    label: document.getElementById('label').value,
-    vp_username: document.getElementById('vp_username').value,
-    panel_url: document.getElementById('panel_url').value,
-    server_domain: document.getElementById('server_domain').value,
+    label,
+    vp_username,
+    panel_url,
+    server_domain,
     web_root: document.getElementById('web_root').value || undefined,
     php_bin: document.getElementById('php_bin').value || undefined,
     mysql_host: document.getElementById('mysql_host').value || undefined,
-    clone_zip_url: document.getElementById('clone_zip_url').value || undefined,
     max_sites: document.getElementById('max_sites').value || undefined,
   };
 
   const password = document.getElementById('vp_password').value;
   if (password) data.vp_password = password;
+  if (isEdit) data.id = accountId;
 
-  if (isEdit) {
-    data.id = accountId;
+  // ZIP 파일 업로드 처리
+  if (pendingZipFile) {
+    const progressEl = document.getElementById('uploadProgress');
+    const barEl = document.getElementById('uploadBar');
+    const statusEl = document.getElementById('uploadStatus');
+    progressEl.style.display = 'block';
+
+    try {
+      const zipUrl = await uploadZipFile(pendingZipFile, (pct) => {
+        barEl.value = pct;
+        statusEl.textContent = `업로드 중... ${pct}%`;
+      });
+      data.clone_zip_url = zipUrl;
+      progressEl.style.display = 'none';
+    } catch (uploadErr) {
+      progressEl.style.display = 'none';
+      showToast('ZIP 업로드 실패: ' + uploadErr.message, 'error');
+      return;
+    }
+  } else if (removeCurrentZip) {
+    data.clone_zip_url = null;
   }
+  // pendingZipFile도 없고 removeCurrentZip도 false면 clone_zip_url 필드 안 보냄 (기존 유지)
 
   try {
-    const res = await CP.apiCall(`/api/admin/vp-accounts`, {
+    const res = await CP.apiCall('/api/admin/vp-accounts', {
       method: isEdit ? 'PUT' : 'POST',
       body: JSON.stringify(data),
     });
@@ -316,8 +461,8 @@ async function saveAccount(e) {
     showToast(isEdit ? '계정이 수정되었습니다.' : '계정이 생성되었습니다.', 'success');
     hideModal();
     await loadAccounts();
-  } catch (e) {
-    showToast(e.message, 'error');
+  } catch (saveErr) {
+    showToast(saveErr.message, 'error');
   }
 }
 
@@ -334,8 +479,8 @@ async function toggleActive(id, currentActive) {
 
     showToast('계정 상태가 변경되었습니다.', 'success');
     await loadAccounts();
-  } catch (e) {
-    showToast(e.message, 'error');
+  } catch (err) {
+    showToast(err.message, 'error');
   }
 }
 
@@ -351,10 +496,29 @@ async function deleteAccount(id, label) {
 
     showToast('계정이 삭제되었습니다.', 'success');
     await loadAccounts();
-  } catch (e) {
-    showToast(e.message, 'error');
+  } catch (err) {
+    showToast(err.message, 'error');
   }
 }
+
+// 드래그 앤 드롭 지원
+(function() {
+  const zone = document.getElementById('dropZone');
+  zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.style.borderColor = 'var(--primary)'; });
+  zone.addEventListener('dragleave', () => { zone.style.borderColor = ''; });
+  zone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    zone.style.borderColor = '';
+    const file = e.dataTransfer.files[0];
+    if (file) {
+      const input = document.getElementById('clone_zip_file');
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      input.files = dt.files;
+      onFileSelected(input);
+    }
+  });
+})();
 
 function showToast(msg, type) {
   const toast = document.getElementById('toast');
