@@ -384,9 +384,13 @@ function buildSharedHostingMuPlugin() {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   핵심 프로비저닝 파이프라인 v7.1
-   VP 계정 기반 복제 - 각 VP 계정의 clone_zip_url 사용
-   각 사이트마다 독립적인 D1, KV 환경 생성
+   핵심 프로비저닝 파이프라인 v8.0
+   VP 계정 기반 — Worker 실제 구현 API에 맞춘 호출 순서:
+     1. /api/provision-hosting  → 서브도메인/계정 슬롯 확보
+     2. /api/install-wordpress  → PHP installer 업로드 + 실행 (WP-CLI/cPanel UAPI)
+     3. /api/configure-site     → mu-plugin 배포 (PHP exec 방식, 브라우저 로그인 없음)
+     4. /api/setup-cloudflare   → CF CDN (선택)
+     5. /api/optimize-speed     → 퍼머링크·캐시 설정 (PHP exec 방식)
 ════════════════════════════════════════════════════════════════ */
 async function runProvisioningPipeline(env, siteId, payload) {
   const workerUrl    = await getWorkerUrl(env);
@@ -414,154 +418,147 @@ async function runProvisioningPipeline(env, siteId, payload) {
     return;
   }
 
-  // ── VP 계정의 복제 ZIP URL 확인 ──
-  if (!vpAccount.clone_zip_url || !vpAccount.clone_zip_url.trim()) {
+  const cnameTarget = await getCnameTarget(env);
+
+  // ══ 단계 1: 계정 슬롯 확보 (/api/provision-hosting) ══
+  // 브라우저 없이 서브도메인/계정명만 계산하여 즉시 반환하는 경량 API
+  await updateSiteStatus(env.DB, siteId, {
+    status:         'installing_wp',
+    provision_step: 'provisioning_account',
+    vp_account_id:  vpAccount.id,
+    cpanel_url:     vpAccount.panel_url,
+    cname_target:   cnameTarget,
+    server_type:    'shared',
+  });
+
+  let provResult;
+  try {
+    provResult = await callWorker(workerUrl, workerSecret, '/api/provision-hosting', {
+      siteName: payload.siteName,
+      plan:     payload.plan,
+    });
+  } catch (e) {
+    provResult = { ok: false, error: 'Worker 연결 실패: ' + e.message };
+  }
+
+  if (!provResult.ok) {
     await updateSiteStatus(env.DB, siteId, {
-      status: 'failed',
-      provision_step: 'init',
-      error_message: `VP 계정 "${vpAccount.label}"에 복제 ZIP URL이 설정되지 않았습니다. 관리자 → VP 계정 관리에서 복제 ZIP 파일을 업로드해주세요.`,
+      status:         'failed',
+      provision_step: 'provisioning_account',
+      error_message:  provResult.error || '계정 슬롯 확보 실패',
     });
     return;
   }
 
-  // ── 서브도메인 / URL 계산 ──
-  const baseSlug    = payload.siteName.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 12) || 'cp';
-  const suffix      = Math.random().toString(36).slice(2, 5);
-  const subDomain   = (baseSlug + suffix).slice(0, 15);
+  // Worker가 계산한 서브도메인 사용 (VP 서버 도메인 적용)
   const serverDomain  = vpAccount.server_domain || globalCfg.site_domain || 'cloudpress.site';
+  const subDomain     = provResult.accountUsername;
   const hostingDomain = `${subDomain}.${serverDomain}`;
   const siteUrl       = `https://${hostingDomain}`;
   const wpAdminUrl    = `${siteUrl}/wp-admin/`;
   const loginUrl      = `${siteUrl}/wp-login.php`;
-  const cnameTarget   = await getCnameTarget(env);
 
-  // ── VP 계정 사용 카운트 증가 ──
   await incrementVpAccountSites(env, vpAccount.id);
 
   await updateSiteStatus(env.DB, siteId, {
-    status:            'installing_wp',
-    provision_step:    'cloning_site',
     hosting_domain:    hostingDomain,
     account_username:  subDomain,
     subdomain:         hostingDomain,
-    vp_account_id:     vpAccount.id,
-    cpanel_url:        vpAccount.panel_url,
     wp_url:            siteUrl,
     wp_admin_url:      wpAdminUrl,
     primary_domain:    hostingDomain,
-    cname_target:      cnameTarget,
-    installation_mode: 'clone',
     login_url:         loginUrl,
-    server_type:       'shared',
+    installation_mode: 'installer',
   });
 
-  // ══ 단계 1: ZIP 파일로부터 WordPress 복제 ══
-  // Worker에게 clone-from-zip API 호출:
-  // VP 계정의 clone_zip_url에서 ZIP 다운로드 → 압축 해제 → 새 서브도메인에 배포
-  // URL/관리자 계정을 새 값으로 교체
-  // 각 사이트마다 독립적인 D1, KV 생성
-  const clonePayload = {
-    // 복제 소스 ZIP
-    cloneZipUrl:     vpAccount.clone_zip_url,
+  // ══ 단계 2: WordPress 설치 (/api/install-wordpress) ══
+  // PHP installer 업로드 후 cPanel UAPI로 실행 — VP 직접 로그인 없음
+  await updateSiteStatus(env.DB, siteId, {
+    provision_step: 'installing_wp',
+  });
 
-    // VP 계정 정보
-    vpUsername:      vpAccount.vp_username,
-    vpPassword:      vpAccount.vp_password,
-    panelUrl:        vpAccount.panel_url,
-    serverDomain,
-    webRoot:         vpAccount.web_root || '/htdocs',
-    phpBin:          vpAccount.php_bin || 'php8.3',
-    mysqlHost:       vpAccount.mysql_host || 'localhost',
+  const installPayload = {
+    // cPanel 접속 정보 (VP 계정)
+    cpanelUrl:              vpAccount.panel_url,
+    hostingServerUsername:  vpAccount.vp_username,
+    hostingServerPassword:  vpAccount.vp_password,
+    accountUsername:        subDomain,
 
-    // 새 사이트 정보
-    siteId,
-    subDomain,
-    hostingDomain,
-    siteUrl,
-    siteName:        payload.siteName,
-    wpAdminUser:     payload.wpAdminUser,
-    wpAdminPw:       payload.wpAdminPw,
-    wpAdminEmail:    payload.wpAdminEmail,
-    plan:            payload.plan,
+    // 실제 서버 URL (인스톨러 접근용)
+    wordpressUrl:   siteUrl,
+    wpAdminUrl,
 
-    // 독립 환경 생성
-    createD1:        true,   // 사이트별 D1 데이터베이스 생성
-    createKV:        true,   // 사이트별 KV 네임스페이스 생성
+    // WP 계정
+    wpAdminUser:  payload.wpAdminUser,
+    wpAdminPw:    payload.wpAdminPw,
+    wpAdminEmail: payload.wpAdminEmail,
+    siteName:     payload.siteName,
+    plan:         payload.plan,
 
-    // 자동화 옵션
-    enableCloudflare: globalCfg.cloudflare_cdn_enabled === '1',
-    cfApiToken:       globalCfg.cf_api_token || '',
-    cfAccountId:      globalCfg.cf_account_id || '',
-    enableSsl:        globalCfg.auto_ssl !== '0',
-    muPluginContent:  buildSharedHostingMuPlugin(),
+    // 옵션
+    selfInstall: true,
+    responsive:  true,
   };
 
-  let cloneResult;
+  let installResult;
   try {
-    cloneResult = await callWorker(workerUrl, workerSecret, '/api/clone-from-zip', clonePayload);
+    installResult = await callWorker(workerUrl, workerSecret, '/api/install-wordpress', installPayload);
   } catch (e) {
-    cloneResult = { ok: false, error: 'Worker 연결 실패: ' + e.message };
+    installResult = { ok: false, error: 'Worker 연결 실패: ' + e.message };
   }
 
   // 1회 재시도
-  if (!cloneResult.ok) {
+  if (!installResult.ok) {
     await updateSiteStatus(env.DB, siteId, {
-      error_message: (cloneResult.error || '복제 실패') + ' — 재시도 중...',
+      error_message: (installResult.error || '설치 실패') + ' — 재시도 중...',
     });
     try {
-      cloneResult = await callWorker(workerUrl, workerSecret, '/api/clone-from-zip', {
-        ...clonePayload, retry: true,
+      installResult = await callWorker(workerUrl, workerSecret, '/api/install-wordpress', {
+        ...installPayload, retry: true,
       });
     } catch (e) {
-      cloneResult = { ok: false, error: '재시도 실패: ' + e.message };
+      installResult = { ok: false, error: '재시도 실패: ' + e.message };
     }
   }
 
-  if (!cloneResult.ok) {
+  if (!installResult.ok) {
     await updateSiteStatus(env.DB, siteId, {
       status:         'failed',
-      provision_step: 'cloning_site',
-      error_message:  cloneResult.error || 'ZIP 파일 복제 최종 실패',
+      provision_step: 'installing_wp',
+      error_message:  installResult.error || 'WordPress 설치 최종 실패',
     });
     return;
   }
 
-  const actualSiteUrl  = cloneResult.siteUrl  || siteUrl;
-  const actualAdminUrl = cloneResult.adminUrl || wpAdminUrl;
+  const actualSiteUrl  = installResult.wpSiteUrl || siteUrl;
+  const actualAdminUrl = installResult.wpAdminUrl || wpAdminUrl;
   const actualLoginUrl = `${actualSiteUrl}/wp-login.php`;
 
   await updateSiteStatus(env.DB, siteId, {
-    status:            'installing_wp',
-    provision_step:    'configuring',
-    wp_version:        cloneResult.wpVersion || 'latest',
-    php_version:       cloneResult.phpVersion || '8.x',
-    wp_url:            actualSiteUrl,
-    wp_admin_url:      actualAdminUrl,
-    login_url:         actualLoginUrl,
-    install_method:    'clone_zip',
-    error_message:     null,
+    status:         'installing_wp',
+    provision_step: 'configuring',
+    wp_version:     installResult.wpVersion || 'latest',
+    php_version:    installResult.phpVersion || '8.x',
+    wp_url:         actualSiteUrl,
+    wp_admin_url:   actualAdminUrl,
+    login_url:      actualLoginUrl,
+    install_method: 'php_installer',
+    error_message:  null,
   });
 
-  // ══ 단계 2: 공유 호스팅 자동 설정 (복제 후 mu-plugin 적용) ══
+  // ══ 단계 3: mu-plugin 배포 (/api/configure-site) ══
+  // cPanel UAPI file write로 mu-plugin 직접 업로드 — 브라우저 로그인 없음
   let configResult = { ok: false };
   try {
     configResult = await callWorker(workerUrl, workerSecret, '/api/configure-site', {
-      vpUsername:         vpAccount.vp_username,
-      vpPassword:         vpAccount.vp_password,
-      panelUrl:           vpAccount.panel_url,
-      subDomain,
+      cpanelUrl:       vpAccount.panel_url,
+      cpanelUsername:  vpAccount.vp_username,
+      cpanelPassword:  vpAccount.vp_password,
+      accountUsername: subDomain,
+      webRoot:         vpAccount.web_root || '/htdocs',
       hostingDomain,
-      siteUrl:            actualSiteUrl,
-      wpAdminUrl:         actualAdminUrl,
-      wpAdminUser:        payload.wpAdminUser,
-      wpAdminPw:          payload.wpAdminPw,
-      plan:               payload.plan,
-      enableRedis:        false,
-      isSharedHosting:    true,
-      autoEnableCron:     true,
-      autoEnableRestApi:  true,
-      sharedHostingMode:  true,
-      muPluginContent:    buildSharedHostingMuPlugin(),
+      siteUrl:         actualSiteUrl,
+      muPluginContent: buildSharedHostingMuPlugin(),
     });
   } catch (_) {}
 
@@ -570,10 +567,9 @@ async function runProvisioningPipeline(env, siteId, payload) {
     cron_enabled:     1,
     rest_api_enabled: 1,
     loopback_enabled: 1,
-    redis_enabled:    configResult?.redisEnabled ? 1 : 0,
   });
 
-  // ══ 단계 3: Cloudflare CDN (설정된 경우만) ══
+  // ══ 단계 4: Cloudflare CDN (설정된 경우만) ══
   let cfResult = { ok: false };
   if (globalCfg.cloudflare_cdn_enabled === '1' && globalCfg.cf_api_token) {
     try {
@@ -595,20 +591,24 @@ async function runProvisioningPipeline(env, siteId, payload) {
     cloudflare_zone_id: cfResult?.zoneId || null,
   });
 
-  // ══ 단계 4: 속도 최적화 ══
+  // ══ 단계 5: 속도 최적화 (/api/optimize-speed) ══
+  // cPanel UAPI로 .htaccess / .user.ini 직접 수정 — 브라우저 로그인 없음
   let speedResult = { ok: false };
   try {
     speedResult = await callWorker(workerUrl, workerSecret, '/api/optimize-speed', {
-      vpUsername:      vpAccount.vp_username,
-      vpPassword:      vpAccount.vp_password,
-      panelUrl:        vpAccount.panel_url,
+      // ★ wpAdminUrl 기반 브라우저 로그인 방식 대신 cPanel UAPI 방식 사용
+      cpanelUrl:       vpAccount.panel_url,
+      cpanelUsername:  vpAccount.vp_username,
+      cpanelPassword:  vpAccount.vp_password,
+      accountUsername: subDomain,
+      webRoot:         vpAccount.web_root || '/htdocs',
       siteUrl:         actualSiteUrl,
       wpAdminUrl:      actualAdminUrl,
       wpAdminUser:     payload.wpAdminUser,
       wpAdminPw:       payload.wpAdminPw,
-      subDomain,
       plan:            payload.plan,
       isSharedHosting: true,
+      useCpanelApi:    true,   // ★ cPanel UAPI 모드 활성화
     });
   } catch (_) {}
 
@@ -701,13 +701,10 @@ export async function onRequestPost({ request, env, ctx }) {
     return err('Worker URL이 설정되지 않았습니다. 관리자 → 설정에서 Worker URL을 입력해주세요.', 503);
   }
 
-  // VP 계정 확인 (활성화되어 있고 clone_zip_url이 설정된 계정이 있는지)
+  // VP 계정 확인 (활성화된 계정이 있는지)
   const vpAccount = await pickVpAccount(env);
   if (!vpAccount) {
     return err('사용 가능한 VP 계정이 없습니다. 관리자 → VP 계정 관리에서 VP 계정을 추가해주세요.', 503);
-  }
-  if (!vpAccount.clone_zip_url || !vpAccount.clone_zip_url.trim()) {
-    return err(`선택된 VP 계정 "${vpAccount.label}"에 복제 ZIP URL이 설정되지 않았습니다. 관리자 → VP 계정 관리에서 복제 ZIP 파일을 업로드해주세요.`, 503);
   }
 
   const effectivePlan = sitePlan || user.plan || 'free';
@@ -766,21 +763,20 @@ export async function onRequestPost({ request, env, ctx }) {
     provider: 'shared_hosting',
     plan: effectivePlan,
     vpAccount: vpAccount.label,
-    message: `VP 계정 "${vpAccount.label}"의 템플릿 ZIP을 사용하여 사이트 생성이 시작되었습니다. 완료까지 3~7분 소요됩니다.`,
+    message: `VP 계정 "${vpAccount.label}"에서 WordPress 설치가 시작되었습니다. 완료까지 3~7분 소요됩니다.`,
     phpVersion: '8.x',
     wpVersion: 'latest (한국어)',
     features: {
-      clone:       'ZIP 템플릿 완전 복제',
-      independent: '독립적인 D1 데이터베이스 & KV 스토어',
-      cron:        'WP-Cron 자동 활성화',
-      restApi:     'REST API 자동 활성화',
+      install:      'PHP installer 자동 설치 (cPanel UAPI)',
+      cron:         'WP-Cron 자동 활성화',
+      restApi:      'REST API 자동 활성화',
       optimization: '속도/캐시 최적화',
-      ssl:         'SSL 자동 설정',
+      ssl:          'SSL 자동 설정',
     },
     steps: [
-      { step: 1, name: 'ZIP 템플릿 다운로드 및 복제', status: 'running' },
-      { step: 2, name: '독립 환경 생성 (D1 + KV)', status: 'pending' },
-      { step: 3, name: 'URL · 관리자 계정 교체', status: 'pending' },
+      { step: 1, name: '호스팅 계정 슬롯 확보', status: 'running' },
+      { step: 2, name: 'WordPress 설치 (PHP installer)', status: 'pending' },
+      { step: 3, name: 'mu-plugin 배포 (cPanel UAPI)', status: 'pending' },
       { step: 4, name: 'Cloudflare CDN 연동 (선택)', status: 'pending' },
       { step: 5, name: '속도 최적화 자동 설정', status: 'pending' },
     ],
