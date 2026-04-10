@@ -67,12 +67,15 @@ export async function onRequestPost({ request, env }) {
   if (!vp_password?.trim())   return err('VP 비밀번호를 입력해주세요.');
   if (!panel_url?.trim())     return err('패널 URL을 입력해주세요.');
   if (!server_domain?.trim()) return err('서버 도메인을 입력해주세요.');
-  if (!clone_zip_url?.trim()) return err('복제 ZIP URL을 입력해주세요.');
+  if (!clone_zip_url?.trim()) return err('복제 압축 파일 URL을 입력해주세요.');
 
-  // GitHub Raw URL 형식 검증
+  // GitHub Raw URL 형식 검증 (.zip / .7z 지원)
   const zipUrl = clone_zip_url.trim();
   if (!zipUrl.startsWith('http://') && !zipUrl.startsWith('https://')) {
     return err('올바른 URL 형식이 아닙니다. (https://... 로 시작해야 합니다)');
+  }
+  if (!/\.(zip|7z)(\?.*)?$/i.test(zipUrl)) {
+    return err('지원하지 않는 파일 형식입니다. (.zip 또는 .7z 파일 URL을 입력해주세요)');
   }
 
   const vpId = genId();
@@ -120,11 +123,14 @@ export async function onRequestPut({ request, env }) {
   const existing = await env.DB.prepare('SELECT id FROM vp_accounts WHERE id=?').bind(id).first();
   if (!existing) return err('존재하지 않는 VP 계정입니다.', 404);
 
-  // clone_zip_url URL 형식 검증
+  // clone_zip_url URL 형식 검증 (.zip / .7z 지원)
   if (clone_zip_url !== undefined && clone_zip_url !== null && clone_zip_url.trim()) {
     const zipUrl = clone_zip_url.trim();
     if (!zipUrl.startsWith('http://') && !zipUrl.startsWith('https://')) {
       return err('올바른 URL 형식이 아닙니다. (https://... 로 시작해야 합니다)');
+    }
+    if (!/\.(zip|7z)(\?.*)?$/i.test(zipUrl)) {
+      return err('지원하지 않는 파일 형식입니다. (.zip 또는 .7z 파일 URL을 입력해주세요)');
     }
   }
 
