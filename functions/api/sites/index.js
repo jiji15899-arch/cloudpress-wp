@@ -112,6 +112,7 @@ async function ensureSitesColumns(DB) {
         web_root TEXT DEFAULT '/htdocs',
         php_bin TEXT DEFAULT 'php8.3',
         mysql_host TEXT DEFAULT 'localhost',
+        clone_zip_url TEXT,
         max_sites INTEGER DEFAULT 50,
         current_sites INTEGER DEFAULT 0,
         is_active INTEGER DEFAULT 1,
@@ -119,6 +120,11 @@ async function ensureSitesColumns(DB) {
         updated_at TEXT NOT NULL DEFAULT (datetime('now'))
       )
     `).run();
+  } catch (_) {}
+
+  // clone_zip_url 컬럼 추가 (기존 테이블 대응)
+  try {
+    await DB.prepare(`ALTER TABLE vp_accounts ADD COLUMN clone_zip_url TEXT`).run();
   } catch (_) {}
 
   try {
@@ -378,18 +384,14 @@ function buildSharedHostingMuPlugin() {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   핵심 프로비저닝 파이프라인 v6.1
-   공유 호스팅 지원 강화
-════════════════════════════════════════════════════════════════ */
-/* ═══════════════════════════════════════════════════════════════
-   핵심 프로비저닝 파이프라인 v7.0
-   관리자가 설정한 마스터 WordPress를 VP 계정으로 복제하여 사이트 생성
+   핵심 프로비저닝 파이프라인 v7.1
+   VP 계정 기반 복제 - 각 VP 계정의 clone_zip_url 사용
+   각 사이트마다 독립적인 D1, KV 환경 생성
 ════════════════════════════════════════════════════════════════ */
 async function runProvisioningPipeline(env, siteId, payload) {
   const workerUrl    = await getWorkerUrl(env);
   const workerSecret = await getWorkerSecret(env);
   const globalCfg    = await getGlobalSettings(env);
-  const cloneCfg     = getCloneConfig(globalCfg);
 
   // ── Worker URL 필수 체크 ──
   if (!workerUrl) {
@@ -401,12 +403,23 @@ async function runProvisioningPipeline(env, siteId, payload) {
     return;
   }
 
-  // ── 복제 설정 필수 체크 ──
-  if (!cloneCfg.isReady) {
+  // ── VP 계정 선택 (여유 있는 계정) ──
+  const vpAccount = await pickVpAccount(env);
+  if (!vpAccount) {
     await updateSiteStatus(env.DB, siteId, {
       status: 'failed',
       provision_step: 'init',
-      error_message: '복제 설정 미완료 — 관리자 → 설정에서 마스터 WordPress 주소와 VP 로그인 정보를 입력해주세요.',
+      error_message: 'VP 계정 없음 — 관리자 → VP 계정 관리에서 활성화된 VP 계정을 추가해주세요.',
+    });
+    return;
+  }
+
+  // ── VP 계정의 복제 ZIP URL 확인 ──
+  if (!vpAccount.clone_zip_url || !vpAccount.clone_zip_url.trim()) {
+    await updateSiteStatus(env.DB, siteId, {
+      status: 'failed',
+      provision_step: 'init',
+      error_message: `VP 계정 "${vpAccount.label}"에 복제 ZIP URL이 설정되지 않았습니다. 관리자 → VP 계정 관리에서 복제 ZIP 파일을 업로드해주세요.`,
     });
     return;
   }
@@ -415,12 +428,15 @@ async function runProvisioningPipeline(env, siteId, payload) {
   const baseSlug    = payload.siteName.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 12) || 'cp';
   const suffix      = Math.random().toString(36).slice(2, 5);
   const subDomain   = (baseSlug + suffix).slice(0, 15);
-  const serverDomain  = cloneCfg.serverDomain || globalCfg.site_domain || 'cloudpress.site';
+  const serverDomain  = vpAccount.server_domain || globalCfg.site_domain || 'cloudpress.site';
   const hostingDomain = `${subDomain}.${serverDomain}`;
   const siteUrl       = `https://${hostingDomain}`;
   const wpAdminUrl    = `${siteUrl}/wp-admin/`;
   const loginUrl      = `${siteUrl}/wp-login.php`;
   const cnameTarget   = await getCnameTarget(env);
+
+  // ── VP 계정 사용 카운트 증가 ──
+  await incrementVpAccountSites(env, vpAccount.id);
 
   await updateSiteStatus(env.DB, siteId, {
     status:            'installing_wp',
@@ -428,7 +444,8 @@ async function runProvisioningPipeline(env, siteId, payload) {
     hosting_domain:    hostingDomain,
     account_username:  subDomain,
     subdomain:         hostingDomain,
-    cpanel_url:        cloneCfg.vpPanelUrl,
+    vp_account_id:     vpAccount.id,
+    cpanel_url:        vpAccount.panel_url,
     wp_url:            siteUrl,
     wp_admin_url:      wpAdminUrl,
     primary_domain:    hostingDomain,
@@ -438,21 +455,26 @@ async function runProvisioningPipeline(env, siteId, payload) {
     server_type:       'shared',
   });
 
-  // ══ 단계 1: 마스터 WordPress 복제 ══
-  // Worker에게 clone-site API 호출:
-  // 마스터 사이트 파일+DB를 VP 계정으로 접속하여 새 서브도메인에 복사하고
+  // ══ 단계 1: ZIP 파일로부터 WordPress 복제 ══
+  // Worker에게 clone-from-zip API 호출:
+  // VP 계정의 clone_zip_url에서 ZIP 다운로드 → 압축 해제 → 새 서브도메인에 배포
   // URL/관리자 계정을 새 값으로 교체
+  // 각 사이트마다 독립적인 D1, KV 생성
   const clonePayload = {
-    // 복제 원본
-    cloneSourceUrl:  cloneCfg.sourceUrl,
+    // 복제 소스 ZIP
+    cloneZipUrl:     vpAccount.clone_zip_url,
 
-    // VP 로그인 정보 (관리자 설정값)
-    vpUsername:      cloneCfg.vpUsername,
-    vpPassword:      cloneCfg.vpPassword,
-    panelUrl:        cloneCfg.vpPanelUrl,
+    // VP 계정 정보
+    vpUsername:      vpAccount.vp_username,
+    vpPassword:      vpAccount.vp_password,
+    panelUrl:        vpAccount.panel_url,
     serverDomain,
+    webRoot:         vpAccount.web_root || '/htdocs',
+    phpBin:          vpAccount.php_bin || 'php8.3',
+    mysqlHost:       vpAccount.mysql_host || 'localhost',
 
     // 새 사이트 정보
+    siteId,
     subDomain,
     hostingDomain,
     siteUrl,
@@ -461,6 +483,10 @@ async function runProvisioningPipeline(env, siteId, payload) {
     wpAdminPw:       payload.wpAdminPw,
     wpAdminEmail:    payload.wpAdminEmail,
     plan:            payload.plan,
+
+    // 독립 환경 생성
+    createD1:        true,   // 사이트별 D1 데이터베이스 생성
+    createKV:        true,   // 사이트별 KV 네임스페이스 생성
 
     // 자동화 옵션
     enableCloudflare: globalCfg.cloudflare_cdn_enabled === '1',
@@ -472,7 +498,7 @@ async function runProvisioningPipeline(env, siteId, payload) {
 
   let cloneResult;
   try {
-    cloneResult = await callWorker(workerUrl, workerSecret, '/api/clone-site', clonePayload);
+    cloneResult = await callWorker(workerUrl, workerSecret, '/api/clone-from-zip', clonePayload);
   } catch (e) {
     cloneResult = { ok: false, error: 'Worker 연결 실패: ' + e.message };
   }
@@ -483,7 +509,7 @@ async function runProvisioningPipeline(env, siteId, payload) {
       error_message: (cloneResult.error || '복제 실패') + ' — 재시도 중...',
     });
     try {
-      cloneResult = await callWorker(workerUrl, workerSecret, '/api/clone-site', {
+      cloneResult = await callWorker(workerUrl, workerSecret, '/api/clone-from-zip', {
         ...clonePayload, retry: true,
       });
     } catch (e) {
@@ -495,7 +521,7 @@ async function runProvisioningPipeline(env, siteId, payload) {
     await updateSiteStatus(env.DB, siteId, {
       status:         'failed',
       provision_step: 'cloning_site',
-      error_message:  cloneResult.error || '사이트 복제 최종 실패',
+      error_message:  cloneResult.error || 'ZIP 파일 복제 최종 실패',
     });
     return;
   }
@@ -512,7 +538,7 @@ async function runProvisioningPipeline(env, siteId, payload) {
     wp_url:            actualSiteUrl,
     wp_admin_url:      actualAdminUrl,
     login_url:         actualLoginUrl,
-    install_method:    'clone',
+    install_method:    'clone_zip',
     error_message:     null,
   });
 
@@ -520,9 +546,9 @@ async function runProvisioningPipeline(env, siteId, payload) {
   let configResult = { ok: false };
   try {
     configResult = await callWorker(workerUrl, workerSecret, '/api/configure-site', {
-      vpUsername:         cloneCfg.vpUsername,
-      vpPassword:         cloneCfg.vpPassword,
-      panelUrl:           cloneCfg.vpPanelUrl,
+      vpUsername:         vpAccount.vp_username,
+      vpPassword:         vpAccount.vp_password,
+      panelUrl:           vpAccount.panel_url,
       subDomain,
       hostingDomain,
       siteUrl:            actualSiteUrl,
@@ -573,9 +599,9 @@ async function runProvisioningPipeline(env, siteId, payload) {
   let speedResult = { ok: false };
   try {
     speedResult = await callWorker(workerUrl, workerSecret, '/api/optimize-speed', {
-      vpUsername:      cloneCfg.vpUsername,
-      vpPassword:      cloneCfg.vpPassword,
-      panelUrl:        cloneCfg.vpPanelUrl,
+      vpUsername:      vpAccount.vp_username,
+      vpPassword:      vpAccount.vp_password,
+      panelUrl:        vpAccount.panel_url,
       siteUrl:         actualSiteUrl,
       wpAdminUrl:      actualAdminUrl,
       wpAdminUser:     payload.wpAdminUser,
@@ -669,15 +695,19 @@ export async function onRequestPost({ request, env, ctx }) {
   if (!adminLogin || adminLogin.length < 3) return err('관리자 아이디는 3자 이상 입력해주세요.');
   if (!/^[a-zA-Z0-9_]+$/.test(adminLogin)) return err('관리자 아이디는 영문/숫자/언더바만 사용 가능합니다.');
 
-  // Worker URL + 복제 설정 사전 확인
+  // Worker URL 확인
   const workerUrl = await getWorkerUrl(env);
   if (!workerUrl) {
     return err('Worker URL이 설정되지 않았습니다. 관리자 → 설정에서 Worker URL을 입력해주세요.', 503);
   }
-  const globalCfgCheck = await getGlobalSettings(env);
-  const cloneCfgCheck  = getCloneConfig(globalCfgCheck);
-  if (!cloneCfgCheck.isReady) {
-    return err('복제 설정이 완료되지 않았습니다. 관리자 → 설정에서 마스터 WordPress 주소와 VP 로그인 정보를 입력해주세요.', 503);
+
+  // VP 계정 확인 (활성화되어 있고 clone_zip_url이 설정된 계정이 있는지)
+  const vpAccount = await pickVpAccount(env);
+  if (!vpAccount) {
+    return err('사용 가능한 VP 계정이 없습니다. 관리자 → VP 계정 관리에서 VP 계정을 추가해주세요.', 503);
+  }
+  if (!vpAccount.clone_zip_url || !vpAccount.clone_zip_url.trim()) {
+    return err(`선택된 VP 계정 "${vpAccount.label}"에 복제 ZIP URL이 설정되지 않았습니다. 관리자 → VP 계정 관리에서 복제 ZIP 파일을 업로드해주세요.`, 503);
   }
 
   const effectivePlan = sitePlan || user.plan || 'free';
@@ -735,21 +765,24 @@ export async function onRequestPost({ request, env, ctx }) {
     siteId,
     provider: 'shared_hosting',
     plan: effectivePlan,
-    message: '마스터 WordPress 복제 방식으로 사이트 생성이 시작되었습니다. 완료까지 3~7분 소요됩니다.',
+    vpAccount: vpAccount.label,
+    message: `VP 계정 "${vpAccount.label}"의 템플릿 ZIP을 사용하여 사이트 생성이 시작되었습니다. 완료까지 3~7분 소요됩니다.`,
     phpVersion: '8.x',
     wpVersion: 'latest (한국어)',
     features: {
-      clone:       '마스터 WordPress 사이트 완전 복제',
+      clone:       'ZIP 템플릿 완전 복제',
+      independent: '독립적인 D1 데이터베이스 & KV 스토어',
       cron:        'WP-Cron 자동 활성화',
       restApi:     'REST API 자동 활성화',
       optimization: '속도/캐시 최적화',
       ssl:         'SSL 자동 설정',
     },
     steps: [
-      { step: 1, name: '마스터 WordPress 복제', status: 'running' },
-      { step: 2, name: 'URL · 관리자 계정 교체', status: 'pending' },
-      { step: 3, name: 'Cloudflare CDN 연동 (선택)', status: 'pending' },
-      { step: 4, name: '속도 최적화 자동 설정', status: 'pending' },
+      { step: 1, name: 'ZIP 템플릿 다운로드 및 복제', status: 'running' },
+      { step: 2, name: '독립 환경 생성 (D1 + KV)', status: 'pending' },
+      { step: 3, name: 'URL · 관리자 계정 교체', status: 'pending' },
+      { step: 4, name: 'Cloudflare CDN 연동 (선택)', status: 'pending' },
+      { step: 5, name: '속도 최적화 자동 설정', status: 'pending' },
     ],
   });
 }
