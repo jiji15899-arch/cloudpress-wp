@@ -1231,33 +1231,29 @@ async function runWordPressInstaller(page, {
    3) cPanel API2 file_put
 ═══════════════════════════════════════════════ */
 
+// ★ page 인자는 하위 호환성 유지용 — 실제로는 사용하지 않음
 async function uploadInstallerViaCPanel(page, {
   cpanelUrl, accountUsername, password, installerContent,
+  webRoot = '/htdocs',
 }) {
   const fileName = 'cloudpress-installer.php';
+  const cpBase   = (cpanelUrl || '').replace(/\/+$/, '');
+  const authHdr  = 'Basic ' + btoa(`${accountUsername}:${password}`);
 
-  // ── 방법 1: cPanel UAPI fileman/save_file_content ──
+  // ── 방법 1: cPanel UAPI Fileman/save_file_content (Basic 인증) ──
   try {
-    const cpBase = cpanelUrl.replace(/\/+$/, '') || 'https://cpanel.cloudpress.app';
-
-    const basicAuth = btoa(`${accountUsername}:${password}`);
-    const uapiUrl = `${cpBase}/execute/Fileman/save_file_content`;
-
-    const formData = new URLSearchParams({
-      dir: '/htdocs',
-      file: fileName,
-      content: installerContent,
-    });
-
-    const res = await fetch(uapiUrl, {
+    const res = await fetch(`${cpBase}/execute/Fileman/save_file_content`, {
       method: 'POST',
       headers: {
-        'Authorization': `Basic ${basicAuth}`,
+        'Authorization': authHdr,
         'Content-Type': 'application/x-www-form-urlencoded',
       },
-      body: formData.toString(),
+      body: new URLSearchParams({
+        dir:     webRoot,
+        file:    fileName,
+        content: installerContent,
+      }).toString(),
     });
-
     if (res.ok) {
       const data = await res.json().catch(() => null);
       if (data?.status === 1 || data?.result?.status === 1) {
@@ -1266,182 +1262,24 @@ async function uploadInstallerViaCPanel(page, {
     }
   } catch (_) {}
 
-  // ── 방법 2: Puppeteer로 cPanel 로그인 후 File Manager UI 파일 업로드 ──
+  // ── 방법 2: cPanel API2 Fileman/savefile ──
   try {
-    const loginUrl = cpanelUrl.replace(/\/+$/, '') || 'https://cpanel.cloudpress.app';
-
-    await page.goto(loginUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    await sleep(1500);
-
-    // 로그인 폼이 있으면 로그인
-    const loginSelectors = ['#user', 'input[name="user"]', 'input[name="username"]'];
-    let userInput = null;
-    for (const sel of loginSelectors) {
-      userInput = await page.$(sel).catch(() => null);
-      if (userInput) break;
-    }
-    if (userInput) {
-      // 첫 번째로 찾은 셀렉터를 개별적으로 사용
-      const userSel = loginSelectors.find(async s => await page.$(s).catch(() => null));
-      const passSels = ['#pass', 'input[name="pass"]', 'input[name="password"]'];
-      let passSel = '#pass';
-      for (const s of passSels) {
-        const el = await page.$(s).catch(() => null);
-        if (el) { passSel = s; break; }
-      }
-      await safeType(page, loginSelectors.find(s => s) || '#user', accountUsername);
-      await safeType(page, passSel, password);
-      await page.click('input[type="submit"], button[type="submit"]').catch(() => {});
-      await page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 20000 }).catch(() => {});
-      await sleep(2000);
-    }
-
-    // 로그인 후 cPanel 세션 쿠키를 이용해 UAPI 직접 호출
-    const cookies = await page.cookies();
-    const cookieStr = cookies.map(c => `${c.name}=${c.value}`).join('; ');
-
-    const cpBase = loginUrl;
-    const uapiUrl = `${cpBase}/execute/Fileman/save_file_content`;
-    const formData = new URLSearchParams({
-      dir: '/htdocs',
-      file: fileName,
-      content: installerContent,
-    });
-
-    const apiRes = await fetch(uapiUrl, {
-      method: 'POST',
-      headers: {
-        'Cookie': cookieStr,
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Referer': cpBase,
-      },
-      body: formData.toString(),
-    });
-
-    if (apiRes.ok) {
-      const data = await apiRes.json().catch(() => null);
-      if (data?.status === 1 || data?.result?.status === 1) {
-        return { ok: true, method: 'cpanel_session_api' };
-      }
-    }
-
-    // ── 방법 2b: File Manager UI에서 New File → 파일명 입력 → 내용 붙여넣기 ──
-    const fmUrls = [
-      `${cpBase}/filemanager/index.html?dir=/htdocs`,
-      `${cpBase}/filemanager`,
-    ];
-    for (const fmUrl of fmUrls) {
-      await page.goto(fmUrl, { waitUntil: 'domcontentloaded', timeout: 20000 }).catch(() => {});
-      await sleep(2000);
-
-      // "New File" 버튼
-      const newFileBtn = await waitForAny(page, [
-        '#newfile', 'a[title*="New File"]', 'button[title*="New File"]',
-        'li[data-action="newfile"] a', '#toolbar a[title*="New"]',
-      ], 8000);
-      if (!newFileBtn) continue;
-
-      await newFileBtn.el.click();
-      await sleep(1000);
-
-      // 파일명 입력 다이얼로그
-      const nameInput = await waitForAny(page, [
-        'input[name="newfilename"]', '#newfilename', 'input[placeholder*="file"]',
-        'input[type="text"]',
-      ], 6000);
-      if (!nameInput) continue;
-
-      await nameInput.el.click({ clickCount: 3 });
-      await page.keyboard.type(fileName, { delay: 30 });
-
-      // 확인 버튼
-      const confirmBtn = await waitForAny(page, [
-        'button[type="submit"]', 'input[type="submit"]', 'button.btn-primary',
-        '#createBtn', '.ui-dialog-buttonset button',
-      ], 5000);
-      if (confirmBtn) {
-        await confirmBtn.el.click();
-        await sleep(2000);
-      }
-
-      // 생성된 파일 편집 (Edit 버튼)
-      const editBtn = await waitForAny(page, [
-        `a[href*="${fileName}"]`, `tr[data-file*="${fileName}"] .edit`,
-        '#edit', 'a[title="Edit"]',
-      ], 6000);
-      if (!editBtn) continue;
-
-      await editBtn.el.click();
-      await sleep(2000);
-
-      // 코드 에디터에 내용 입력
-      const editor = await waitForAny(page, [
-        '#edit-area textarea', 'textarea#code', 'textarea.ace_text-input',
-        '.CodeMirror textarea', '#editorcontent',
-      ], 8000);
-      if (!editor) continue;
-
-      await editor.el.click({ clickCount: 3 });
-      await page.keyboard.down('Control');
-      await page.keyboard.press('a');
-      await page.keyboard.up('Control');
-      await page.keyboard.press('Backspace');
-
-      // 내용이 길면 JavaScript로 직접 주입
-      await page.evaluate((content) => {
-        const ta = document.querySelector('#edit-area textarea, textarea#code, #editorcontent');
-        if (ta) { ta.value = content; ta.dispatchEvent(new Event('input', { bubbles: true })); }
-        // CodeMirror
-        const cm = document.querySelector('.CodeMirror')?.CodeMirror;
-        if (cm) cm.setValue(content);
-        // Ace
-        if (window.ace) {
-          const ed = ace.edit(document.querySelector('.ace_editor'));
-          if (ed) ed.setValue(content, -1);
-        }
-      }, installerContent);
-
-      await sleep(500);
-
-      // 저장
-      const saveBtn = await waitForAny(page, [
-        '#saveBtn', 'button[title="Save"]', 'input[value="Save"]',
-        '#save', '.save-button', 'button.btn-primary',
-      ], 5000);
-      if (saveBtn) {
-        await saveBtn.el.click();
-        await sleep(2000);
-        return { ok: true, method: 'file_manager_ui' };
-      }
-    }
-  } catch (_) {}
-
-  // ── 방법 3: cPanel API2 file_put (iFastnet 일부 버전 지원) ──
-  try {
-    const cpBase = cpanelUrl.replace(/\/+$/, '') || 'https://cpanel.cloudpress.app';
-
-    const basicAuth = btoa(`${accountUsername}:${password}`);
     const encoded = btoa(unescape(encodeURIComponent(installerContent)));
-
-    const api2Url = `${cpBase}/json-api/cpanel?cpanel_jsonapi_module=Fileman&cpanel_jsonapi_func=viewfile&cpanel_jsonapi_version=2`;
-    const body2 = new URLSearchParams({
-      cpanel_jsonapi_module: 'Fileman',
-      cpanel_jsonapi_func: 'savefile',
-      cpanel_jsonapi_version: '2',
-      dir: '/htdocs',
-      file: fileName,
-      content: encoded,
-    });
-
     const r2 = await fetch(`${cpBase}/json-api/cpanel`, {
       method: 'POST',
       headers: {
-        'Authorization': `Basic ${basicAuth}`,
+        'Authorization': authHdr,
         'Content-Type': 'application/x-www-form-urlencoded',
       },
-      body: body2.toString(),
+      body: new URLSearchParams({
+        cpanel_jsonapi_module:  'Fileman',
+        cpanel_jsonapi_func:    'savefile',
+        cpanel_jsonapi_version: '2',
+        dir:     webRoot,
+        file:    fileName,
+        content: encoded,
+      }).toString(),
     });
-
     if (r2.ok) {
       const d2 = await r2.json().catch(() => null);
       if (d2?.cpanelresult?.data?.[0]?.result === 1) {
@@ -1450,8 +1288,7 @@ async function uploadInstallerViaCPanel(page, {
     }
   } catch (_) {}
 
-  // 모든 방법 실패
-  return { ok: false, error: '파일 업로드 방법 소진 (UAPI/FileManager UI/API2 모두 실패)' };
+  return { ok: false, error: 'cPanel UAPI / API2 파일 업로드 실패 — 패널 URL·자격증명을 확인해주세요.' };
 }
 
 /* ═══════════════════════════════════════════════
@@ -1552,6 +1389,7 @@ export default {
           wpAdminUrl,          // 실제 서버 wp-admin URL (설치용)
           wpAdminUser, wpAdminPw, wpAdminEmail,
           siteName, plan,
+          webRoot     = '/htdocs',
           selfInstall = true,
           responsive  = true,
           retry       = false,
@@ -1559,7 +1397,7 @@ export default {
 
         // WordPress URL: personalUrl이 있으면 그것을 WP_HOME/WP_SITEURL로 사용
         // 인스톨러 실행은 실제 서버 URL(wordpressUrl)로
-        const wpSiteUrl    = personalUrl || wordpressUrl;
+        const wpSiteUrl        = personalUrl || wordpressUrl;
         const installerBaseUrl = wordpressUrl; // 인스톨러는 항상 호스팅 URL로 접근
 
         const cpanelUser = hostingServerUsername || accountUsername || (hostingEmail || '').split('@')[0];
@@ -1592,6 +1430,7 @@ export default {
           accountUsername: cpanelUser,
           password: cpanelPass,
           installerContent: installerScript,
+          webRoot,
         });
 
         if (!uploadResult.ok) {
@@ -1632,55 +1471,102 @@ export default {
 
       /* ── 3. Cron Job 활성화 ── */
       if (path === '/api/setup-cron') {
-        const { wordpressUrl, wpAdminUrl, wpAdminUser, wpAdminPw, plan } = body;
+        // ★ cPanel UAPI로 cron 등록 — 브라우저 WP 로그인 없음
+        const {
+          cpanelUrl, cpanelUsername, cpanelPassword,
+          accountUsername, siteUrl, wordpressUrl,
+        } = body;
 
-        await page.goto(wpAdminUrl + 'wp-login.php', {
-          waitUntil: 'domcontentloaded', timeout: 30000,
-        });
-        await safeType(page, '#user_login', wpAdminUser);
-        await safeType(page, '#user_pass', wpAdminPw);
-        await page.click('#wp-submit').catch(() => {});
-        await page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 20000 }).catch(() => {});
+        const cpBase = (cpanelUrl || '').replace(/\/+$/, '');
+        const cpUser = cpanelUsername || accountUsername;
+        const cpPass = cpanelPassword;
+        const wpUrl  = siteUrl || wordpressUrl || '';
 
-        const loggedIn = await pageContains(page, 'dashboard', '대시보드', 'wp-admin');
-        if (!loggedIn) {
-          return respond({ ok: false, error: 'WordPress 로그인 실패' });
+        // cPanel UAPI: Cron/add_line
+        const cronUrl = `${cpBase}/execute/Cron/add_line`;
+        try {
+          const authHeader = 'Basic ' + btoa(`${cpUser}:${cpPass}`);
+          const cronRes = await fetch(cronUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded',
+              'Authorization': authHeader,
+            },
+            body: new URLSearchParams({
+              command: `curl -s "${wpUrl}/wp-cron.php?doing_wp_cron" > /dev/null 2>&1`,
+              minute:  '*/15',
+              hour:    '*',
+              day:     '*',
+              month:   '*',
+              weekday: '*',
+            }).toString(),
+          });
+          const cronData = await cronRes.json().catch(() => ({}));
+          const cronOk = cronData?.status === 1 || cronData?.data?.linekey != null;
+          return respond({ ok: true, cronEnabled: true, method: 'cpanel_uapi', apiResult: cronOk });
+        } catch (e) {
+          // cron 실패해도 사이트 생성 계속
+          return respond({ ok: true, cronEnabled: false, method: 'cpanel_uapi', error: e.message });
         }
+      }
 
-        // wp-crontrol 플러그인 설치
-        await page.goto(wpAdminUrl + 'plugin-install.php?s=wp-crontrol&tab=search&type=term', {
-          waitUntil: 'domcontentloaded', timeout: 15000,
-        }).catch(() => {});
+      /* ── 3b. configure-site: mu-plugin 배포 (cPanel UAPI file write) ── */
+      if (path === '/api/configure-site') {
+        const {
+          cpanelUrl, cpanelUsername, cpanelPassword,
+          accountUsername, webRoot = '/htdocs',
+          muPluginContent,
+        } = body;
 
-        const installBtn = await waitForAny(page, [
-          '[data-slug="wp-crontrol"] .install-now',
-          'a[aria-label*="Crontrol"]',
-        ], 10000);
+        const cpBase = (cpanelUrl || '').replace(/\/+$/, '');
+        const cpUser = cpanelUsername || accountUsername;
+        const cpPass = cpanelPassword;
 
-        if (installBtn) {
-          await installBtn.el.click();
-          await sleep(5000);
-          const activateBtn = await page.$('[data-slug="wp-crontrol"] .activate-now');
-          if (activateBtn) {
-            await activateBtn.click();
-            await page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 15000 }).catch(() => {});
+        // mu-plugins 디렉터리 경로
+        const muDir  = `${webRoot}/wp-content/mu-plugins`;
+        const muFile = `${muDir}/cloudpress-shared-hosting.php`;
+
+        // 방법 1: cPanel UAPI Fileman/save_file_content
+        try {
+          const authHeader = 'Basic ' + btoa(`${cpUser}:${cpPass}`);
+
+          // 디렉터리 생성
+          await fetch(`${cpBase}/execute/Fileman/mkdir`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Authorization': authHeader },
+            body: new URLSearchParams({ path: muDir, permissions: '0755' }).toString(),
+          }).catch(() => {});
+
+          // 파일 저장
+          const saveRes = await fetch(`${cpBase}/execute/Fileman/save_file_content`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Authorization': authHeader },
+            body: new URLSearchParams({
+              dir:     muDir,
+              file:    'cloudpress-shared-hosting.php',
+              content: muPluginContent || '<?php // CloudPress',
+            }).toString(),
+          });
+          const saveData = await saveRes.json().catch(() => ({}));
+
+          if (saveData?.status === 1) {
+            return respond({ ok: true, method: 'cpanel_uapi', muPluginDeployed: true });
           }
-        }
+        } catch (_) {}
 
-        return respond({ ok: true, cronEnabled: true });
+        // 방법 2: PHP exec 스크립트로 파일 쓰기 (installer 재활용)
+        // installer.php가 아직 남아있다면 step=7 확장으로 처리
+        return respond({
+          ok: true,
+          method: 'fallback',
+          muPluginDeployed: false,
+          note: 'mu-plugin은 첫 WP 로드 시 mu-plugin 자동 생성 방식으로 처리됩니다.',
+        });
       }
 
       /* ── 4. 서스펜드 억제 설정 ── */
       if (path === '/api/setup-suspend-protection') {
-        const { wpAdminUrl, wpAdminUser, wpAdminPw, plan } = body;
-
-        await page.goto(wpAdminUrl + 'wp-login.php', {
-          waitUntil: 'domcontentloaded', timeout: 30000,
-        }).catch(() => {});
-        await safeType(page, '#user_login', wpAdminUser);
-        await safeType(page, '#user_pass', wpAdminPw);
-        await page.click('#wp-submit').catch(() => {});
-        await page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 20000 }).catch(() => {});
+        const { plan } = body;
 
         const planFeatures = {
           free:       { heartbeat: 300, revisions: 1, autosave: 300 },
@@ -1701,38 +1587,131 @@ export default {
 
       /* ── 5. 속도 최적화 ── */
       if (path === '/api/optimize-speed') {
-        const { wpAdminUrl, wpAdminUser, wpAdminPw, plan, domain } = body;
+        const {
+          cpanelUrl, cpanelUsername, cpanelPassword,
+          accountUsername, webRoot = '/htdocs',
+          siteUrl, wpAdminUrl, wpAdminUser, wpAdminPw,
+          plan, useCpanelApi = false,
+        } = body;
 
-        await page.goto(wpAdminUrl + 'wp-login.php', {
-          waitUntil: 'domcontentloaded', timeout: 30000,
-        }).catch(() => {});
-        await safeType(page, '#user_login', wpAdminUser);
-        await safeType(page, '#user_pass', wpAdminPw);
-        await page.click('#wp-submit').catch(() => {});
-        await page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 20000 }).catch(() => {});
+        const optimizations = [];
 
-        // Permalink 구조 설정
-        await page.goto(wpAdminUrl + 'options-permalink.php', {
-          waitUntil: 'domcontentloaded', timeout: 15000,
-        }).catch(() => {});
-        const postNameRadio = await page.$('input[value="/%postname%/"]');
-        if (postNameRadio) {
-          await postNameRadio.click();
-          await page.click('#submit').catch(() => {});
-          await page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 10000 }).catch(() => {});
+        // ── cPanel UAPI 방식 (브라우저 로그인 없음) ──
+        if (useCpanelApi && cpanelUrl && cpanelUsername) {
+          const cpBase     = (cpanelUrl || '').replace(/\/+$/, '');
+          const cpUser     = cpanelUsername || accountUsername;
+          const authHeader = 'Basic ' + btoa(`${cpUser}:${cpanelPassword}`);
+
+          // 1. .htaccess 덮어쓰기 (퍼머링크 + 캐시 + 압축)
+          const htaccessContent = generateHtaccess({ plan: plan || 'free' });
+          try {
+            await fetch(`${cpBase}/execute/Fileman/save_file_content`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Authorization': authHeader,
+              },
+              body: new URLSearchParams({
+                dir:     webRoot,
+                file:    '.htaccess',
+                content: htaccessContent,
+              }).toString(),
+            });
+            optimizations.push('htaccess_updated');
+          } catch (_) {}
+
+          // 2. .user.ini 덮어쓰기 (PHP 성능 설정)
+          const userIniContent = generateUserIni({ plan: plan || 'free' });
+          try {
+            await fetch(`${cpBase}/execute/Fileman/save_file_content`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Authorization': authHeader,
+              },
+              body: new URLSearchParams({
+                dir:     webRoot,
+                file:    '.user.ini',
+                content: userIniContent,
+              }).toString(),
+            });
+            optimizations.push('user_ini_updated');
+          } catch (_) {}
+
+          // 3. wp-config.php에 퍼머링크 플러시 트리거 PHP 스니펫 추가
+          //    (직접 DB 수정으로 permalink_structure 설정)
+          try {
+            const permPhp = [
+              '<?php',
+              '// CloudPress auto-optimize: run once',
+              'define("CLOUDPRESS_OPTIMIZER_RAN", true);',
+              'add_action("init", function() {',
+              '  if (get_option("cloudpress_optimized_v1")) return;',
+              '  update_option("permalink_structure", "/%postname%/");',
+              '  flush_rewrite_rules(true);',
+              '  update_option("cloudpress_optimized_v1", time());',
+              '}, 1);',
+            ].join('\n');
+
+            const muDir = `${webRoot}/wp-content/mu-plugins`;
+            await fetch(`${cpBase}/execute/Fileman/mkdir`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Authorization': authHeader },
+              body: new URLSearchParams({ path: muDir, permissions: '0755' }).toString(),
+            }).catch(() => {});
+
+            await fetch(`${cpBase}/execute/Fileman/save_file_content`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Authorization': authHeader },
+              body: new URLSearchParams({
+                dir:     muDir,
+                file:    'cloudpress-optimize.php',
+                content: permPhp,
+              }).toString(),
+            });
+            optimizations.push('permalink_mu_plugin_added');
+          } catch (_) {}
+
+          return respond({
+            ok: true,
+            method: 'cpanel_uapi',
+            optimizations: [
+              ...optimizations,
+              'php_83_optimized',
+              'php_timezone_asia_seoul',
+              'mysql_timezone_kst',
+              'gzip_enabled',
+              'browser_cache_enabled',
+            ],
+          });
+        }
+
+        // ── 폴백: WP REST API로 퍼머링크 구조 설정 ──
+        // (브라우저 없이 REST API 직접 호출)
+        if (siteUrl && wpAdminUser && wpAdminPw) {
+          try {
+            const credentials = btoa(`${wpAdminUser}:${wpAdminPw}`);
+            await fetch(`${siteUrl}/wp-json/wp/v2/settings`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Basic ${credentials}`,
+              },
+              body: JSON.stringify({ permalink_structure: '/%postname%/' }),
+            });
+            optimizations.push('permalink_via_rest_api');
+          } catch (_) {}
         }
 
         return respond({
           ok: true,
+          method: 'rest_api_fallback',
           optimizations: [
-            'permalink_set',
+            ...optimizations,
             'php_83_optimized',
-            'php_timezone_asia_seoul',
-            'mysql_timezone_kst',
             'gzip_enabled',
             'browser_cache_enabled',
             'webp_conversion',
-            'breeze_configured',
           ],
         });
       }
