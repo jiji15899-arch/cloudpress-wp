@@ -1,5 +1,6 @@
--- CloudPress v6.0 — 완전 자체 관리 WordPress 호스팅 스키마
--- ✅ 외부 호스팅사 계정 없음 — iFastnet 서버 IP만 사용
+-- CloudPress v7.0 — 개인도메인 + Cloudflare Worker 프록시 스키마
+-- ✅ v7: cf_worker_name, cf_worker_url, cf_kv_namespace_id 필드 추가
+-- ✅ D1/KV 콘텐츠 동기화 테이블 추가
 -- Cloudflare D1 호환
 
 -- 사용자 테이블
@@ -30,17 +31,18 @@ CREATE TABLE IF NOT EXISTS sites (
   user_id TEXT NOT NULL,
   name TEXT NOT NULL,
 
-  -- 자체 관리 정보 (외부 호스팅사 없음)
+  -- 호스팅 정보 (내부용 — 사용자에게 노출 안 됨)
   hosting_provider TEXT NOT NULL DEFAULT 'self_managed',
-  hosting_email TEXT,               -- 사용 안 함 (하위 호환용)
-  hosting_password TEXT,            -- 서버 접근용 임시 키
-  hosting_domain TEXT,
+  hosting_email TEXT,
+  hosting_password TEXT,
+  hosting_domain TEXT,            -- 실제 WP 서버 서브도메인 (내부)
   subdomain TEXT DEFAULT NULL,
-  account_username TEXT,            -- 자체 생성 서브도메인 슬러그
-  cpanel_url TEXT,                  -- 서버 패널 URL
-  web_path TEXT,                    -- 서버 실제 경로 (예: /htdocs/mysite4x2k)
+  account_username TEXT,
+  cpanel_url TEXT,
+  web_path TEXT,
 
   -- WordPress 정보
+  -- wp_url / wp_admin_url은 개인 도메인 기준 (사용자에게 보이는 URL)
   wp_url TEXT,
   wp_admin_url TEXT,
   wp_username TEXT NOT NULL,
@@ -54,10 +56,16 @@ CREATE TABLE IF NOT EXISTS sites (
   ssl_active INTEGER DEFAULT 0,
   cloudflare_zone_id TEXT,
 
-  -- 도메인
-  primary_domain TEXT,
-  custom_domain TEXT,
-  domain_status TEXT DEFAULT NULL,
+  -- ★ Cloudflare Worker 정보 (개인도메인 프록시)
+  cf_worker_name TEXT,             -- Worker 이름 (예: myblog-com-proxy)
+  cf_worker_url TEXT,              -- Worker URL (workers.dev)
+  cf_kv_namespace_id TEXT,         -- KV Namespace ID (콘텐츠 캐시용)
+  cf_d1_database_id TEXT,          -- D1 Database ID (콘텐츠 저장용)
+
+  -- 도메인 (사용자 개인 도메인)
+  primary_domain TEXT,             -- 개인 도메인 (예: myblog.com)
+  custom_domain TEXT,              -- 동일 (하위 호환)
+  domain_status TEXT DEFAULT NULL, -- pending / deploying / active / pending_manual
   cname_target TEXT,
 
   -- 상태
@@ -75,6 +83,7 @@ CREATE TABLE IF NOT EXISTS sites (
 
   php_version TEXT,
   plan TEXT NOT NULL DEFAULT 'free',
+  server_type TEXT DEFAULT 'shared',
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now')),
   deleted_at TEXT,
@@ -140,12 +149,27 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- ★ 사이트 콘텐츠 D1 동기화 상태
+-- 글/페이지/미디어의 CF KV 동기화 기록
+CREATE TABLE IF NOT EXISTS site_content_sync (
+  id TEXT PRIMARY KEY,
+  site_id TEXT NOT NULL,
+  content_type TEXT NOT NULL,      -- post / page / media
+  wp_id INTEGER NOT NULL,          -- WordPress post ID
+  kv_key TEXT NOT NULL,            -- CF KV 키
+  synced_at TEXT NOT NULL DEFAULT (datetime('now')),
+  checksum TEXT,                   -- 변경 감지용
+  FOREIGN KEY (site_id) REFERENCES sites(id)
+);
+
 -- 인덱스
 CREATE INDEX IF NOT EXISTS idx_sites_user_id      ON sites(user_id);
 CREATE INDEX IF NOT EXISTS idx_sites_status       ON sites(status);
+CREATE INDEX IF NOT EXISTS idx_sites_custom_domain ON sites(custom_domain);
 CREATE INDEX IF NOT EXISTS idx_payments_user_id   ON payments(user_id);
 CREATE INDEX IF NOT EXISTS idx_domains_site_id    ON domains(site_id);
 CREATE INDEX IF NOT EXISTS idx_domains_domain     ON domains(domain);
+CREATE INDEX IF NOT EXISTS idx_content_sync_site  ON site_content_sync(site_id);
 
 -- 기본 설정값
 INSERT OR IGNORE INTO settings (key, value) VALUES
@@ -155,32 +179,34 @@ INSERT OR IGNORE INTO settings (key, value) VALUES
   ('plan_pro_sites',         '10'),
   ('plan_enterprise_sites',  '-1'),
 
-  -- ✅ iFastnet 서버 직접 접근 설정 (관리자가 채워야 함)
-  ('server_ip',     ''),   -- iFastnet 서버 IP
-  ('ftp_host',      ''),   -- FTP 호스트 (보통 server_ip와 동일)
-  ('ftp_user',      ''),   -- FTP 계정
-  ('ftp_pass',      ''),   -- FTP 비밀번호 (암호화 저장 권장)
-  ('ftp_port',      '21'),
-  ('server_panel',  ''),   -- 서버 패널 URL
-  ('panel_user',    ''),
-  ('panel_pass',    ''),
-  ('db_host',       'localhost'),
-  ('db_root_user',  'root'),
-  ('db_root_pass',  ''),
-  ('web_root',      '/htdocs'),
-  ('php_bin',       'php8.3'),
+  -- 서버 직접 접근 설정
+  ('server_ip',              ''),
+  ('ftp_host',               ''),
+  ('ftp_user',               ''),
+  ('ftp_pass',               ''),
+  ('ftp_port',               '21'),
+  ('server_panel',           ''),
+  ('panel_user',             ''),
+  ('panel_pass',             ''),
+  ('db_host',                'localhost'),
+  ('db_root_user',           'root'),
+  ('db_root_pass',           ''),
+  ('web_root',               '/htdocs'),
+  ('php_bin',                'php8.3'),
 
-  -- Worker
+  -- Puppeteer Worker
   ('puppeteer_worker_url',    ''),
   ('puppeteer_worker_secret', ''),
 
-  -- ✅ 호스팅 서버 접근 설정 (getHostingServerConfig에서 사용)
-  ('hosting_cpanel_url',       ''),   -- cPanel URL (예: https://cpanel.example.com:2083)
-  ('hosting_server_username',  ''),   -- cPanel 관리자 계정
-  ('hosting_server_password',  ''),   -- cPanel 관리자 비밀번호
-  ('hosting_server_domain',    ''),   -- 서버 기본 도메인
+  -- 호스팅 서버 접근 설정
+  ('hosting_cpanel_url',       ''),
+  ('hosting_server_username',  ''),
+  ('hosting_server_password',  ''),
+  ('hosting_server_domain',    ''),
 
-  -- Cloudflare
+  -- Cloudflare (관리자 계정 — 선택사항)
+  ('cf_api_token',            ''),
+  ('cf_account_id',           ''),
   ('cloudflare_cdn_enabled',  '1'),
   ('auto_ssl',                '1'),
   ('auto_breeze',             '1'),
