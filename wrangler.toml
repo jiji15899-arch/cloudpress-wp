@@ -13,13 +13,6 @@ database_id = "c7dea0ce-2e22-439f-9a1c-38ed24cbfc40"
 binding = "SESSIONS"
 id = "9cb18ceb35d24067a124b6c05e29915f"
 
-# ✅ R2 버킷 — VP 계정 ZIP 템플릿 파일 저장
-# 1) Cloudflare Dashboard > R2 > 버킷 만들기 → 버킷명: cloudpress-zip-templates
-# 2) 아래 bucket_name을 생성한 버킷명으로 변경
-[[r2_buckets]]
-binding = "ZIP_BUCKET"
-bucket_name = "cloudpress-zip-templates"
-
 [vars]
 # 사이트 도메인
 SITE_DOMAIN = "cloud-press.co.kr"
