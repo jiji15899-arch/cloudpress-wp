@@ -1,14 +1,10 @@
 // functions/api/sites/index.js
-// CloudPress v7.0 — 사이트 목록 조회 + 신규 사이트 생성
-//
-// ✅ v7 변경사항:
-//   1. 사이트 생성 시 personalDomain (개인 도메인) 필수 수집
-//   2. cfEmail + cfApiKey + cfAccountId (Cloudflare Global API) 수집
-//   3. Cloudflare Worker 자동 생성 + 배포 (개인도메인 ↔ 호스팅 서브도메인 프록시)
-//   4. 크론잡/어드민/모든 경로가 개인도메인에서 완벽히 동작
-//   5. CF API 키는 DB에 저장하지 않음 (생성 후 폐기)
-//   6. 글/페이지/미디어 등 콘텐츠는 CF D1 + KV 사용
-//   7. wp-config.php에 개인도메인을 WP_HOME/WP_SITEURL로 설정
+// CloudPress v6.1 — 공유 호스팅 최적화 + 사이트 생성 버그 수정
+// ✅ v6.1 변경사항:
+//   1. VP 계정 없어도 PHP 인스톨러 직접 실행 모드 지원
+//   2. Worker URL 없어도 동작하는 공유호스팅 폴백 모드
+//   3. 공유 호스팅 자동 설정: cron, REST API, 속도최적화
+//   4. 사이트 생성 상태 폴링 안정화
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -45,6 +41,7 @@ async function getUser(env, req) {
 function genId() {
   return 'site_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
+
 function genPw(len = 16) {
   const chars = 'ABCDEFGHIJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#';
   let pw = '';
@@ -62,6 +59,7 @@ async function ensureSitesColumns(DB) {
     `ALTER TABLE sites ADD COLUMN hosting_domain TEXT`,
     `ALTER TABLE sites ADD COLUMN subdomain TEXT DEFAULT NULL`,
     `ALTER TABLE sites ADD COLUMN account_username TEXT`,
+    `ALTER TABLE sites ADD COLUMN vp_account_id TEXT`,
     `ALTER TABLE sites ADD COLUMN cpanel_url TEXT`,
     `ALTER TABLE sites ADD COLUMN wp_url TEXT`,
     `ALTER TABLE sites ADD COLUMN wp_admin_url TEXT`,
@@ -70,14 +68,17 @@ async function ensureSitesColumns(DB) {
     `ALTER TABLE sites ADD COLUMN wp_admin_email TEXT`,
     `ALTER TABLE sites ADD COLUMN wp_version TEXT DEFAULT '6.x'`,
     `ALTER TABLE sites ADD COLUMN php_version TEXT`,
-    `ALTER TABLE sites ADD COLUMN breeze_installed INTEGER DEFAULT 0`,
+    `ALTER TABLE sites ADD COLUMN redis_enabled INTEGER DEFAULT 0`,
     `ALTER TABLE sites ADD COLUMN cron_enabled INTEGER DEFAULT 0`,
+    `ALTER TABLE sites ADD COLUMN rest_api_enabled INTEGER DEFAULT 1`,
+    `ALTER TABLE sites ADD COLUMN loopback_enabled INTEGER DEFAULT 1`,
     `ALTER TABLE sites ADD COLUMN ssl_active INTEGER DEFAULT 0`,
     `ALTER TABLE sites ADD COLUMN cloudflare_zone_id TEXT`,
-    `ALTER TABLE sites ADD COLUMN cf_worker_name TEXT`,
-    `ALTER TABLE sites ADD COLUMN cf_worker_url TEXT`,
+    `ALTER TABLE sites ADD COLUMN cloudflare_enabled INTEGER DEFAULT 0`,
     `ALTER TABLE sites ADD COLUMN speed_optimized INTEGER DEFAULT 0`,
     `ALTER TABLE sites ADD COLUMN suspend_protected INTEGER DEFAULT 0`,
+    `ALTER TABLE sites ADD COLUMN multisite_blog_id INTEGER DEFAULT NULL`,
+    `ALTER TABLE sites ADD COLUMN installation_mode TEXT DEFAULT 'wpmu'`,
     `ALTER TABLE sites ADD COLUMN error_message TEXT`,
     `ALTER TABLE sites ADD COLUMN provision_step TEXT DEFAULT NULL`,
     `ALTER TABLE sites ADD COLUMN suspended INTEGER DEFAULT 0`,
@@ -91,13 +92,35 @@ async function ensureSitesColumns(DB) {
     `ALTER TABLE sites ADD COLUMN domain_status TEXT DEFAULT NULL`,
     `ALTER TABLE sites ADD COLUMN cname_target TEXT`,
     `ALTER TABLE sites ADD COLUMN server_type TEXT DEFAULT 'shared'`,
-    `ALTER TABLE sites ADD COLUMN cf_kv_namespace_id TEXT`,
-    `ALTER TABLE sites ADD COLUMN cf_d1_database_id TEXT`,
+    `ALTER TABLE sites ADD COLUMN login_url TEXT`,
+    `ALTER TABLE sites ADD COLUMN install_method TEXT DEFAULT 'auto'`,
   ];
   for (const sql of migrations) {
     try { await DB.prepare(sql).run(); } catch (_) {}
   }
-  // domains table
+
+  // vp_accounts 테이블 생성
+  try {
+    await DB.prepare(`
+      CREATE TABLE IF NOT EXISTS vp_accounts (
+        id TEXT PRIMARY KEY,
+        label TEXT NOT NULL,
+        vp_username TEXT NOT NULL,
+        vp_password TEXT NOT NULL,
+        panel_url TEXT NOT NULL,
+        server_domain TEXT NOT NULL,
+        web_root TEXT DEFAULT '/htdocs',
+        php_bin TEXT DEFAULT 'php8.3',
+        mysql_host TEXT DEFAULT 'localhost',
+        max_sites INTEGER DEFAULT 50,
+        current_sites INTEGER DEFAULT 0,
+        is_active INTEGER DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `).run();
+  } catch (_) {}
+
   try {
     await DB.prepare(`
       CREATE TABLE IF NOT EXISTS domains (
@@ -110,26 +133,13 @@ async function ensureSitesColumns(DB) {
       )
     `).run();
   } catch (_) {}
-  // push_subscriptions table
+
   try {
     await DB.prepare(`
       CREATE TABLE IF NOT EXISTS push_subscriptions (
         id TEXT PRIMARY KEY, user_id TEXT NOT NULL,
         endpoint TEXT NOT NULL UNIQUE, p256dh TEXT NOT NULL, auth TEXT NOT NULL,
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
-      )
-    `).run();
-  } catch (_) {}
-  // site_content KV mapping table
-  try {
-    await DB.prepare(`
-      CREATE TABLE IF NOT EXISTS site_content (
-        id TEXT PRIMARY KEY,
-        site_id TEXT NOT NULL,
-        content_type TEXT NOT NULL,
-        cf_key TEXT NOT NULL,
-        created_at TEXT NOT NULL DEFAULT (datetime('now')),
-        FOREIGN KEY (site_id) REFERENCES sites(id)
       )
     `).run();
   } catch (_) {}
@@ -142,42 +152,73 @@ async function getMaxSites(env, plan) {
     const val = parseInt(row?.value ?? '', 10);
     if (isNaN(val)) return FALLBACK[plan] ?? 1;
     return val;
-  } catch { return FALLBACK[plan] ?? 1; }
+  } catch {
+    return FALLBACK[plan] ?? 1;
+  }
 }
 
-async function getPuppeteerWorkerUrl(env) {
+async function getWorkerUrl(env) {
   try {
     const row = await env.DB.prepare("SELECT value FROM settings WHERE key='puppeteer_worker_url'").first();
     return row?.value || env.PUPPETEER_WORKER_URL || '';
   } catch { return env.PUPPETEER_WORKER_URL || ''; }
 }
-async function getPuppeteerWorkerSecret(env) {
+
+async function getWorkerSecret(env) {
   try {
     const row = await env.DB.prepare("SELECT value FROM settings WHERE key='puppeteer_worker_secret'").first();
     return row?.value || env.PUPPETEER_WORKER_SECRET || '';
   } catch { return env.PUPPETEER_WORKER_SECRET || ''; }
 }
-async function getHostingServerConfig(env) {
+
+async function getCnameTarget(env) {
+  try {
+    const row = await env.DB.prepare("SELECT value FROM settings WHERE key='cname_target'").first();
+    return row?.value || env.CNAME_TARGET || 'proxy.cloudpress.site';
+  } catch { return 'proxy.cloudpress.site'; }
+}
+
+// VP 계정 풀에서 여유 있는 계정 선택
+async function pickVpAccount(env) {
   try {
     const { results } = await env.DB.prepare(
-      "SELECT key, value FROM settings WHERE key IN ('hosting_cpanel_url','hosting_server_username','hosting_server_password','hosting_server_domain')"
+      `SELECT * FROM vp_accounts
+       WHERE is_active=1 AND current_sites < max_sites
+       ORDER BY current_sites ASC LIMIT 1`
+    ).all();
+    return results?.[0] || null;
+  } catch { return null; }
+}
+
+// VP 계정 사이트 카운트 증가
+async function incrementVpAccountSites(env, vpAccountId) {
+  try {
+    await env.DB.prepare(
+      `UPDATE vp_accounts SET current_sites=current_sites+1, updated_at=datetime('now') WHERE id=?`
+    ).bind(vpAccountId).run();
+  } catch (_) {}
+}
+
+// 글로벌 설정 조회
+async function getGlobalSettings(env) {
+  try {
+    const { results } = await env.DB.prepare(
+      `SELECT key, value FROM settings WHERE key IN (
+        'cf_api_token','cf_account_id','cloudflare_cdn_enabled',
+        'auto_ssl','redis_host','redis_port','redis_password',
+        'installation_mode','cname_target','site_domain'
+      )`
     ).all();
     const cfg = {};
     for (const r of (results || [])) cfg[r.key] = r.value;
-    return {
-      cpanelUrl: cfg['hosting_cpanel_url'] || env.HOSTING_CPANEL_URL || '',
-      username:  cfg['hosting_server_username'] || env.HOSTING_SERVER_USERNAME || '',
-      password:  cfg['hosting_server_password'] || env.HOSTING_SERVER_PASSWORD || '',
-      domain:    cfg['hosting_server_domain'] || env.HOSTING_SERVER_DOMAIN || '',
-    };
-  } catch {
-    return { cpanelUrl: '', username: '', password: '', domain: '' };
-  }
+    return cfg;
+  } catch { return {}; }
 }
 
+// fetch with timeout
 async function callWorker(workerUrl, workerSecret, apiPath, payload) {
   const controller = new AbortController();
-  const timeoutMs = apiPath.includes('install-wordpress') ? 300000 : 180000;
+  const timeoutMs = apiPath.includes('create-site') ? 600000 : 300000;
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetch(`${workerUrl}${apiPath}`, {
@@ -189,7 +230,7 @@ async function callWorker(workerUrl, workerSecret, apiPath, payload) {
     try { return await res.json(); }
     catch { return { ok: false, error: `HTTP ${res.status}: 응답 파싱 실패` }; }
   } catch (e) {
-    if (e.name === 'AbortError') return { ok: false, error: `Worker 타임아웃 (${timeoutMs / 1000}초 초과)` };
+    if (e.name === 'AbortError') return { ok: false, error: `Worker 타임아웃 (${timeoutMs/1000}초 초과)` };
     return { ok: false, error: e.message };
   } finally {
     clearTimeout(timer);
@@ -206,535 +247,389 @@ async function updateSiteStatus(DB, siteId, fields) {
   ).bind(...values, siteId).run().catch(() => {});
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   Cloudflare Worker 자동 생성 + 배포
-   
-   구조: 사용자 개인도메인 → CF Worker → 실제 WordPress 서브도메인
-   - 모든 경로(/wp-admin/, /wp-cron.php, 모든 페이지) 투명 프록시
-   - 호스트 헤더 재작성 (WP가 올바른 URL 인식)
-   - HTTPS 강제, 쿠키 경로 재작성
-   - CF API Key는 배포 후 메모리에서 즉시 삭제 (DB 저장 안 함)
-════════════════════════════════════════════════════════════════ */
-
-function buildWorkerScript(personalDomain, wpHostingUrl) {
-  // wpHostingUrl 예: https://mysite4x2k.cloudpress.app
-  const wpOrigin = wpHostingUrl.replace(/\/$/, '');
-  const workerCode = `
-// CloudPress Auto-Generated Proxy Worker
-// Personal Domain: ${personalDomain}
-// WP Hosting Origin: ${wpOrigin}
-// Generated: ${new Date().toISOString()}
-
-const WP_ORIGIN = '${wpOrigin}';
-const PERSONAL_DOMAIN = '${personalDomain}';
-
-addEventListener('fetch', event => {
-  event.respondWith(handleRequest(event.request));
-});
-
-async function handleRequest(request) {
-  const url = new URL(request.url);
-
-  // 헬스체크
-  if (url.pathname === '/__cloudpress_health') {
-    return new Response(JSON.stringify({ ok: true, domain: PERSONAL_DOMAIN, origin: WP_ORIGIN }), {
-      headers: { 'Content-Type': 'application/json' }
-    });
-  }
-
-  // 실제 WP 서버 URL 구성
-  const targetUrl = WP_ORIGIN + url.pathname + url.search;
-
-  // 요청 헤더 복제 + 수정
-  const headers = new Headers(request.headers);
-  headers.set('Host', new URL(WP_ORIGIN).hostname);
-  headers.set('X-Forwarded-For', request.headers.get('CF-Connecting-IP') || '');
-  headers.set('X-Real-IP', request.headers.get('CF-Connecting-IP') || '');
-  headers.set('X-Forwarded-Host', PERSONAL_DOMAIN);
-  headers.set('X-Forwarded-Proto', 'https');
-  // WP가 개인 도메인 인식을 위한 헤더
-  headers.set('X-CloudPress-Domain', PERSONAL_DOMAIN);
-
-  // 요청 바디 처리 (POST/PUT)
-  let body = null;
-  const method = request.method;
-  if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
-    body = await request.arrayBuffer();
-    // wp-login.php POST에서 redirect_to 파라미터 URL 재작성
-    if (url.pathname === '/wp-login.php' && body) {
-      try {
-        const text = new TextDecoder().decode(body);
-        const rewritten = text.replace(
-          new RegExp(escapeRegex(WP_ORIGIN), 'g'),
-          'https://' + PERSONAL_DOMAIN
-        );
-        body = new TextEncoder().encode(rewritten);
-      } catch(_) {}
+async function sendPushNotifications(env, userId, notification) {
+  try {
+    const { results } = await env.DB.prepare(
+      'SELECT endpoint FROM push_subscriptions WHERE user_id=?'
+    ).bind(userId).all();
+    if (!results?.length) return;
+    for (const sub of results) {
+      await fetch(sub.endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'TTL': '86400' },
+        body: JSON.stringify(notification),
+      }).catch(() => {});
     }
-  }
-
-  let response;
-  try {
-    response = await fetch(targetUrl, {
-      method,
-      headers,
-      body,
-      redirect: 'manual', // 리다이렉트는 직접 처리
-    });
-  } catch (e) {
-    return new Response('CloudPress Worker: Origin unreachable - ' + e.message, {
-      status: 502,
-      headers: { 'Content-Type': 'text/plain; charset=utf-8' }
-    });
-  }
-
-  // 응답 헤더 처리
-  const respHeaders = new Headers(response.headers);
-  
-  // 리다이렉트 Location 헤더 재작성 (WP 서브도메인 → 개인도메인)
-  const location = respHeaders.get('Location');
-  if (location) {
-    const newLocation = location
-      .replace(new RegExp(escapeRegex(WP_ORIGIN), 'g'), 'https://' + PERSONAL_DOMAIN)
-      .replace(/^http:/, 'https:');
-    respHeaders.set('Location', newLocation);
-  }
-
-  // Set-Cookie 도메인/경로 재작성
-  const cookies = respHeaders.getAll ? respHeaders.getAll('Set-Cookie') : [];
-  if (cookies.length > 0) {
-    respHeaders.delete('Set-Cookie');
-    for (const cookie of cookies) {
-      const rewritten = cookie
-        .replace(/Domain=[^;]+;?/gi, 'Domain=' + PERSONAL_DOMAIN + ';')
-        .replace(/Secure;?/gi, 'Secure;')
-        .replace(/SameSite=None/gi, 'SameSite=None');
-      respHeaders.append('Set-Cookie', rewritten);
-    }
-  }
-
-  // HSTS + 보안 헤더
-  respHeaders.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
-  respHeaders.delete('X-Frame-Options'); // WP 어드민 iframe 허용
-
-  // 응답 바디 재작성 (HTML/JS/CSS에서 WP 서브도메인 URL → 개인도메인)
-  const contentType = respHeaders.get('Content-Type') || '';
-  const isTextResponse = contentType.includes('text/') ||
-    contentType.includes('application/json') ||
-    contentType.includes('application/javascript') ||
-    contentType.includes('application/x-javascript');
-
-  if (isTextResponse && response.body) {
-    let text = await response.text();
-    // URL 재작성: http(s)://서브도메인 → https://개인도메인
-    text = text.replace(
-      new RegExp(escapeRegex(WP_ORIGIN).replace('https:', 'https?:'), 'g'),
-      'https://' + PERSONAL_DOMAIN
-    );
-    // wp-json API URL 재작성
-    text = text.replace(
-      new RegExp('"' + escapeRegex(WP_ORIGIN), 'g'),
-      '"https://' + PERSONAL_DOMAIN
-    );
-    return new Response(text, {
-      status: response.status,
-      statusText: response.statusText,
-      headers: respHeaders,
-    });
-  }
-
-  return new Response(response.body, {
-    status: response.status,
-    statusText: response.statusText,
-    headers: respHeaders,
-  });
-}
-
-function escapeRegex(str) {
-  return str.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');
-}
-`;
-  return workerCode;
-}
-
-async function deployCloudflareWorker({
-  cfEmail, cfApiKey, cfAccountId,
-  workerName, personalDomain, wpHostingUrl,
-}) {
-  const baseUrl = `https://api.cloudflare.com/client/v4`;
-  const authHeaders = {
-    'X-Auth-Email': cfEmail,
-    'X-Auth-Key':   cfApiKey,
-    'Content-Type': 'application/json',
-  };
-
-  // 1. Worker 스크립트 업로드
-  const workerScript = buildWorkerScript(personalDomain, wpHostingUrl);
-  const uploadUrl = `${baseUrl}/accounts/${cfAccountId}/workers/scripts/${workerName}`;
-  
-  const formData = new FormData();
-  formData.append('script', new Blob([workerScript], { type: 'application/javascript' }), 'worker.js');
-  formData.append('metadata', new Blob([JSON.stringify({
-    body_part: 'script',
-    bindings: [],
-    compatibility_date: '2024-11-01',
-    compatibility_flags: ['nodejs_compat'],
-  })], { type: 'application/json' }), 'metadata.json');
-
-  let uploadRes;
-  try {
-    uploadRes = await fetch(uploadUrl, {
-      method: 'PUT',
-      headers: {
-        'X-Auth-Email': cfEmail,
-        'X-Auth-Key':   cfApiKey,
-      },
-      body: formData,
-    });
-  } catch (e) {
-    return { ok: false, error: 'Worker 업로드 실패: ' + e.message };
-  }
-
-  if (!uploadRes.ok) {
-    let errBody = '';
-    try { errBody = JSON.stringify(await uploadRes.json()); } catch (_) {}
-    return { ok: false, error: `Worker 업로드 실패 (HTTP ${uploadRes.status}): ${errBody}` };
-  }
-
-  // 2. Worker Route / Custom Domain 연결
-  // 도메인의 Zone ID 찾기
-  const zoneName = personalDomain.split('.').slice(-2).join('.');
-  let zoneId = '';
-  try {
-    const zoneRes = await fetch(`${baseUrl}/zones?name=${encodeURIComponent(zoneName)}`, {
-      headers: authHeaders,
-    });
-    const zoneData = await zoneRes.json();
-    zoneId = zoneData?.result?.[0]?.id || '';
   } catch (_) {}
-
-  let routeResult = { ok: false, message: 'Zone not found — manual DNS setup required' };
-
-  if (zoneId) {
-    // Worker Route 등록: personalDomain/* → workerName
-    try {
-      const routeRes = await fetch(`${baseUrl}/zones/${zoneId}/workers/routes`, {
-        method: 'POST',
-        headers: authHeaders,
-        body: JSON.stringify({
-          pattern: `${personalDomain}/*`,
-          script: workerName,
-        }),
-      });
-      const routeData = await routeRes.json();
-      if (routeData.success) {
-        routeResult = { ok: true, routeId: routeData.result?.id, zoneId };
-      } else {
-        // 이미 존재하는 route면 업데이트
-        const existingRoutes = await fetch(`${baseUrl}/zones/${zoneId}/workers/routes`, {
-          headers: authHeaders,
-        });
-        const existData = await existingRoutes.json();
-        const existing = existData?.result?.find(r => r.pattern === `${personalDomain}/*`);
-        if (existing) {
-          await fetch(`${baseUrl}/zones/${zoneId}/workers/routes/${existing.id}`, {
-            method: 'PUT',
-            headers: authHeaders,
-            body: JSON.stringify({ pattern: `${personalDomain}/*`, script: workerName }),
-          });
-          routeResult = { ok: true, routeId: existing.id, zoneId, updated: true };
-        } else {
-          routeResult = { ok: false, message: JSON.stringify(routeData.errors) };
-        }
-      }
-    } catch (e) {
-      routeResult = { ok: false, message: 'Route 등록 오류: ' + e.message };
-    }
-
-    // DNS A레코드 또는 AAAA레코드가 없으면 프록시 레코드 추가
-    if (routeResult.ok) {
-      try {
-        // Cloudflare IP로 더미 A레코드 (Worker가 실제로 처리)
-        const host = personalDomain.startsWith('www.') ? 'www' : '@';
-        const existDns = await fetch(`${baseUrl}/zones/${zoneId}/dns_records?name=${encodeURIComponent(personalDomain)}&type=A`, {
-          headers: authHeaders,
-        });
-        const dnsData = await existDns.json();
-        if (!dnsData?.result?.length) {
-          await fetch(`${baseUrl}/zones/${zoneId}/dns_records`, {
-            method: 'POST',
-            headers: authHeaders,
-            body: JSON.stringify({
-              type: 'A',
-              name: personalDomain,
-              content: '192.0.2.1', // dummy IP — Worker가 실제 처리
-              proxied: true,
-              ttl: 1,
-            }),
-          });
-        } else {
-          // 기존 레코드 proxied 활성화
-          const existRec = dnsData.result[0];
-          if (!existRec.proxied) {
-            await fetch(`${baseUrl}/zones/${zoneId}/dns_records/${existRec.id}`, {
-              method: 'PATCH',
-              headers: authHeaders,
-              body: JSON.stringify({ proxied: true }),
-            });
-          }
-        }
-      } catch (_) {}
-    }
-  }
-
-  const workerUrl = `https://${workerName}.${cfAccountId.slice(0, 8)}.workers.dev`;
-  return {
-    ok: true,
-    workerName,
-    workerUrl,
-    zoneId: zoneId || null,
-    routeResult,
-    message: zoneId
-      ? `Worker 배포 완료. 도메인 ${personalDomain} 에 라우트 등록됨.`
-      : `Worker 배포 완료. DNS Zone을 찾을 수 없어 수동 라우트 설정이 필요합니다.`,
-  };
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   KV에 사이트 콘텐츠 네임스페이스 생성
+   공유 호스팅 자동 설정 생성기
+   WP-CLI 없이도 wp-config.php PHP 스크립트로 모든 설정 적용
 ════════════════════════════════════════════════════════════════ */
-async function createCFKVNamespace(cfEmail, cfApiKey, cfAccountId, namespaceName) {
-  try {
-    const res = await fetch(
-      `https://api.cloudflare.com/client/v4/accounts/${cfAccountId}/storage/kv/namespaces`,
-      {
-        method: 'POST',
-        headers: {
-          'X-Auth-Email': cfEmail,
-          'X-Auth-Key':   cfApiKey,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ title: namespaceName }),
-      }
-    );
-    const data = await res.json();
-    if (data.success) return { ok: true, id: data.result.id, name: data.result.title };
-    return { ok: false, error: JSON.stringify(data.errors) };
-  } catch (e) {
-    return { ok: false, error: e.message };
-  }
+
+// ⚠️ 수정 포인트: 템플릿 리터럴 대신 일반 문자열 연결 사용
+// 템플릿 리터럴 안에서 PHP 코드의 $var, {}, 정규식 등이
+// JavaScript 파서와 충돌하여 빌드 오류 발생
+function buildSharedHostingMuPlugin() {
+  const lines = [
+    '<?php',
+    '/**',
+    ' * Plugin Name: CloudPress Shared Hosting Core',
+    ' * Description: 공유 호스팅 자동 최적화 - Cron, REST API, 성능 설정',
+    ' * Auto-generated by CloudPress v6.1',
+    ' */',
+    "if (!defined('ABSPATH')) exit;",
+    '',
+    '// ── REST API 강제 활성화 ──',
+    "remove_filter('rest_authentication_errors', '__return_true');",
+    "remove_filter('rest_enabled', '__return_false');",
+    "add_filter('rest_enabled', '__return_true');",
+    "add_filter('rest_jsonp_enabled', '__return_true');",
+    '',
+    '// ── 루프백 요청 허용 (공유호스팅 필수) ──',
+    "add_filter('block_local_requests', '__return_false');",
+    "add_filter('http_request_host_is_external', '__return_true');",
+    '',
+    '// ── WP-Cron 공유호스팅 호환 (실제 HTTP cron) ──',
+    "if (!defined('DISABLE_WP_CRON')) {",
+    "  define('DISABLE_WP_CRON', false);",
+    '}',
+    "define('WP_CRON_LOCK_TIMEOUT', 120);",
+    '',
+    '// ── 공유호스팅 메모리 제한 완화 ──',
+    "if (!defined('WP_MEMORY_LIMIT')) define('WP_MEMORY_LIMIT', '256M');",
+    "if (!defined('WP_MAX_MEMORY_LIMIT')) define('WP_MAX_MEMORY_LIMIT', '512M');",
+    '',
+    '// ── MySQL KST 타임존 ──',
+    "add_action('init', function() {",
+    '  global $wpdb;',
+    '  $wpdb->query("SET time_zone = \'+9:00\'");',
+    '  $wpdb->query("SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci");',
+    '}, 1);',
+    '',
+    '// ── 성능 최적화: 불필요한 헤더 제거 ──',
+    "remove_action('wp_head', 'wp_generator');",
+    "remove_action('wp_head', 'wlwmanifest_link');",
+    "remove_action('wp_head', 'rsd_link');",
+    "remove_action('wp_head', 'wp_shortlink_wp_head');",
+    "remove_action('wp_head', 'adjacent_posts_rel_link_wp_head');",
+    '',
+    '// ── Heartbeat API 최적화 (공유호스팅 부하 감소) ──',
+    "add_filter('heartbeat_settings', function($settings) {",
+    "  $settings['interval'] = 120;",
+    '  return $settings;',
+    '});',
+    "add_filter('heartbeat_send', function($response, $data, $screen_id) {",
+    '  if (!is_admin()) return array();',
+    '  return $response;',
+    '}, 10, 3);',
+    '',
+    '// ── XML-RPC 비활성화 ──',
+    "add_filter('xmlrpc_enabled', '__return_false');",
+    '',
+    '// ── 이미지 업스케일 방지 ──',
+    'add_filter(\'big_image_size_threshold\', function() { return 2048; });',
+    '',
+    '// ── 최초 실행시 공유호스팅 최적화 옵션 자동 설정 ──',
+    "add_action('init', function() {",
+    "  if (get_option('cloudpress_shared_hosting_optimized')) return;",
+    '  ',
+    '  // Permalink 구조 설정',
+    "  if (!get_option('permalink_structure')) {",
+    "    update_option('permalink_structure', '/%postname%/');",
+    '    flush_rewrite_rules(true);',
+    '  }',
+    '  ',
+    '  // 언어 설정 (한국어)',
+    "  if (!get_option('WPLANG')) {",
+    "    update_option('WPLANG', 'ko_KR');",
+    '  }',
+    '  ',
+    '  // KST 타임존',
+    "  update_option('timezone_string', 'Asia/Seoul');",
+    "  update_option('gmt_offset', 9);",
+    "  update_option('date_format', 'Y년 n월 j일');",
+    "  update_option('time_format', 'H:i');",
+    "  update_option('start_of_week', 0);",
+    '  ',
+    '  // 댓글 스팸 방지 기본 설정',
+    "  update_option('default_comment_status', 'closed');",
+    "  update_option('comment_moderation', 1);",
+    '  ',
+    '  // 완료 마킹',
+    "  update_option('cloudpress_shared_hosting_optimized', time());",
+    '}, 99);',
+  ];
+  return lines.join('\n');
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   핵심 프로비저닝 파이프라인 v7.0
+   핵심 프로비저닝 파이프라인 v6.1
+   공유 호스팅 지원 강화
 ════════════════════════════════════════════════════════════════ */
 async function runProvisioningPipeline(env, siteId, payload) {
-  const {
-    cfEmail, cfApiKey, cfAccountId,
-    personalDomain,
-  } = payload;
+  const workerUrl    = await getWorkerUrl(env);
+  const workerSecret = await getWorkerSecret(env);
+  const globalCfg    = await getGlobalSettings(env);
 
-  const workerUrl    = await getPuppeteerWorkerUrl(env);
-  const workerSecret = await getPuppeteerWorkerSecret(env);
-  const serverCfg    = await getHostingServerConfig(env);
+  // VP 계정 선택
+  const vpAccount = payload.vpAccount;
 
+  const baseSlug = payload.siteName.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 12) || 'cp';
+  const suffix   = Math.random().toString(36).slice(2, 5);
+  const subDomain = (baseSlug + suffix).slice(0, 15);
+
+  const serverDomain  = vpAccount?.server_domain || (globalCfg.site_domain || 'cloudpress.site');
+  const hostingDomain = `${subDomain}.${serverDomain}`;
+  const siteUrl       = `https://${hostingDomain}`;
+  const wpAdminUrl    = `${siteUrl}/wp-admin/`;
+  const cnameTarget   = await getCnameTarget(env);
+
+  await updateSiteStatus(env.DB, siteId, {
+    status:           'installing_wp',
+    provision_step:   'creating_site',
+    hosting_domain:   hostingDomain,
+    account_username: subDomain,
+    subdomain:        hostingDomain,
+    cpanel_url:       vpAccount?.panel_url || '',
+    wp_url:           siteUrl,
+    wp_admin_url:     wpAdminUrl,
+    primary_domain:   hostingDomain,
+    cname_target:     cnameTarget,
+    vp_account_id:    vpAccount?.id || null,
+    installation_mode: globalCfg.installation_mode || 'standalone',
+    login_url:        `${siteUrl}/wp-login.php`,
+    server_type:      'shared',
+  });
+
+  // Worker URL이 없는 경우: 공유 호스팅 직접 설치 불가능 → failed로 기록
   if (!workerUrl) {
     await updateSiteStatus(env.DB, siteId, {
       status: 'failed',
-      provision_step: 'wordpress_install',
-      error_message: 'Puppeteer Worker URL 미설정 — 관리자 → 설정에서 Worker URL을 입력해주세요.',
+      provision_step: 'init',
+      error_message: 'Worker URL 미설정 — 관리자 → 설정에서 Worker URL을 입력해주세요.',
     });
     return;
   }
 
-  // 호스팅 서브도메인 생성 (실제 WP가 설치되는 곳)
-  const baseSlug = payload.siteName.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 10) || 'cp';
-  const suffix   = Math.random().toString(36).slice(2, 6);
-  const accountUsername = (baseSlug + suffix).slice(0, 15);
+  // VP 계정 없는 경우 경고만 하고 계속 진행 (standalone PHP installer 사용)
+  const hasVpAccount = !!vpAccount;
 
-  const serverDomain     = serverCfg.domain || `${accountUsername}.cloudpress.app`;
-  const cpanelUrl        = serverCfg.cpanelUrl || `https://cpanel.cloudpress.app`;
-  const hostingDomain    = serverDomain;
-  // 실제 WP URL (호스팅 서브도메인) — 내부용, 사용자에게 노출 안 됨
-  const wpHostingUrl     = `https://${hostingDomain}`;
-  const wpAdminHostingUrl = `${wpHostingUrl}/wp-admin/`;
-  // 사용자에게 보이는 URL (개인 도메인)
-  const personalUrl      = `https://${personalDomain}`;
-  const personalAdminUrl = `${personalUrl}/wp-admin/`;
+  const createPayload = {
+    // VP 패널 접속 정보 (없으면 빈 값)
+    vpUsername:   vpAccount?.vp_username || '',
+    vpPassword:   vpAccount?.vp_password || '',
+    panelUrl:     vpAccount?.panel_url || '',
+    serverDomain: serverDomain,
+    webRoot:      vpAccount?.web_root || '/htdocs',
+    phpBin:       vpAccount?.php_bin || 'php8.3',
+    mysqlHost:    vpAccount?.mysql_host || 'localhost',
 
-  await updateSiteStatus(env.DB, siteId, {
-    status:           'installing_wp',
-    provision_step:   'wordpress_install',
-    hosting_domain:   hostingDomain,
-    account_username: accountUsername,
-    subdomain:        hostingDomain,
-    cpanel_url:       cpanelUrl,
-    // wp_url / wp_admin_url은 개인 도메인으로 설정 (사용자에게 보이는 것)
-    wp_url:           personalUrl,
-    wp_admin_url:     personalAdminUrl,
-    primary_domain:   personalDomain,
-    custom_domain:    personalDomain,
-    domain_status:    'deploying',
-    server_type:      'shared',
-    error_message:    null,
-  });
+    // 사이트 정보
+    subDomain,
+    hostingDomain,
+    siteUrl,
+    siteName:     payload.siteName,
+    wpAdminUser:  payload.wpAdminUser,
+    wpAdminPw:    payload.wpAdminPw,
+    wpAdminEmail: payload.wpAdminEmail,
+    plan:         payload.plan,
 
-  // ══ 단계 1: WordPress 설치 (호스팅 서브도메인에 설치, 개인도메인 URL 사용) ══
-  const wpInstallPayload = {
-    cpanelUrl,
-    hostingServerUsername: serverCfg.username,
-    hostingServerPassword: serverCfg.password,
-    accountUsername,
-    hostingEmail:    payload.hostingEmail,
-    hostingPw:       payload.hostingPw,
-    // WordPress 내부 URL = 개인도메인 (WP_HOME, WP_SITEURL)
-    wordpressUrl:    personalUrl,
-    wpAdminUrl:      wpAdminHostingUrl, // 설치는 실제 서버 URL로
-    wpAdminUser:     payload.wpAdminUser,
-    wpAdminPw:       payload.wpAdminPw,
-    wpAdminEmail:    payload.wpAdminEmail,
-    siteName:        payload.siteName,
-    plan:            payload.plan,
-    selfInstall:     true,
-    responsive:      true,
-    // 개인도메인 설정 — wp-config.php에 반영
-    personalDomain:  personalDomain,
-    personalUrl:     personalUrl,
+    // 공유 호스팅 모드
+    isSharedHosting: true,
+    installationMode: hasVpAccount ? (globalCfg.installation_mode || 'standalone') : 'php_installer',
+
+    // 자동화 옵션
+    enableRedis:      false, // 공유 호스팅에서는 Redis 기본 비활성
+    enableCloudflare: globalCfg.cloudflare_cdn_enabled === '1',
+    cfApiToken:       globalCfg.cf_api_token || '',
+    cfAccountId:      globalCfg.cf_account_id || '',
+    enableSsl:        globalCfg.auto_ssl !== '0',
+
+    // 공유 호스팅 자동 설정 플래그
+    autoEnableCron:    true,
+    autoEnableRestApi: true,
+    autoOptimize:      true,
+    sharedHostingMode: true,
   };
 
-  let wpResult;
+  let createResult;
   try {
-    wpResult = await callWorker(workerUrl, workerSecret, '/api/install-wordpress', wpInstallPayload);
+    createResult = await callWorker(workerUrl, workerSecret, '/api/create-site', createPayload);
   } catch (e) {
-    wpResult = { ok: false, error: 'Worker 연결 실패: ' + e.message };
+    createResult = { ok: false, error: 'Worker 연결 실패: ' + e.message };
   }
 
-  // 실패 시 1회 재시도
-  if (!wpResult.ok) {
+  // 1회 재시도
+  if (!createResult.ok) {
     await updateSiteStatus(env.DB, siteId, {
-      error_message: (wpResult.error || 'WP 설치 실패') + ' — 재시도 중...',
+      error_message: (createResult.error || '사이트 생성 실패') + ' — 재시도 중...',
     });
     try {
-      wpResult = await callWorker(workerUrl, workerSecret, '/api/install-wordpress', {
-        ...wpInstallPayload, retry: true,
+      createResult = await callWorker(workerUrl, workerSecret, '/api/create-site', {
+        ...createPayload, retry: true,
       });
     } catch (e) {
-      wpResult = { ok: false, error: '재시도 실패: ' + e.message };
+      createResult = { ok: false, error: '재시도 실패: ' + e.message };
     }
   }
 
-  if (!wpResult.ok) {
+  if (!createResult.ok) {
     await updateSiteStatus(env.DB, siteId, {
       status:         'failed',
-      provision_step: 'wordpress_install',
-      error_message:  wpResult.error || 'WordPress 설치 최종 실패',
+      provision_step: 'creating_site',
+      error_message:  createResult.error || '사이트 생성 최종 실패',
     });
     return;
   }
 
+  const blogId = createResult.blogId || null;
+  const actualSiteUrl  = createResult.siteUrl  || siteUrl;
+  const actualAdminUrl = createResult.adminUrl || wpAdminUrl;
+  const loginUrl       = `${actualSiteUrl}/wp-login.php`;
+
   await updateSiteStatus(env.DB, siteId, {
-    status:           'installing_wp',
-    provision_step:   'cron_setup',
-    wp_version:       wpResult.wpVersion || 'latest',
-    php_version:      wpResult.phpVersion || '8.3',
-    breeze_installed: wpResult.breezeInstalled ? 1 : 0,
-    error_message:    null,
+    status:             'installing_wp',
+    provision_step:     'configuring',
+    wp_version:         createResult.wpVersion || 'latest',
+    php_version:        createResult.phpVersion || '8.x',
+    multisite_blog_id:  blogId,
+    wp_url:             actualSiteUrl,
+    wp_admin_url:       actualAdminUrl,
+    login_url:          loginUrl,
+    install_method:     createResult.installMethod || 'auto',
+    error_message:      null,
   });
 
-  // ── 단계 2: Cron Job (개인도메인 기준) ──
+  // ══ 단계 2: 공유 호스팅 자동 설정 ══
+  let configResult = { ok: false };
   try {
-    await callWorker(workerUrl, workerSecret, '/api/setup-cron', {
-      wordpressUrl: personalUrl,
-      wpAdminUrl:   wpAdminHostingUrl, // 실제 접근은 호스팅 URL
-      wpAdminUser:  payload.wpAdminUser,
-      wpAdminPw:    payload.wpAdminPw,
-      plan:         payload.plan,
+    configResult = await callWorker(workerUrl, workerSecret, '/api/configure-site', {
+      vpUsername:    vpAccount?.vp_username || '',
+      vpPassword:    vpAccount?.vp_password || '',
+      panelUrl:      vpAccount?.panel_url || '',
+      subDomain,
+      hostingDomain,
+      siteUrl:       actualSiteUrl,
+      wpAdminUrl:    actualAdminUrl,
+      wpAdminUser:   payload.wpAdminUser,
+      wpAdminPw:     payload.wpAdminPw,
+      phpBin:        vpAccount?.php_bin || 'php8.3',
+      webRoot:       vpAccount?.web_root || '/htdocs',
+      plan:          payload.plan,
+      enableRedis:   false,
+      blogId,
+      // 공유 호스팅 설정
+      isSharedHosting:    true,
+      autoEnableCron:     true,
+      autoEnableRestApi:  true,
+      sharedHostingMode:  true,
+      // mu-plugin 콘텐츠 전달
+      muPluginContent:    buildSharedHostingMuPlugin(),
     });
   } catch (_) {}
 
   await updateSiteStatus(env.DB, siteId, {
-    status: 'installing_wp', cron_enabled: 1, provision_step: 'speed_optimization',
+    provision_step:   'installing_plugins',
+    redis_enabled:    configResult?.redisEnabled ? 1 : 0,
+    cron_enabled:     1,
+    rest_api_enabled: 1,
+    loopback_enabled: 1,
   });
 
-  // ── 단계 3: 속도 최적화 ──
+  // ══ 단계 3: Bridge Migration 플러그인 자동 설치 ══
+  let pluginResult = { ok: false };
+  try {
+    pluginResult = await callWorker(workerUrl, workerSecret, '/api/install-plugins', {
+      vpUsername:  vpAccount?.vp_username || '',
+      vpPassword:  vpAccount?.vp_password || '',
+      panelUrl:    vpAccount?.panel_url || '',
+      siteUrl:     actualSiteUrl,
+      wpAdminUrl:  actualAdminUrl,
+      wpAdminUser: payload.wpAdminUser,
+      wpAdminPw:   payload.wpAdminPw,
+      phpBin:      vpAccount?.php_bin || 'php8.3',
+      webRoot:     vpAccount?.web_root || '/htdocs',
+      subDomain,
+      blogId,
+      plan:        payload.plan,
+      isSharedHosting: true,
+    });
+  } catch (_) {}
+
+  await updateSiteStatus(env.DB, siteId, {
+    provision_step: 'cloudflare_setup',
+  });
+
+  // ══ 단계 4: Cloudflare CDN (설정된 경우만) ══
+  let cfResult = { ok: false };
+  if (globalCfg.cloudflare_cdn_enabled === '1' && globalCfg.cf_api_token) {
+    try {
+      cfResult = await callWorker(workerUrl, workerSecret, '/api/setup-cloudflare', {
+        domain:       hostingDomain,
+        cfApiToken:   globalCfg.cf_api_token,
+        cfAccountId:  globalCfg.cf_account_id || '',
+        siteUrl:      actualSiteUrl,
+        wpAdminUrl:   actualAdminUrl,
+        wpAdminUser:  payload.wpAdminUser,
+        wpAdminPw:    payload.wpAdminPw,
+      });
+    } catch (_) {}
+  }
+
+  await updateSiteStatus(env.DB, siteId, {
+    provision_step:      'optimizing',
+    cloudflare_enabled:  cfResult?.ok ? 1 : 0,
+    cloudflare_zone_id:  cfResult?.zoneId || null,
+  });
+
+  // ══ 단계 5: 속도 최적화 (공유 호스팅 맞춤) ══
   let speedResult = { ok: false };
   try {
     speedResult = await callWorker(workerUrl, workerSecret, '/api/optimize-speed', {
-      wpAdminUrl: wpAdminHostingUrl,
+      vpUsername:  vpAccount?.vp_username || '',
+      vpPassword:  vpAccount?.vp_password || '',
+      panelUrl:    vpAccount?.panel_url || '',
+      siteUrl:     actualSiteUrl,
+      wpAdminUrl:  actualAdminUrl,
       wpAdminUser: payload.wpAdminUser,
       wpAdminPw:   payload.wpAdminPw,
+      phpBin:      vpAccount?.php_bin || 'php8.3',
+      webRoot:     vpAccount?.web_root || '/htdocs',
+      subDomain,
+      blogId,
       plan:        payload.plan,
-      domain:      personalDomain,
+      isSharedHosting: true,
     });
   } catch (_) {}
 
-  await updateSiteStatus(env.DB, siteId, {
-    status:          'installing_wp',
-    provision_step:  'worker_deploy',
-    speed_optimized: speedResult?.ok ? 1 : 0,
-    error_message:   null,
-  });
-
-  // ── 단계 4: Cloudflare Worker 배포 (개인도메인 프록시) ──
-  const workerName = (personalDomain.replace(/[^a-z0-9]/gi, '-').toLowerCase() + '-proxy').slice(0, 63);
-
-  let cfWorkerResult = { ok: false, error: 'CF API 미제공' };
-  if (cfEmail && cfApiKey && cfAccountId) {
-    cfWorkerResult = await deployCloudflareWorker({
-      cfEmail, cfApiKey, cfAccountId,
-      workerName,
-      personalDomain,
-      wpHostingUrl,
-    });
-  }
-
-  if (!cfWorkerResult.ok) {
-    // Worker 배포 실패는 치명적이지 않음 — 경고 후 계속
-    await updateSiteStatus(env.DB, siteId, {
-      error_message: `CF Worker 배포 실패: ${cfWorkerResult.error || cfWorkerResult.message || '알 수 없음'}. 수동 설정 필요.`,
-    });
-  } else {
-    await updateSiteStatus(env.DB, siteId, {
-      cf_worker_name: workerName,
-      cf_worker_url:  cfWorkerResult.workerUrl || '',
-      cloudflare_zone_id: cfWorkerResult.zoneId || '',
-      error_message:  null,
-    });
-  }
-
-  // ── 단계 5: KV 네임스페이스 생성 (콘텐츠 저장용) ──
-  await updateSiteStatus(env.DB, siteId, {
-    provision_step: 'dns_setup',
-  });
-
-  let kvNamespaceId = '';
-  if (cfEmail && cfApiKey && cfAccountId) {
-    const kvResult = await createCFKVNamespace(
-      cfEmail, cfApiKey, cfAccountId,
-      `cloudpress-${accountUsername}-content`
-    );
-    if (kvResult.ok) {
-      kvNamespaceId = kvResult.id;
-      await updateSiteStatus(env.DB, siteId, { cf_kv_namespace_id: kvNamespaceId });
-    }
-  }
-
-  // ── 도메인 레코드 DB 저장 ──
-  try {
-    const domId = 'dom_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-    await env.DB.prepare(
-      `INSERT OR REPLACE INTO domains (id, site_id, user_id, domain, cname_target, cname_verified, is_primary, status)
-       VALUES (?,?,?,?,?,1,1,'active')`
-    ).bind(domId, siteId, payload.userId, personalDomain, hostingDomain).run();
-  } catch (_) {}
-
-  // ── 최종 완료 ──
+  // ══ 완료 ══
   await updateSiteStatus(env.DB, siteId, {
     status:          'active',
     provision_step:  'completed',
+    speed_optimized: speedResult?.ok ? 1 : 0,
+    suspend_protected: 1,
     ssl_active:      1,
-    domain_status:   cfWorkerResult.ok ? 'active' : 'pending_manual',
-    error_message:   cfWorkerResult.ok ? null : `CF Worker 수동 배포 필요. Worker 이름: ${workerName}`,
+    error_message:   null,
+    login_url:       loginUrl,
+  });
+
+  // VP 계정 사이트 카운트 증가
+  if (vpAccount?.id) {
+    await incrementVpAccountSites(env, vpAccount.id);
+  }
+
+  await sendPushNotifications(env, payload.userId, {
+    type: 'site_created', siteId,
+    siteName:     payload.siteName,
+    siteUrl:      actualSiteUrl,
+    wpAdminUrl:   actualAdminUrl,
+    loginUrl,
+    wpAdminUser:  payload.wpAdminUser,
+    wpAdminPw:    payload.wpAdminPw,
+    message:      `✅ "${payload.siteName}" 사이트 생성 완료! 관리자: ${actualAdminUrl}`,
+    timestamp:    Date.now(),
   });
 }
 
@@ -748,12 +643,13 @@ export async function onRequestGet({ request, env }) {
   try {
     const { results } = await env.DB.prepare(
       `SELECT id, name, hosting_provider, hosting_domain, subdomain, account_username,
-        wp_url, wp_admin_url, wp_username, wp_version, php_version, breeze_installed,
-        cron_enabled, ssl_active, speed_optimized, suspend_protected, status,
+        wp_url, wp_admin_url, wp_username, wp_password, wp_version, php_version,
+        redis_enabled, cron_enabled, rest_api_enabled, loopback_enabled,
+        ssl_active, cloudflare_enabled, speed_optimized, suspend_protected, status,
         provision_step, error_message, suspended, suspension_reason, disk_used,
         bandwidth_used, plan, primary_domain, custom_domain, domain_status,
-        cname_target, server_type, cf_worker_name, cf_worker_url, cf_kv_namespace_id,
-        created_at, updated_at
+        cname_target, server_type, installation_mode, multisite_blog_id,
+        login_url, install_method, created_at, updated_at
        FROM sites
        WHERE user_id=? AND (status IS NULL OR status != 'deleted')
        ORDER BY created_at DESC`
@@ -772,6 +668,7 @@ export async function onRequestPost({ request, env, ctx }) {
   let body;
   try { body = await request.json(); } catch { return err('요청 형식 오류'); }
 
+  // 푸시 알림 구독
   if (body.action === 'save-push-subscription') {
     const { subscription } = body;
     if (!subscription?.endpoint) return err('구독 정보 없음');
@@ -788,28 +685,21 @@ export async function onRequestPost({ request, env, ctx }) {
     return ok({ vapidPublicKey: env.VAPID_PUBLIC_KEY || '' });
   }
 
-  const {
-    siteName, adminLogin,
-    personalDomain, cfEmail, cfApiKey, cfAccountId,
-    sitePlan,
-  } = body || {};
+  const { siteName, adminLogin, sitePlan, siteUrl } = body || {};
 
-  // 필수값 검증
   if (!siteName || !siteName.trim())        return err('사이트 이름을 입력해주세요.');
   if (!adminLogin || adminLogin.length < 3) return err('관리자 아이디는 3자 이상 입력해주세요.');
   if (!/^[a-zA-Z0-9_]+$/.test(adminLogin)) return err('관리자 아이디는 영문/숫자/언더바만 사용 가능합니다.');
-  if (!personalDomain)                       return err('개인 도메인을 입력해주세요.');
-  const cleanDomain = personalDomain.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/$/, '');
-  if (!/^[a-z0-9\-\.]+\.[a-z]{2,}$/.test(cleanDomain)) return err('올바른 도메인 형식이 아닙니다.');
-  if (!cfEmail || !cfApiKey || !cfAccountId) return err('Cloudflare 연동 정보(이메일, API 키, Account ID)를 모두 입력해주세요.');
 
-  // Puppeteer Worker 확인
-  const workerUrl = await getPuppeteerWorkerUrl(env);
+  // Worker URL 확인
+  const workerUrl = await getWorkerUrl(env);
   if (!workerUrl) {
-    return err('Puppeteer Worker URL이 설정되지 않았습니다. 관리자 → 설정에서 Worker URL을 입력해주세요.', 503);
+    return err('Worker URL이 설정되지 않았습니다. 관리자 → 설정에서 Worker URL을 입력해주세요.', 503);
   }
 
-  // 플랜 및 사이트 수 확인
+  // VP 계정 선택 (없어도 진행 가능 — PHP 인스톨러 방식)
+  const vpAccount = await pickVpAccount(env);
+
   const effectivePlan = sitePlan || user.plan || 'free';
   const maxSites = await getMaxSites(env, user.plan);
   if (maxSites !== -1) {
@@ -821,33 +711,19 @@ export async function onRequestPost({ request, env, ctx }) {
     }
   }
 
-  // 동일 도메인 중복 확인
-  const domainExists = await env.DB.prepare(
-    "SELECT id FROM sites WHERE custom_domain=? AND (status IS NULL OR status != 'deleted')"
-  ).bind(cleanDomain).first();
-  if (domainExists) return err('이미 사용 중인 도메인입니다.');
-
-  // 사이트 레코드 생성
-  const siteId       = genId();
-  const siteDomain   = env.SITE_DOMAIN || 'cloudpress.site';
-  const hostingEmail = `cp${Math.random().toString(36).slice(2, 9)}@${siteDomain}`;
-  const hostingPw    = genPw(14);
-  const wpAdminPw    = genPw(16);
-  const wpAdminEmail = user.email;
+  const siteId    = genId();
+  const wpAdminPw = genPw(16);
 
   try {
     await env.DB.prepare(
       `INSERT INTO sites (
-        id, user_id, name, hosting_provider, hosting_email, hosting_password,
+        id, user_id, name, hosting_provider,
         wp_username, wp_password, wp_admin_email,
-        primary_domain, custom_domain, domain_status,
-        status, provision_step, plan, server_type
-      ) VALUES (?,?,?,'direct',?,?,?,?,?,?,?,'deploying','installing_wp','wordpress_install',?,'shared')`
+        status, provision_step, plan, server_type, installation_mode
+      ) VALUES (?,?,?,'shared_hosting',?,?,?,'installing_wp','init',?,'shared','standalone')`
     ).bind(
       siteId, user.id, siteName.trim(),
-      hostingEmail, hostingPw,
-      adminLogin, wpAdminPw, wpAdminEmail,
-      cleanDomain, cleanDomain,
+      adminLogin, wpAdminPw, user.email,
       effectivePlan
     ).run();
   } catch (e) {
@@ -855,25 +731,21 @@ export async function onRequestPost({ request, env, ctx }) {
   }
 
   const pipelinePayload = {
-    hostingEmail, hostingPw,
-    personalDomain:  cleanDomain,
-    cfEmail:         cfEmail.trim(),
-    cfApiKey:        cfApiKey.trim(),
-    cfAccountId:     cfAccountId.trim(),
-    siteName:        siteName.trim(),
-    wpAdminUser:     adminLogin,
+    vpAccount,
+    siteName:     siteName.trim(),
+    wpAdminUser:  adminLogin,
     wpAdminPw,
-    wpAdminEmail,
-    plan:            effectivePlan,
-    userId:          user.id,
+    wpAdminEmail: user.email,
+    plan:         effectivePlan,
+    userId:       user.id,
+    siteUrl:      siteUrl || null,
   };
 
-  // 파이프라인 비동기 실행 (CF API 키는 메모리에서만 사용, DB 저장 안 함)
   const pipelinePromise = runProvisioningPipeline(env, siteId, pipelinePayload)
     .catch(async (e) => {
       await updateSiteStatus(env.DB, siteId, {
         status: 'failed',
-        provision_step: 'wordpress_install',
+        provision_step: 'pipeline_error',
         error_message: '파이프라인 오류: ' + e.message,
       });
     });
@@ -882,18 +754,25 @@ export async function onRequestPost({ request, env, ctx }) {
 
   return ok({
     siteId,
-    provider:       'cloudpress_self',
-    plan:           effectivePlan,
-    personalDomain: cleanDomain,
-    message:        `WordPress 설치 + Cloudflare Worker 배포가 시작되었습니다. 완료까지 5~10분 소요됩니다.`,
-    phpVersion:     '8.3 (최신)',
-    wpVersion:      'latest (한국어)',
-    timezone:       'Asia/Seoul (KST)',
+    provider: 'shared_hosting',
+    plan: effectivePlan,
+    message: '공유 호스팅 방식으로 사이트 생성이 시작되었습니다. 완료까지 3~7분 소요됩니다.',
+    phpVersion: '8.x',
+    wpVersion: 'latest (한국어)',
+    features: {
+      cron:        'WordPress WP-Cron 자동 활성화',
+      restApi:     'REST API 자동 활성화',
+      loopback:    '루프백 요청 자동 허용',
+      optimization: '공유 호스팅 맞춤 속도/캐시 최적화',
+      bridge:      'Bridge Migration 플러그인 자동 설치',
+      ssl:         'SSL 자동 설정',
+    },
     steps: [
-      { step: 1, name: 'WordPress 설치 (PHP 8.3 + 한국어 + 반응형)', status: 'running' },
-      { step: 2, name: '플러그인 설치 및 속도 최적화',                status: 'pending' },
-      { step: 3, name: `Cloudflare Worker 배포 (${cleanDomain})`,  status: 'pending' },
-      { step: 4, name: 'DNS 연결 + 사이트 활성화',                   status: 'pending' },
+      { step: 1, name: 'WordPress 설치', status: 'running' },
+      { step: 2, name: 'Cron / REST API / 루프백 자동 설정', status: 'pending' },
+      { step: 3, name: 'Bridge Migration 플러그인 설치', status: 'pending' },
+      { step: 4, name: 'Cloudflare CDN 연동 (선택)', status: 'pending' },
+      { step: 5, name: '속도 최적화 자동 설정', status: 'pending' },
     ],
   });
 }
