@@ -24,14 +24,18 @@
     .modal-header{font-family:var(--font-head);font-weight:700;font-size:1.2rem;margin-bottom:20px}
     .field-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
     @media(max-width:600px){.field-row{grid-template-columns:1fr}}
-    .file-upload-area{border:2px dashed var(--border);border-radius:8px;padding:16px;text-align:center;cursor:pointer;transition:border-color .2s}
-    .file-upload-area:hover{border-color:var(--primary)}
-    .file-upload-area input[type="file"]{display:none}
-    .file-upload-label{display:flex;flex-direction:column;align-items:center;gap:8px;cursor:pointer;font-size:.85rem;color:var(--muted)}
-    .file-upload-label .upload-icon{font-size:2rem}
-    .file-selected{font-size:.82rem;color:var(--primary);font-weight:500;margin-top:6px;word-break:break-all}
-    .upload-progress{display:none;margin-top:8px}
-    .upload-progress progress{width:100%;height:6px;border-radius:3px}
+    .file-upload-wrap{border:2px dashed var(--border);border-radius:8px;padding:20px;text-align:center;cursor:pointer;transition:border-color .15s,background .15s}
+    .file-upload-wrap:hover,.file-upload-wrap.drag-over{border-color:var(--primary);background:rgba(99,102,241,.05)}
+    .file-upload-wrap input[type="file"]{display:none}
+    .file-info-row{display:none;margin-top:10px;padding:8px 12px;border-radius:6px;font-size:.82rem;align-items:center;gap:8px}
+    .file-info-row.show{display:flex}
+    .file-info-new{background:rgba(99,102,241,.1)}
+    .file-info-current{background:var(--surface2)}
+    .prog-wrap{display:none;margin-top:10px}
+    .prog-wrap.show{display:block}
+    .prog-bg{background:var(--border);border-radius:4px;height:6px;overflow:hidden}
+    .prog-bar{height:100%;background:var(--primary);border-radius:4px;transition:width .2s;width:0%}
+    .prog-text{font-size:.78rem;color:var(--muted);text-align:center;margin-top:4px}
   </style>
 </head>
 <body>
@@ -70,14 +74,14 @@
         </button>
         <span class="topbar-title">VP 계정 관리</span>
       </div>
-      <button class="btn primary" onclick="showCreateModal()">➕ VP 계정 추가</button>
+      <button class="btn primary" onclick="showCreateModal()">+ VP 계정 추가</button>
     </div>
 
     <div class="content">
       <div id="toast" style="display:none;position:fixed;top:20px;right:20px;z-index:9999;padding:12px 18px;border-radius:10px;font-size:.85rem;font-weight:600;color:#fff"></div>
 
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:20px">
-        <h3 style="margin:0 0 10px;font-size:1rem">💡 VP 계정이란?</h3>
+        <h3 style="margin:0 0 10px;font-size:1rem">VP 계정이란?</h3>
         <p style="margin:0;font-size:.88rem;color:var(--muted);line-height:1.6">
           VP(Vesta Panel) 계정은 사용자들이 생성하는 WordPress 사이트가 배포될 호스팅 서버 계정입니다.<br>
           각 VP 계정마다 <strong>복제할 ZIP 템플릿 파일</strong>을 설정할 수 있으며, 사이트 생성 시 자동으로 해당 템플릿을 복제하여 새 사이트를 생성합니다.<br>
@@ -87,7 +91,7 @@
 
       <div id="accounts-container">
         <div style="text-align:center;padding:40px;color:var(--muted)">
-          <div style="font-size:3rem;margin-bottom:10px">⏳</div>
+          <div style="font-size:3rem;margin-bottom:10px">...</div>
           <div>VP 계정을 불러오는 중...</div>
         </div>
       </div>
@@ -95,40 +99,37 @@
   </main>
 </div>
 
-<!-- 생성/수정 모달 -->
+<!-- 모달 -->
 <div id="vpModal" class="modal">
   <div class="modal-content">
-    <div class="modal-header">
-      <span id="modalTitle">VP 계정 추가</span>
-    </div>
-    <!-- form 태그 제거 → div로 변경, onsubmit 제거 -->
+    <div class="modal-header"><span id="modalTitle">VP 계정 추가</span></div>
     <div id="vpForm">
       <input type="hidden" id="accountId"/>
-      
+
       <div class="field">
         <label>계정 레이블 (식별용) *</label>
-        <input type="text" id="label" required placeholder="예: 메인 서버 1"/>
+        <input type="text" id="label" placeholder="예: 메인 서버 1"/>
       </div>
 
       <div class="field-row">
         <div class="field">
           <label>VP 사용자명 *</label>
-          <input type="text" id="vp_username" required placeholder="admin"/>
+          <input type="text" id="vp_username" placeholder="admin"/>
         </div>
         <div class="field">
           <label>VP 비밀번호 *</label>
-          <input type="password" id="vp_password" placeholder="••••••••"/>
+          <input type="password" id="vp_password" placeholder="(수정 시 변경할 때만 입력)"/>
         </div>
       </div>
 
       <div class="field-row">
         <div class="field">
           <label>패널 URL *</label>
-          <input type="url" id="panel_url" required placeholder="https://panel.example.com:8083"/>
+          <input type="url" id="panel_url" placeholder="https://panel.example.com:8083"/>
         </div>
         <div class="field">
           <label>서버 도메인 *</label>
-          <input type="text" id="server_domain" required placeholder="example.com"/>
+          <input type="text" id="server_domain" placeholder="example.com"/>
         </div>
       </div>
 
@@ -158,35 +159,43 @@
         </div>
       </div>
 
-      <!-- 복제 ZIP: URL 입력 → 파일 업로드로 변경 -->
+      <!-- 복제 ZIP 파일 업로드 -->
       <div class="field">
-        <label>복제 ZIP 파일 🎯</label>
-        <div class="file-upload-area" id="dropZone" onclick="document.getElementById('clone_zip_file').click()">
-          <label class="file-upload-label">
-            <span class="upload-icon">📦</span>
-            <span>클릭하거나 ZIP 파일을 드래그하여 업로드</span>
-            <span style="font-size:.75rem">.zip 파일만 허용 · 최대 500MB</span>
-          </label>
-          <input type="file" id="clone_zip_file" accept=".zip" onchange="onFileSelected(this)"/>
+        <label>복제 ZIP 파일</label>
+
+        <!-- 기존 파일 표시 (수정 모드) -->
+        <div id="currentFileRow" class="file-info-row file-info-current">
+          <span>현재:</span>
+          <span id="currentFileName" style="flex:1;word-break:break-all;font-family:monospace;font-size:.78rem"></span>
+          <button type="button" class="btn sm danger" style="padding:2px 8px;font-size:.75rem" onclick="removeCurrentZip()">제거</button>
         </div>
-        <div id="fileSelectedName" class="file-selected" style="display:none"></div>
-        <div id="currentZipInfo" style="display:none;margin-top:8px;padding:8px 12px;background:var(--surface2);border-radius:6px;font-size:.8rem">
-          <span style="color:var(--muted)">현재 ZIP: </span>
-          <span id="currentZipLabel" style="font-family:monospace;word-break:break-all"></span>
-          <button type="button" class="btn sm danger" style="margin-left:8px;padding:2px 8px;font-size:.75rem" onclick="clearZip()">제거</button>
+
+        <!-- 드롭존 -->
+        <div class="file-upload-wrap" id="dropZone" onclick="document.getElementById('zipInput').click()">
+          <input type="file" id="zipInput" accept=".zip" onchange="onZipSelected(this)"/>
+          <div style="font-size:2rem;margin-bottom:6px">+</div>
+          <div style="font-size:.85rem;color:var(--muted)">클릭하거나 ZIP 파일을 드래그하여 업로드</div>
+          <div style="font-size:.75rem;color:var(--muted);margin-top:4px">.zip 파일만 허용</div>
         </div>
-        <div class="upload-progress" id="uploadProgress">
-          <progress id="uploadBar" value="0" max="100"></progress>
-          <div id="uploadStatus" style="font-size:.78rem;color:var(--muted);margin-top:4px;text-align:center">업로드 중...</div>
+
+        <!-- 선택된 파일 -->
+        <div id="newFileRow" class="file-info-row file-info-new">
+          <span>선택:</span>
+          <span id="newFileName" style="flex:1;word-break:break-all"></span>
+          <button type="button" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:1rem" onclick="clearNewFile()">x</button>
         </div>
-        <div class="hint" style="margin-top:6px">
-          사이트 생성 시 복제할 WordPress ZIP 파일<br>
-          업로드된 파일은 서버에 저장되어 새 사이트 생성에 사용됩니다.
+
+        <!-- 진행률 -->
+        <div id="progWrap" class="prog-wrap">
+          <div class="prog-bg"><div id="progBar" class="prog-bar"></div></div>
+          <div id="progText" class="prog-text">업로드 중...</div>
         </div>
+
+        <div class="hint" style="margin-top:6px">사이트 생성 시 복제할 WordPress ZIP 파일. R2에 저장됩니다.</div>
       </div>
 
       <div style="display:flex;gap:10px;margin-top:24px">
-        <button type="button" class="btn primary" onclick="saveAccount()" style="flex:1">저장</button>
+        <button type="button" class="btn primary" id="saveBtn" onclick="saveAccount()" style="flex:1">저장</button>
         <button type="button" class="btn" onclick="hideModal()" style="flex:1">취소</button>
       </div>
     </div>
@@ -196,87 +205,49 @@
 <script src="app.js"></script>
 <script>
 let accounts = [];
-let pendingZipFile = null;   // 새로 선택된 파일 객체
-let removeCurrentZip = false; // 기존 ZIP 제거 플래그
+let newZipFile = null;
+let removingZip = false;
 
 async function loadAccounts() {
   try {
-    const res = await CP.apiCall('/api/admin/vp-accounts');
+    // ✅ 수정: CP.apiCall → CP.api (app.js에는 api()만 존재)
+    const res = await CP.api('/admin/vp-accounts');
     if (!res.ok) throw new Error(res.error || '계정 조회 실패');
     accounts = res.accounts || [];
     renderAccounts();
-  } catch (err) {
-    showToast(err.message, 'error');
-    document.getElementById('accounts-container').innerHTML = `
-      <div style="text-align:center;padding:40px;color:var(--muted)">
-        <div style="font-size:3rem;margin-bottom:10px">❌</div>
-        <div>계정 조회 실패: ${err.message}</div>
-      </div>
-    `;
+  } catch (e) {
+    showToast(e.message, 'error');
+    document.getElementById('accounts-container').innerHTML =
+      '<div style="text-align:center;padding:40px;color:var(--muted)"><div style="font-size:2rem">x</div><div>계정 조회 실패: ' + e.message + '</div></div>';
   }
 }
 
 function renderAccounts() {
   const container = document.getElementById('accounts-container');
-  
-  if (accounts.length === 0) {
-    container.innerHTML = `
-      <div style="text-align:center;padding:60px;color:var(--muted)">
-        <div style="font-size:4rem;margin-bottom:14px">🔑</div>
-        <div style="font-size:1.1rem;margin-bottom:8px">VP 계정이 없습니다</div>
-        <div style="font-size:.88rem">우측 상단의 "➕ VP 계정 추가" 버튼을 눌러 첫 계정을 등록하세요.</div>
-      </div>
-    `;
+  if (!accounts.length) {
+    container.innerHTML = '<div style="text-align:center;padding:60px;color:var(--muted)"><div style="font-size:1.1rem;margin-bottom:8px">VP 계정이 없습니다</div><div style="font-size:.88rem">VP 계정 추가 버튼을 눌러 첫 계정을 등록하세요.</div></div>';
     return;
   }
-
-  container.innerHTML = accounts.map(acc => `
-    <div class="vp-card">
-      <div class="vp-header">
-        <div>
-          <div class="vp-label">${acc.label}</div>
-          <div style="font-size:.78rem;color:var(--muted);margin-top:3px">ID: ${acc.id}</div>
-        </div>
-        <span class="vp-status ${acc.is_active ? 'active' : 'inactive'}">
-          ${acc.is_active ? '✅ 활성' : '❌ 비활성'}
-        </span>
-      </div>
-      
-      <div class="vp-info">
-        <div class="vp-info-item">
-          <div class="vp-info-label">VP 사용자명</div>
-          <div class="vp-info-value">${acc.vp_username}</div>
-        </div>
-        <div class="vp-info-item">
-          <div class="vp-info-label">서버 도메인</div>
-          <div class="vp-info-value">${acc.server_domain}</div>
-        </div>
-        <div class="vp-info-item">
-          <div class="vp-info-label">사이트 사용</div>
-          <div class="vp-info-value">${acc.current_sites} / ${acc.max_sites}</div>
-        </div>
-        <div class="vp-info-item">
-          <div class="vp-info-label">복제 ZIP</div>
-          <div class="vp-info-value">${acc.clone_zip_url ? '✅ 설정됨' : '❌ 미설정'}</div>
-        </div>
-      </div>
-
-      ${acc.clone_zip_url ? `
-        <div style="background:var(--surface2);border-radius:8px;padding:10px;margin-bottom:12px;font-size:.82rem">
-          <div style="color:var(--muted);margin-bottom:4px">📦 복제 ZIP:</div>
-          <div style="word-break:break-all;font-family:monospace;font-size:.75rem">${acc.clone_zip_url}</div>
-        </div>
-      ` : ''}
-
-      <div class="vp-actions">
-        <button class="btn sm" onclick="editAccount('${acc.id}')">✏️ 수정</button>
-        <button class="btn sm ${acc.is_active ? 'warning' : 'primary'}" onclick="toggleActive('${acc.id}', ${acc.is_active})">
-          ${acc.is_active ? '⏸️ 비활성화' : '▶️ 활성화'}
-        </button>
-        <button class="btn sm danger" onclick="deleteAccount('${acc.id}', '${acc.label}')">🗑️ 삭제</button>
-      </div>
-    </div>
-  `).join('');
+  container.innerHTML = accounts.map(acc => {
+    const active = acc.is_active == 1 || acc.is_active === true;
+    return '<div class="vp-card">' +
+      '<div class="vp-header">' +
+        '<div><div class="vp-label">' + acc.label + '</div><div style="font-size:.78rem;color:var(--muted);margin-top:3px">ID: ' + acc.id + '</div></div>' +
+        '<span class="vp-status ' + (active ? 'active' : 'inactive') + '">' + (active ? '활성' : '비활성') + '</span>' +
+      '</div>' +
+      '<div class="vp-info">' +
+        '<div class="vp-info-item"><div class="vp-info-label">VP 사용자명</div><div class="vp-info-value">' + acc.vp_username + '</div></div>' +
+        '<div class="vp-info-item"><div class="vp-info-label">서버 도메인</div><div class="vp-info-value">' + acc.server_domain + '</div></div>' +
+        '<div class="vp-info-item"><div class="vp-info-label">사이트 사용</div><div class="vp-info-value">' + acc.current_sites + ' / ' + acc.max_sites + '</div></div>' +
+        '<div class="vp-info-item"><div class="vp-info-label">복제 ZIP</div><div class="vp-info-value">' + (acc.clone_zip_url ? '설정됨' : '미설정') + '</div></div>' +
+      '</div>' +
+      (acc.clone_zip_url ? '<div style="background:var(--surface2);border-radius:8px;padding:10px;margin-bottom:12px;font-size:.82rem"><div style="color:var(--muted);margin-bottom:4px">복제 ZIP:</div><div style="word-break:break-all;font-family:monospace;font-size:.75rem">' + acc.clone_zip_url + '</div></div>' : '') +
+      '<div class="vp-actions">' +
+        '<button class="btn sm" onclick="editAccount(\'' + acc.id + '\')">수정</button>' +
+        '<button class="btn sm ' + (active ? 'warning' : 'primary') + '" onclick="toggleActive(\'' + acc.id + '\',' + active + ')">' + (active ? '비활성화' : '활성화') + '</button>' +
+        '<button class="btn sm danger" onclick="deleteAccount(\'' + acc.id + '\',\'' + acc.label.replace(/'/g, "\\'") + '\')">삭제</button>' +
+      '</div></div>';
+  }).join('');
 }
 
 function showCreateModal() {
@@ -285,251 +256,247 @@ function showCreateModal() {
   document.getElementById('vpModal').classList.add('show');
 }
 
-function resetForm() {
-  document.getElementById('accountId').value = '';
-  document.getElementById('label').value = '';
-  document.getElementById('vp_username').value = '';
-  document.getElementById('vp_password').value = '';
-  document.getElementById('panel_url').value = '';
-  document.getElementById('server_domain').value = '';
-  document.getElementById('web_root').value = '';
-  document.getElementById('php_bin').value = '';
-  document.getElementById('mysql_host').value = '';
-  document.getElementById('max_sites').value = '';
-  resetZipUI();
-}
-
-function resetZipUI() {
-  pendingZipFile = null;
-  removeCurrentZip = false;
-  document.getElementById('clone_zip_file').value = '';
-  document.getElementById('fileSelectedName').style.display = 'none';
-  document.getElementById('fileSelectedName').textContent = '';
-  document.getElementById('currentZipInfo').style.display = 'none';
-  document.getElementById('uploadProgress').style.display = 'none';
-  document.getElementById('uploadBar').value = 0;
-}
-
-function onFileSelected(input) {
-  const file = input.files[0];
-  if (!file) return;
-  if (!file.name.endsWith('.zip')) {
-    showToast('ZIP 파일만 업로드할 수 있습니다.', 'error');
-    input.value = '';
-    return;
-  }
-  pendingZipFile = file;
-  removeCurrentZip = false;
-  const nameEl = document.getElementById('fileSelectedName');
-  nameEl.textContent = `📎 ${file.name} (${(file.size / 1024 / 1024).toFixed(1)} MB)`;
-  nameEl.style.display = 'block';
-  // 기존 ZIP 표시 숨기기
-  document.getElementById('currentZipInfo').style.display = 'none';
-}
-
-function clearZip() {
-  removeCurrentZip = true;
-  pendingZipFile = null;
-  document.getElementById('clone_zip_file').value = '';
-  document.getElementById('fileSelectedName').style.display = 'none';
-  document.getElementById('currentZipInfo').style.display = 'none';
-}
-
 function editAccount(id) {
   const acc = accounts.find(a => a.id === id);
   if (!acc) return;
-
   document.getElementById('modalTitle').textContent = 'VP 계정 수정';
   document.getElementById('accountId').value = acc.id;
-  document.getElementById('label').value = acc.label;
-  document.getElementById('vp_username').value = acc.vp_username;
+  document.getElementById('label').value = acc.label || '';
+  document.getElementById('vp_username').value = acc.vp_username || '';
   document.getElementById('vp_password').value = '';
-  document.getElementById('panel_url').value = acc.panel_url;
-  document.getElementById('server_domain').value = acc.server_domain;
+  document.getElementById('panel_url').value = acc.panel_url || '';
+  document.getElementById('server_domain').value = acc.server_domain || '';
   document.getElementById('web_root').value = acc.web_root || '';
   document.getElementById('php_bin').value = acc.php_bin || '';
   document.getElementById('mysql_host').value = acc.mysql_host || '';
   document.getElementById('max_sites').value = acc.max_sites || '';
-
-  // ZIP 기존 파일 표시
   resetZipUI();
   if (acc.clone_zip_url) {
-    const zipLabel = acc.clone_zip_url.split('/').pop() || acc.clone_zip_url;
-    document.getElementById('currentZipLabel').textContent = zipLabel;
-    document.getElementById('currentZipInfo').style.display = 'block';
+    const name = acc.clone_zip_url.split('/').pop() || acc.clone_zip_url;
+    document.getElementById('currentFileName').textContent = name;
+    document.getElementById('currentFileRow').classList.add('show');
   }
-
   document.getElementById('vpModal').classList.add('show');
 }
 
 function hideModal() {
   document.getElementById('vpModal').classList.remove('show');
+  resetForm();
+}
+
+function resetForm() {
+  ['accountId','label','vp_username','vp_password','panel_url',
+   'server_domain','web_root','php_bin','mysql_host','max_sites']
+    .forEach(id => { document.getElementById(id).value = ''; });
   resetZipUI();
 }
 
-async function uploadZipFile(file, onProgress) {
+function resetZipUI() {
+  newZipFile = null;
+  removingZip = false;
+  document.getElementById('zipInput').value = '';
+  document.getElementById('newFileRow').classList.remove('show');
+  document.getElementById('currentFileRow').classList.remove('show');
+  document.getElementById('progWrap').classList.remove('show');
+  document.getElementById('progBar').style.width = '0%';
+}
+
+function onZipSelected(input) {
+  const file = input.files[0];
+  if (!file) return;
+  if (!file.name.toLowerCase().endsWith('.zip')) {
+    showToast('ZIP 파일(.zip)만 업로드할 수 있습니다.', 'error');
+    input.value = '';
+    return;
+  }
+  newZipFile = file;
+  removingZip = false;
+  document.getElementById('newFileName').textContent = file.name + ' (' + (file.size / 1024 / 1024).toFixed(1) + ' MB)';
+  document.getElementById('newFileRow').classList.add('show');
+  document.getElementById('currentFileRow').classList.remove('show');
+}
+
+function clearNewFile() {
+  newZipFile = null;
+  document.getElementById('zipInput').value = '';
+  document.getElementById('newFileRow').classList.remove('show');
+  // 기존 파일이 있고 제거 안 한 상태면 다시 표시
+  const accId = document.getElementById('accountId').value;
+  if (accId && !removingZip) {
+    const acc = accounts.find(a => a.id === accId);
+    if (acc && acc.clone_zip_url) {
+      const name = acc.clone_zip_url.split('/').pop() || acc.clone_zip_url;
+      document.getElementById('currentFileName').textContent = name;
+      document.getElementById('currentFileRow').classList.add('show');
+    }
+  }
+}
+
+function removeCurrentZip() {
+  removingZip = true;
+  newZipFile = null;
+  document.getElementById('zipInput').value = '';
+  document.getElementById('currentFileRow').classList.remove('show');
+  document.getElementById('newFileRow').classList.remove('show');
+}
+
+// ✅ XHR 업로드 (진행률 추적)
+function uploadZipXhr(file) {
   return new Promise((resolve, reject) => {
-    const formData = new FormData();
-    formData.append('file', file);
+    const token = CP.getToken();
+    const fd = new FormData();
+    fd.append('file', file);
 
     const xhr = new XMLHttpRequest();
     xhr.open('POST', '/api/admin/vp-accounts/upload-zip');
+    if (token) xhr.setRequestHeader('Authorization', 'Bearer ' + token);
 
-    xhr.upload.onprogress = (e) => {
-      if (e.lengthComputable) onProgress(Math.round(e.loaded / e.total * 100));
+    const wrap = document.getElementById('progWrap');
+    const bar  = document.getElementById('progBar');
+    const txt  = document.getElementById('progText');
+    wrap.classList.add('show');
+
+    xhr.upload.onprogress = function(e) {
+      if (!e.lengthComputable) return;
+      var pct = Math.round(e.loaded / e.total * 100);
+      bar.style.width = pct + '%';
+      txt.textContent = '업로드 중... ' + pct + '%';
     };
 
-    xhr.onload = () => {
-      try {
-        const data = JSON.parse(xhr.responseText);
-        if (xhr.status >= 200 && xhr.status < 300 && data.ok) {
-          resolve(data.url);
-        } else {
-          reject(new Error(data.error || '파일 업로드 실패'));
-        }
-      } catch {
-        reject(new Error('서버 응답 파싱 실패'));
+    xhr.onload = function() {
+      wrap.classList.remove('show');
+      var data;
+      try { data = JSON.parse(xhr.responseText); } catch(ex) { data = { ok: false, error: '응답 파싱 실패' }; }
+      if (xhr.status >= 200 && xhr.status < 300 && data.ok) {
+        resolve(data.url);
+      } else {
+        reject(new Error(data.error || 'HTTP ' + xhr.status));
       }
     };
-
-    xhr.onerror = () => reject(new Error('네트워크 오류'));
-    xhr.send(formData);
+    xhr.onerror = function() { wrap.classList.remove('show'); reject(new Error('네트워크 오류')); };
+    xhr.send(fd);
   });
 }
 
 async function saveAccount() {
-  // 필수 입력값 검증
-  const label = document.getElementById('label').value.trim();
-  const vp_username = document.getElementById('vp_username').value.trim();
-  const panel_url = document.getElementById('panel_url').value.trim();
-  const server_domain = document.getElementById('server_domain').value.trim();
   const accountId = document.getElementById('accountId').value;
   const isEdit = !!accountId;
+  const label         = document.getElementById('label').value.trim();
+  const vp_username   = document.getElementById('vp_username').value.trim();
+  const vp_password   = document.getElementById('vp_password').value.trim();
+  const panel_url     = document.getElementById('panel_url').value.trim();
+  const server_domain = document.getElementById('server_domain').value.trim();
 
-  if (!label || !vp_username || !panel_url || !server_domain) {
-    showToast('필수 항목을 모두 입력해주세요.', 'error');
-    return;
-  }
+  if (!label)         { showToast('계정 레이블을 입력해주세요.', 'error'); return; }
+  if (!vp_username)   { showToast('VP 사용자명을 입력해주세요.', 'error'); return; }
+  if (!isEdit && !vp_password) { showToast('VP 비밀번호를 입력해주세요.', 'error'); return; }
+  if (!panel_url)     { showToast('패널 URL을 입력해주세요.', 'error'); return; }
+  if (!server_domain) { showToast('서버 도메인을 입력해주세요.', 'error'); return; }
 
-  const data = {
-    label,
-    vp_username,
-    panel_url,
-    server_domain,
-    web_root: document.getElementById('web_root').value || undefined,
-    php_bin: document.getElementById('php_bin').value || undefined,
-    mysql_host: document.getElementById('mysql_host').value || undefined,
-    max_sites: document.getElementById('max_sites').value || undefined,
-  };
+  const saveBtn = document.getElementById('saveBtn');
+  saveBtn.disabled = true;
+  saveBtn.textContent = '저장 중...';
 
-  const password = document.getElementById('vp_password').value;
-  if (password) data.vp_password = password;
+  const data = { label, vp_username, panel_url, server_domain };
+  if (vp_password) data.vp_password = vp_password;
   if (isEdit) data.id = accountId;
+  var wr = document.getElementById('web_root').value.trim();
+  var pb = document.getElementById('php_bin').value.trim();
+  var mh = document.getElementById('mysql_host').value.trim();
+  var ms = document.getElementById('max_sites').value;
+  if (wr) data.web_root = wr;
+  if (pb) data.php_bin = pb;
+  if (mh) data.mysql_host = mh;
+  if (ms) data.max_sites = ms;
 
-  // ZIP 파일 업로드 처리
-  if (pendingZipFile) {
-    const progressEl = document.getElementById('uploadProgress');
-    const barEl = document.getElementById('uploadBar');
-    const statusEl = document.getElementById('uploadStatus');
-    progressEl.style.display = 'block';
-
+  // ZIP 처리
+  if (newZipFile) {
     try {
-      const zipUrl = await uploadZipFile(pendingZipFile, (pct) => {
-        barEl.value = pct;
-        statusEl.textContent = `업로드 중... ${pct}%`;
-      });
-      data.clone_zip_url = zipUrl;
-      progressEl.style.display = 'none';
+      data.clone_zip_url = await uploadZipXhr(newZipFile);
     } catch (uploadErr) {
-      progressEl.style.display = 'none';
       showToast('ZIP 업로드 실패: ' + uploadErr.message, 'error');
+      saveBtn.disabled = false;
+      saveBtn.textContent = '저장';
       return;
     }
-  } else if (removeCurrentZip) {
+  } else if (removingZip) {
     data.clone_zip_url = null;
   }
-  // pendingZipFile도 없고 removeCurrentZip도 false면 clone_zip_url 필드 안 보냄 (기존 유지)
+  // 변경 없으면 clone_zip_url 미포함 → 서버에서 기존값 유지
 
   try {
-    const res = await CP.apiCall('/api/admin/vp-accounts', {
+    // ✅ 수정: CP.apiCall → CP.api
+    const res = await CP.api('/admin/vp-accounts', {
       method: isEdit ? 'PUT' : 'POST',
       body: JSON.stringify(data),
     });
-
     if (!res.ok) throw new Error(res.error || '저장 실패');
-
     showToast(isEdit ? '계정이 수정되었습니다.' : '계정이 생성되었습니다.', 'success');
     hideModal();
     await loadAccounts();
   } catch (saveErr) {
     showToast(saveErr.message, 'error');
+  } finally {
+    saveBtn.disabled = false;
+    saveBtn.textContent = '저장';
   }
 }
 
 async function toggleActive(id, currentActive) {
   if (!confirm(currentActive ? '이 계정을 비활성화하시겠습니까?' : '이 계정을 활성화하시겠습니까?')) return;
-
   try {
-    const res = await CP.apiCall('/api/admin/vp-accounts', {
+    // ✅ 수정: CP.apiCall → CP.api
+    const res = await CP.api('/admin/vp-accounts', {
       method: 'PUT',
-      body: JSON.stringify({ id, is_active: !currentActive }),
+      body: JSON.stringify({ id: id, is_active: !currentActive }),
     });
-
     if (!res.ok) throw new Error(res.error || '상태 변경 실패');
-
     showToast('계정 상태가 변경되었습니다.', 'success');
     await loadAccounts();
-  } catch (err) {
-    showToast(err.message, 'error');
+  } catch (e) {
+    showToast(e.message, 'error');
   }
 }
 
 async function deleteAccount(id, label) {
-  if (!confirm(`"${label}" 계정을 삭제하시겠습니까?\n\n이 작업은 되돌릴 수 없습니다.`)) return;
-
+  if (!confirm('"' + label + '" 계정을 삭제하시겠습니까?\n\n이 작업은 되돌릴 수 없습니다.')) return;
   try {
-    const res = await CP.apiCall(`/api/admin/vp-accounts?id=${id}`, {
-      method: 'DELETE',
-    });
-
+    // ✅ 수정: CP.apiCall → CP.api
+    const res = await CP.api('/admin/vp-accounts?id=' + id, { method: 'DELETE' });
     if (!res.ok) throw new Error(res.error || '삭제 실패');
-
     showToast('계정이 삭제되었습니다.', 'success');
     await loadAccounts();
-  } catch (err) {
-    showToast(err.message, 'error');
+  } catch (e) {
+    showToast(e.message, 'error');
   }
 }
 
-// 드래그 앤 드롭 지원
-(function() {
-  const zone = document.getElementById('dropZone');
-  zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.style.borderColor = 'var(--primary)'; });
-  zone.addEventListener('dragleave', () => { zone.style.borderColor = ''; });
-  zone.addEventListener('drop', (e) => {
-    e.preventDefault();
-    zone.style.borderColor = '';
-    const file = e.dataTransfer.files[0];
-    if (file) {
-      const input = document.getElementById('clone_zip_file');
-      const dt = new DataTransfer();
-      dt.items.add(file);
-      input.files = dt.files;
-      onFileSelected(input);
-    }
-  });
-})();
-
 function showToast(msg, type) {
-  const toast = document.getElementById('toast');
+  var toast = document.getElementById('toast');
   toast.textContent = msg;
   toast.style.background = type === 'success' ? '#16a34a' : '#dc2626';
   toast.style.display = 'block';
-  setTimeout(() => { toast.style.display = 'none'; }, 3000);
+  clearTimeout(toast._t);
+  toast._t = setTimeout(function() { toast.style.display = 'none'; }, 3500);
 }
 
-// 초기 로드
-loadAccounts();
+// 드래그앤드롭
+(function() {
+  var zone = document.getElementById('dropZone');
+  zone.addEventListener('dragover', function(e) { e.preventDefault(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave', function() { zone.classList.remove('drag-over'); });
+  zone.addEventListener('drop', function(e) {
+    e.preventDefault();
+    zone.classList.remove('drag-over');
+    var file = e.dataTransfer.files[0];
+    if (!file) return;
+    var input = document.getElementById('zipInput');
+    try { var dt = new DataTransfer(); dt.items.add(file); input.files = dt.files; } catch(_) {}
+    onZipSelected(input);
+  });
+})();
+
+CP.requireAdmin().then(function(u) { if (u) loadAccounts(); });
 </script>
 </body>
 </html>
