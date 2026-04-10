@@ -13,6 +13,13 @@ database_id = "c7dea0ce-2e22-439f-9a1c-38ed24cbfc40"
 binding = "SESSIONS"
 id = "9cb18ceb35d24067a124b6c05e29915f"
 
+# ✅ R2 버킷 — VP 계정 ZIP 템플릿 파일 저장
+# 1) Cloudflare Dashboard > R2 > 버킷 만들기 → 버킷명: cloudpress-zip-templates
+# 2) 아래 bucket_name을 생성한 버킷명으로 변경
+[[r2_buckets]]
+binding = "ZIP_BUCKET"
+bucket_name = "cloudpress-zip-templates"
+
 [vars]
 # 사이트 도메인
 SITE_DOMAIN = "cloud-press.co.kr"
@@ -22,6 +29,12 @@ ADMIN_PASSWORD = "Swsh120327!"  # 필수: 배포 전 반드시 변경하세요 (
 # Puppeteer Worker URL (호스팅 자동화)
 PUPPETEER_WORKER_URL = "https://cloudpress-puppet.workers.dev"
 PUPPETEER_WORKER_SECRET = "Swsh120327!"
+
+# ✅ R2 공개 URL (선택사항)
+# R2 버킷에 Public Access 또는 Custom Domain 설정 시 여기에 base URL 입력
+# 예: R2_PUBLIC_URL = "https://zip.cloud-press.co.kr"
+# 미설정 시 Worker 경유 내부 URL 사용
+R2_PUBLIC_URL = ""
 
 # Cloudflare CDN 자동 연동 (선택사항 - 사용자 도메인에 CDN 연동 시)
 CF_API_TOKEN = ""
