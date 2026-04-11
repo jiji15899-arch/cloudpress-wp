@@ -176,3 +176,38 @@ INSERT OR IGNORE INTO settings (key, value) VALUES
 -- Cloudflare D1 콘솔 또는 wrangler에서 아래 구문을 직접 실행:
 --   ALTER TABLE sites ADD COLUMN www_domain TEXT;
 -- ─────────────────────────────────────────────
+
+-- ═══════════════════════════════════════════════════════════════
+-- Migration: 구버전 DB → v11 컬럼 추가
+-- D1 콘솔 또는 wrangler d1 execute 로 이 파일 전체를 실행하세요.
+-- ALTER TABLE은 컬럼이 이미 있으면 에러가 나지만 무시하면 됩니다.
+-- ═══════════════════════════════════════════════════════════════
+ALTER TABLE sites ADD COLUMN primary_domain TEXT;
+ALTER TABLE sites ADD COLUMN www_domain TEXT;
+ALTER TABLE sites ADD COLUMN domain_status TEXT DEFAULT 'pending';
+ALTER TABLE sites ADD COLUMN site_prefix TEXT;
+ALTER TABLE sites ADD COLUMN worker_name TEXT;
+ALTER TABLE sites ADD COLUMN worker_route TEXT;
+ALTER TABLE sites ADD COLUMN worker_route_www TEXT;
+ALTER TABLE sites ADD COLUMN worker_route_id TEXT;
+ALTER TABLE sites ADD COLUMN worker_route_www_id TEXT;
+ALTER TABLE sites ADD COLUMN cf_zone_id TEXT;
+ALTER TABLE sites ADD COLUMN dns_record_id TEXT;
+ALTER TABLE sites ADD COLUMN dns_record_www_id TEXT;
+ALTER TABLE sites ADD COLUMN wp_username TEXT;
+ALTER TABLE sites ADD COLUMN wp_password TEXT;
+ALTER TABLE sites ADD COLUMN wp_admin_email TEXT;
+ALTER TABLE sites ADD COLUMN wp_admin_url TEXT;
+ALTER TABLE sites ADD COLUMN provision_step TEXT DEFAULT 'init';
+ALTER TABLE sites ADD COLUMN error_message TEXT;
+ALTER TABLE sites ADD COLUMN suspended INTEGER DEFAULT 0;
+ALTER TABLE sites ADD COLUMN suspension_reason TEXT;
+ALTER TABLE sites ADD COLUMN disk_used INTEGER DEFAULT 0;
+ALTER TABLE sites ADD COLUMN bandwidth_used INTEGER DEFAULT 0;
+ALTER TABLE sites ADD COLUMN deleted_at TEXT;
+ALTER TABLE users ADD COLUMN twofa_type TEXT DEFAULT NULL;
+ALTER TABLE users ADD COLUMN twofa_secret TEXT DEFAULT NULL;
+ALTER TABLE users ADD COLUMN twofa_enabled INTEGER DEFAULT 0;
+ALTER TABLE users ADD COLUMN twofa_pending_code TEXT DEFAULT NULL;
+ALTER TABLE users ADD COLUMN twofa_code_expires INTEGER DEFAULT NULL;
+ALTER TABLE users ADD COLUMN updated_at TEXT DEFAULT (datetime('now'));
