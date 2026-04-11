@@ -98,11 +98,22 @@ export async function onRequestPost({ request, env, ctx, params }) {
 
   await updateSite(env.DB, siteId, { status: 'provisioning', provision_step: 'starting' });
 
-  const pipeline = runPipeline(env, siteId, site);
-  if (ctx?.waitUntil) ctx.waitUntil(pipeline.catch(() => {}));
-  else pipeline.catch(() => {});
+  // 파이프라인을 직접 await — Pages Functions에서 waitUntil 없이도 안정적으로 실행
+  try {
+    await runPipeline(env, siteId, site);
+  } catch (e) {
+    await fail(env.DB, siteId, 'pipeline_error', '파이프라인 오류: ' + e.message);
+  }
 
-  return ok({ message: '프로비저닝을 시작합니다.', siteId });
+  // 완료 후 최신 상태 조회해서 반환
+  const updated = await env.DB.prepare(
+    `SELECT status, provision_step, error_message, wp_admin_url,
+            wp_username, wp_password, primary_domain,
+            site_d1_id, site_kv_id, domain_status
+     FROM sites WHERE id=?`
+  ).bind(siteId).first();
+
+  return ok({ message: '프로비저닝 완료', siteId, site: updated });
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -147,7 +158,6 @@ async function runPipeline(env, siteId, site) {
   try {
     // ── Step 1: 사이트 전용 D1 생성 ────────────────────────────
     await updateSite(env.DB, siteId, { provision_step: 'd1_create' });
-
     let d1Id = site.site_d1_id;
     if (!d1Id) {
       const r = await createD1(auth, cfAccount, prefix);
@@ -243,15 +253,11 @@ async function runPipeline(env, siteId, site) {
       provision_step: 'completed',
       domain_status:  domainStatus,
       worker_name:    workerName,
-      wp_admin_url:   wpAdminUrl,   // ← 개인 도메인 기준
+      wp_admin_url:   wpAdminUrl,
       error_message:  domainStatus === 'manual_required'
         ? `DNS 자동 설정 불가. 도메인 DNS에서 CNAME ${domain} → ${cnameHint} 설정 후 Cloudflare 프록시(주황불) 활성화 필요.`
         : null,
     });
-
-  } catch (e) {
-    await fail(env.DB, siteId, 'pipeline_error', '파이프라인 오류: ' + e.message);
-  }
 }
 
 async function fail(DB, siteId, step, msg) {
