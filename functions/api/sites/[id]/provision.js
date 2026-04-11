@@ -1,7 +1,6 @@
 // functions/api/sites/[id]/provision.js
-// 프로비저닝 파이프라인 전용 엔드포인트
-// create.html에서 사이트 생성 직후 POST로 호출 → 파이프라인 즉시 실행
-// waitUntil 의존성 없이 동기 실행 (Cloudflare Pages Functions 호환)
+// CloudPress v10.0 — 프로비저닝 파이프라인 전용 엔드포인트
+// create.html에서 POST /api/sites → siteId 받은 뒤 즉시 POST /api/sites/{id}/provision 호출
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -42,7 +41,6 @@ export async function onRequestPost({ request, env, ctx, params }) {
 
   const siteId = params.id;
 
-  // 사이트 조회 및 소유권 확인
   const site = await env.DB.prepare(
     `SELECT id, user_id, name, status, provision_step, plan,
             wp_username, wp_password, wp_admin_email
@@ -51,22 +49,23 @@ export async function onRequestPost({ request, env, ctx, params }) {
 
   if (!site) return err('사이트를 찾을 수 없습니다.', 404);
 
-  // 이미 완료됐거나 실행 중이면 중복 실행 방지
+  // 이미 완료된 사이트
   if (site.status === 'active') return ok({ message: '이미 완료된 사이트입니다.' });
-  if (site.provision_step && site.provision_step !== 'init' && site.provision_step !== 'pipeline_error') {
+
+  // 실제로 진행 중인 단계인 경우만 중복 방지 (init, pending, failed는 허용)
+  const IN_PROGRESS_STEPS = [
+    'starting', 'uploading_installer', 'checking_php',
+    'installing_wp', 'configuring', 'installing_plugins', 'completed',
+  ];
+  if (IN_PROGRESS_STEPS.includes(site.provision_step) && site.status === 'installing_wp') {
     return ok({ message: '이미 프로비저닝이 진행 중입니다.', provision_step: site.provision_step });
   }
 
-  // sites/index.js의 runProvisioningPipeline을 여기서 직접 호출할 수 없으므로
-  // 파이프라인에 필요한 로직을 인라인으로 실행
-  // (공통 헬퍼 함수들을 import할 수 없는 Pages Functions 구조이므로 직접 구현)
-
-  // provision_step을 'starting'으로 바꿔 중복 호출 방지
+  // 중복 실행 방지 락 설정
   await env.DB.prepare(
     `UPDATE sites SET status='installing_wp', provision_step='starting', updated_at=unixepoch() WHERE id=?`
   ).bind(siteId).run();
 
-  // 파이프라인을 waitUntil로 실행 (ctx가 있으면 사용)
   const pipelinePromise = runPipeline(env, siteId, site);
 
   if (ctx?.waitUntil) {
@@ -106,7 +105,7 @@ async function runInstallerStep(installerUrl, secret, step, timeoutMs = 120000) 
     });
     const text = await res.text();
     try { return JSON.parse(text.trim()); }
-    catch { return { ok: text.includes('"ok":true'), step, raw: text.slice(0, 200) }; }
+    catch { return { ok: text.includes('"ok":true'), step, raw: text.slice(0, 500) }; }
   } catch (e) {
     if (e.name === 'AbortError') return { ok: false, step, error: `Step ${step} 타임아웃 (${timeoutMs/1000}초)` };
     return { ok: false, step, error: e.message };
@@ -116,6 +115,7 @@ async function runInstallerStep(installerUrl, secret, step, timeoutMs = 120000) 
 }
 
 async function cpanelSaveFile(cpBase, authHdr, dir, filename, content) {
+  // 방법 1: UAPI
   try {
     const res = await fetch(`${cpBase}/execute/Fileman/save_file_content`, {
       method: 'POST',
@@ -126,6 +126,7 @@ async function cpanelSaveFile(cpBase, authHdr, dir, filename, content) {
     if (data?.status === 1 || data?.result?.status === 1) return { ok: true };
   } catch (_) {}
 
+  // 방법 2: API2
   try {
     const encoded = btoa(unescape(encodeURIComponent(content)));
     const res2 = await fetch(`${cpBase}/json-api/cpanel`, {
@@ -172,12 +173,12 @@ async function runPipeline(env, siteId, site) {
     const cpBase        = (vpAccount.panel_url || '').replace(/\/+$/, '');
     const authHdr       = 'Basic ' + btoa(`${vpAccount.vp_username}:${vpAccount.vp_password}`);
     const wpDownloadUrl = vpAccount.wp_download_url?.trim() || null;
-    const cnameTarget   = cfg.cname_target || 'proxy.cloudpress.site';
+    const cnameTarget   = cfg.cname_target || env.CNAME_TARGET || 'proxy.cloudpress.site';
 
     // 서브도메인 계산
-    const baseSlug    = site.name.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 10) || 'cp';
-    const suffix      = Math.random().toString(36).slice(2, 5);
-    const subDomain   = (baseSlug + suffix).slice(0, 15);
+    const baseSlug      = site.name.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 10) || 'cp';
+    const suffix        = Math.random().toString(36).slice(2, 5);
+    const subDomain     = (baseSlug + suffix).slice(0, 15);
     const hostingDomain = `${subDomain}.${serverDomain}`;
     const siteUrl       = `https://${hostingDomain}`;
     const wpAdminUrl    = `${siteUrl}/wp-admin/`;
@@ -193,6 +194,10 @@ async function runPipeline(env, siteId, site) {
     await env.DB.prepare(
       `UPDATE vp_accounts SET current_sites=current_sites+1, updated_at=datetime('now') WHERE id=?`
     ).bind(vpAccount.id).run().catch(() => {});
+
+    // vp_account_id 컬럼 없을 수 있으므로 마이그레이션 시도
+    try { await env.DB.prepare(`ALTER TABLE sites ADD COLUMN vp_account_id TEXT`).run(); } catch (_) {}
+    try { await env.DB.prepare(`ALTER TABLE sites ADD COLUMN login_url TEXT`).run(); } catch (_) {}
 
     await updateStatus(env.DB, siteId, {
       status:            'installing_wp',
@@ -211,7 +216,6 @@ async function runPipeline(env, siteId, site) {
       installation_mode: 'php_installer',
     });
 
-    // installer.php 생성 (sites/index.js의 buildInstallerPHP와 동일)
     const installerScript = buildInstallerPHP({
       dbName, dbUser, dbPass, dbHost: mysqlHost,
       siteUrl, siteName: site.name,
@@ -223,32 +227,32 @@ async function runPipeline(env, siteId, site) {
       wpDownloadUrl,
     });
 
-    // 업로드
+    // installer.php 업로드
     const uploadResult = await cpanelSaveFile(cpBase, authHdr, webRoot, 'cloudpress-installer.php', installerScript);
     if (!uploadResult.ok) {
       await updateStatus(env.DB, siteId, {
         status: 'failed', provision_step: 'uploading_installer',
-        error_message: `installer.php 업로드 실패: ${uploadResult.error}`,
+        error_message: `installer.php 업로드 실패: ${uploadResult.error} — cPanel URL(${cpBase})과 계정 정보를 확인해주세요.`,
       });
       return;
     }
 
     const installerUrl = `${siteUrl}/cloudpress-installer.php`;
 
-    // Step 0: PHP 확인
+    // ── Step 0: PHP 환경 확인 ──
     await updateStatus(env.DB, siteId, { provision_step: 'checking_php' });
     const s0 = await runInstallerStep(installerUrl, secret, 0, 30000);
     if (!s0.ok) {
       await updateStatus(env.DB, siteId, {
         status: 'failed', provision_step: 'checking_php',
-        error_message: `PHP 확인 실패: ${s0.error || JSON.stringify(s0)}`,
+        error_message: `PHP 확인 실패: ${s0.error || JSON.stringify(s0)} — 서버(${hostingDomain})가 응답하지 않습니다. DNS 전파 또는 서버 설정을 확인해주세요.`,
       });
       return;
     }
 
-    // Step 1: WP 다운로드
+    // ── Step 1: WordPress 다운로드 ──
     await updateStatus(env.DB, siteId, { provision_step: 'installing_wp' });
-    const s1 = await runInstallerStep(installerUrl, secret, 1, 360000);
+    const s1 = await runInstallerStep(installerUrl, secret, 1, 360000); // 6분
     if (!s1.ok) {
       await updateStatus(env.DB, siteId, {
         status: 'failed', provision_step: 'installing_wp',
@@ -257,38 +261,39 @@ async function runPipeline(env, siteId, site) {
       return;
     }
 
-    // Step 2: 설정 파일
+    // ── Step 2: 설정 파일 생성 ──
     const s2 = await runInstallerStep(installerUrl, secret, 2, 60000);
     if (!s2.ok) {
       await updateStatus(env.DB, siteId, {
         status: 'failed', provision_step: 'installing_wp',
-        error_message: `설정 파일 생성 실패: ${s2.error || JSON.stringify(s2)}`,
+        error_message: `설정 파일 생성 실패: ${s2.error || s2.raw || JSON.stringify(s2)}`,
       });
       return;
     }
 
-    // Step 3: DB 설치
+    // ── Step 3: DB 설치 ──
     await updateStatus(env.DB, siteId, { provision_step: 'configuring' });
     const s3 = await runInstallerStep(installerUrl, secret, 3, 120000);
     if (!s3.ok) {
       await updateStatus(env.DB, siteId, {
         status: 'failed', provision_step: 'configuring',
-        error_message: `DB 설치 실패: ${s3.error || JSON.stringify(s3)}`,
+        error_message: `DB 설치 실패: ${s3.error || s3.raw || JSON.stringify(s3)}`,
       });
       return;
     }
 
-    // Step 4: 플러그인
+    // ── Step 4: 플러그인 설치 ──
     await updateStatus(env.DB, siteId, { provision_step: 'installing_plugins' });
-    const s4 = await runInstallerStep(installerUrl, secret, 4, 300000);
+    const s4 = await runInstallerStep(installerUrl, secret, 4, 300000); // 5분
+    // 플러그인 실패는 치명적이지 않음 → 계속 진행
 
-    // Step 5: 최종 설정
+    // ── Step 5: 최종 설정 ──
     const s5 = await runInstallerStep(installerUrl, secret, 5, 60000);
 
-    // Step 6: 인스톨러 삭제
+    // ── Step 6: 인스톨러 삭제 ──
     await runInstallerStep(installerUrl, secret, 6, 15000).catch(() => {});
 
-    // 완료
+    // ── 완료 ──
     await updateStatus(env.DB, siteId, {
       status:            'active',
       provision_step:    'completed',
@@ -311,13 +316,16 @@ async function runPipeline(env, siteId, site) {
   }
 }
 
-// installer.php 빌더 (sites/index.js의 buildInstallerPHP와 동일)
+// ══════════════════════════════════════════════════════════════
+// PHP 설치 스크립트 빌더 (Step 0~6)
+// ══════════════════════════════════════════════════════════════
 function buildInstallerPHP({ dbName, dbUser, dbPass, dbHost, siteUrl, siteName,
   wpAdminUser, wpAdminPw, wpAdminEmail, plan, secret, wpDownloadUrl }) {
 
   const authKeys = Array.from({ length: 8 }, () =>
     Math.random().toString(36).repeat(4).slice(0, 64)
   );
+
   const wpConfigContent = `<?php
 define('DB_NAME',     '${dbName}');
 define('DB_USER',     '${dbUser}');
@@ -367,6 +375,22 @@ RewriteCond %{REQUEST_FILENAME} !-d
 RewriteRule . /index.php [L]
 </IfModule>
 # END WordPress
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE text/html text/plain text/css text/javascript application/javascript application/json
+</IfModule>
+<IfModule mod_expires.c>
+  ExpiresActive On
+  ExpiresByType image/jpeg "access plus 30 days"
+  ExpiresByType image/png  "access plus 30 days"
+  ExpiresByType image/webp "access plus 30 days"
+  ExpiresByType text/css   "access plus 7 days"
+  ExpiresByType application/javascript "access plus 7 days"
+</IfModule>
+<IfModule mod_headers.c>
+  Header always set X-Content-Type-Options nosniff
+  Header always set X-Frame-Options SAMEORIGIN
+</IfModule>
+FileETag None
 `;
 
   const userIniContent = `date.timezone = Asia/Seoul
@@ -376,30 +400,57 @@ post_max_size = 256M
 upload_max_filesize = 256M
 max_input_vars = 10000
 opcache.enable = 1
+opcache.memory_consumption = 128
+opcache.max_accelerated_files = 10000
 display_errors = Off
 `;
 
   const muPluginContent = `<?php
 /**
  * Plugin Name: CloudPress Core
+ * Description: REST API 활성화, MySQL KST, Cron 설정, 성능 최적화
  */
 if (!defined('ABSPATH')) exit;
+
 add_action('init', function() {
   global $wpdb;
   $wpdb->query("SET time_zone = '+9:00'");
+  $wpdb->query("SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci");
 }, 1);
-add_filter('rest_enabled', '__return_true');
-add_filter('block_local_requests', '__return_false');
+
+add_filter('rest_enabled',        '__return_true');
+add_filter('rest_jsonp_enabled',  '__return_true');
+add_filter('block_local_requests','__return_false');
+
+add_action('init', function() {
+  if (get_option('cloudpress_core_initialized')) return;
+  update_option('permalink_structure', '/%postname%/');
+  flush_rewrite_rules(true);
+  update_option('timezone_string', 'Asia/Seoul');
+  update_option('gmt_offset',      9);
+  update_option('date_format',     'Y년 n월 j일');
+  update_option('time_format',     'H:i');
+  update_option('start_of_week',   0);
+  update_option('default_comment_status', 'closed');
+  update_option('comment_moderation', 1);
+  update_option('cloudpress_core_initialized', time());
+}, 99);
+
+remove_action('wp_head', 'wp_generator');
+remove_action('wp_head', 'wlwmanifest_link');
+remove_action('wp_head', 'rsd_link');
+add_filter('xmlrpc_enabled', '__return_false');
+add_filter('heartbeat_settings', function($s){ $s['interval']=120; return $s; });
 `;
 
   const toB64 = (str) => btoa(unescape(encodeURIComponent(str)));
-  const wpConfigB64 = toB64(wpConfigContent);
-  const htaccessB64 = toB64(htaccessContent);
-  const userIniB64  = toB64(userIniContent);
-  const muPluginB64 = toB64(muPluginContent);
-  const siteNameEsc = siteName.replace(/'/g, "\\'").replace(/\\/g, '\\\\');
+  const wpConfigB64  = toB64(wpConfigContent);
+  const htaccessB64  = toB64(htaccessContent);
+  const userIniB64   = toB64(userIniContent);
+  const muPluginB64  = toB64(muPluginContent);
 
-  const pluginList = ['breeze'];
+  const siteNameEsc  = siteName.replace(/'/g, "\\'").replace(/\\/g, '\\\\');
+  const pluginList   = ['breeze'];
   if (['starter','pro','enterprise'].includes(plan)) pluginList.push('wp-super-cache');
   if (['pro','enterprise'].includes(plan))           pluginList.push('wp-optimize');
   const pluginListPHP = pluginList.map(p => `'${p}'`).join(', ');
@@ -409,17 +460,24 @@ add_filter('block_local_requests', '__return_false');
     : `  $custom_url = '';`;
 
   return `<?php
+/**
+ * CloudPress WordPress Installer v10.0
+ * Step 0: PHP 확인 / Step 1: WP 다운로드 / Step 2: 설정파일
+ * Step 3: DB 설치 / Step 4: 플러그인 / Step 5: 최종설정 / Step 6: 자체삭제
+ */
 @set_time_limit(600);
 @ini_set('memory_limit','512M');
 @ini_set('display_errors',0);
+@ini_set('date.timezone','Asia/Seoul');
 header('Content-Type: application/json; charset=utf-8');
+
 $step   = (int)($_GET['step']   ?? 0);
 $secret = $_GET['secret'] ?? '';
 if ($secret !== '${secret}') { echo json_encode(['ok'=>false,'error'=>'Unauthorized']); exit; }
 $base = __DIR__;
 
 if ($step === 0) {
-  echo json_encode(['ok'=>true,'step'=>0,'php'=>phpversion()]);
+  echo json_encode(['ok'=>true,'step'=>0,'php'=>phpversion(),'php_ok'=>(PHP_MAJOR_VERSION>=8)]);
   exit;
 }
 
@@ -441,20 +499,24 @@ ${customUrlLine}
       file_put_contents($zip_path, $data); $ok=true; $src_url=$url; break;
     }
   }
-  if (!$ok) { echo json_encode(['ok'=>false,'error'=>'WP 다운로드 실패']); exit; }
+  if (!$ok) { echo json_encode(['ok'=>false,'error'=>'WP 다운로드 실패 — 모든 미러 실패']); exit; }
+
   $zip = new ZipArchive();
   if ($zip->open($zip_path) !== true) { echo json_encode(['ok'=>false,'error'=>'ZIP 해제 실패']); exit; }
   $tmp = $base.'/wp_tmp_'.time();
   $zip->extractTo($tmp); $zip->close(); @unlink($zip_path);
+
   $src = null;
   foreach (['wordpress','wordpress-ko_KR'] as $n) {
     if (is_dir("$tmp/$n")) { $src = "$tmp/$n"; break; }
   }
   if (!$src) { $dirs=glob("$tmp/*",GLOB_ONLYDIR); $src=$dirs[0]??null; }
-  if (!$src) { echo json_encode(['ok'=>false,'error'=>'WP 폴더 없음']); exit; }
+  if (!$src) { echo json_encode(['ok'=>false,'error'=>'WP 폴더를 찾을 수 없음']); exit; }
+
   function cp_mv($s,$d){ if(!is_dir($d))@mkdir($d,0755,true); foreach(@scandir($s)?:[] as $i){ if($i==='.'||$i==='..') continue; $sf="$s/$i"; $df="$d/$i"; is_dir($sf)?cp_mv($sf,$df):(@rename($sf,$df)||@copy($sf,$df)); } }
   function cp_rm($d){ if(!is_dir($d))return; foreach(@scandir($d)?:[] as $i){ if($i==='.'||$i==='..') continue; $p="$d/$i"; is_dir($p)?cp_rm($p):@unlink($p); } @rmdir($d); }
   cp_mv($src, $base); cp_rm($tmp);
+
   $ver='latest';
   if(file_exists($vf=$base.'/wp-includes/version.php')){
     if(preg_match('/\\$wp_version\\s*=\\s*[\\x27"](\\S+)[\\x27"]/',file_get_contents($vf),$m)) $ver=$m[1];
@@ -467,15 +529,16 @@ if ($step === 2) {
   file_put_contents($base.'/wp-config.php', base64_decode('${wpConfigB64}'));
   file_put_contents($base.'/.htaccess',     base64_decode('${htaccessB64}'));
   file_put_contents($base.'/.user.ini',     base64_decode('${userIniB64}'));
+  if(is_dir($base.'/wp-content')) file_put_contents($base.'/wp-content/.user.ini', base64_decode('${userIniB64}'));
   $mu = $base.'/wp-content/mu-plugins';
   if(!is_dir($mu)) @mkdir($mu,0755,true);
   file_put_contents($mu.'/cloudpress-core.php', base64_decode('${muPluginB64}'));
-  echo json_encode(['ok'=>true,'step'=>2]);
+  echo json_encode(['ok'=>true,'step'=>2,'msg'=>'설정 완료']);
   exit;
 }
 
 if ($step === 3) {
-  if (!file_exists($base.'/wp-load.php')) { echo json_encode(['ok'=>false,'error'=>'WP 파일 없음']); exit; }
+  if (!file_exists($base.'/wp-load.php')) { echo json_encode(['ok'=>false,'error'=>'WP 파일 없음 — Step 1 실패 확인']); exit; }
   $db = @new mysqli('${dbHost}','${dbUser}','${dbPass}','${dbName}');
   if ($db->connect_error) { echo json_encode(['ok'=>false,'error'=>'DB 연결 실패: '.$db->connect_error]); exit; }
   $db->query("SET time_zone='+9:00'"); $db->query("SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci"); $db->close();
@@ -487,13 +550,17 @@ if ($step === 3) {
   global $wpdb; $wpdb->query("SET time_zone='+9:00'");
   $r = wp_install('${siteNameEsc}','${wpAdminUser}','${wpAdminEmail}',true,'',wp_slash('${wpAdminPw}'));
   if (is_wp_error($r)) { echo json_encode(['ok'=>false,'error'=>$r->get_error_message()]); exit; }
+  update_option('blogname','${siteNameEsc}');
   update_option('siteurl','${siteUrl}');
   update_option('home','${siteUrl}');
   update_option('permalink_structure','/%postname%/');
   update_option('timezone_string','Asia/Seoul');
   update_option('gmt_offset',9);
+  update_option('WPLANG','ko_KR');
+  update_option('admin_email','${wpAdminEmail}');
+  update_option('default_comment_status','closed');
   flush_rewrite_rules(true);
-  echo json_encode(['ok'=>true,'step'=>3]);
+  echo json_encode(['ok'=>true,'step'=>3,'msg'=>'WordPress 설치 완료']);
   exit;
 }
 
@@ -507,34 +574,47 @@ if ($step === 4) {
   require_once $base.'/wp-admin/includes/misc.php';
   require_once $base.'/wp-admin/includes/class-wp-upgrader.php';
   require_once $base.'/wp-admin/includes/plugin-install.php';
+  global $wpdb; $wpdb->query("SET time_zone='+9:00'");
+
   $to_install = [${pluginListPHP}];
   $installed = []; $errors = [];
+
   foreach ($to_install as $slug) {
-    $api = plugins_api('plugin_information',['slug'=>$slug,'fields'=>['sections'=>false]]);
-    if (is_wp_error($api)) { $errors[]=$slug; continue; }
+    $api = plugins_api('plugin_information',['slug'=>$slug,'fields'=>['sections'=>false,'screenshots'=>false]]);
+    if (is_wp_error($api)) { $errors[]=$slug.': API 오류'; continue; }
     $upgrader = new Plugin_Upgrader(new Automatic_Upgrader_Skin());
     $result = $upgrader->install($api->download_link);
-    if (is_wp_error($result)) { $errors[]=$slug; continue; }
+    if (is_wp_error($result)) { $errors[]=$slug.': 설치 실패'; continue; }
     $pf = $slug.'/'.$slug.'.php';
     if (file_exists($base.'/wp-content/plugins/'.$pf)) {
-      activate_plugin($pf); $installed[] = $slug;
+      activate_plugin($pf);
+      $installed[] = $slug;
     }
   }
+
   if (in_array('breeze', $installed)) {
-    update_option('breeze_basic_settings',['breeze-active'=>1,'breeze-gzip-compression'=>1,'breeze-browser-cache'=>1,'breeze-lazy-load'=>1,'breeze-desktop-cache'=>1,'breeze-mobile-cache'=>1]);
+    update_option('breeze_basic_settings',[
+      'breeze-active'=>1,'breeze-gzip-compression'=>1,'breeze-browser-cache'=>1,
+      'breeze-lazy-load'=>1,'breeze-desktop-cache'=>1,'breeze-mobile-cache'=>1,
+      'breeze-minify-html'=>1,'breeze-minify-css'=>1,'breeze-minify-js'=>1,
+      'breeze-defer-js'=>1,'breeze-cache-ttl'=>1440,
+    ]);
   }
+
   $themes_dir = $base.'/wp-content/themes';
   if (!is_dir($themes_dir.'/twentytwentyfour')) {
     $ctx2 = stream_context_create(['http'=>['timeout'=>60],'ssl'=>['verify_peer'=>false]]);
     $tz = @file_get_contents('https://downloads.wordpress.org/theme/twentytwentyfour.zip',false,$ctx2);
     if ($tz && strlen($tz)>10000) {
       $tzp=$themes_dir.'/tt4.zip'; file_put_contents($tzp,$tz);
-      $z=new ZipArchive(); if($z->open($tzp)===true){$z->extractTo($themes_dir);$z->close();} @unlink($tzp);
+      $z=new ZipArchive(); if($z->open($tzp)===true){$z->extractTo($themes_dir);$z->close();}
+      @unlink($tzp);
     }
   }
   foreach(['twentytwentyfour','twentytwentythree','twentytwentytwo'] as $t){
-    if(is_dir($themes_dir.'/'.$t)){switch_theme($t); break;}
+    if(is_dir($themes_dir.'/'.$t)){switch_theme($t); $installed[]='theme:'.$t; break;}
   }
+
   echo json_encode(['ok'=>true,'step'=>4,'installed'=>$installed,'errors'=>$errors]);
   exit;
 }
@@ -544,14 +624,17 @@ if ($step === 5) {
   $_SERVER['HTTP_HOST']   = parse_url('${siteUrl}',PHP_URL_HOST);
   $_SERVER['REQUEST_URI'] = '/';
   require_once $base.'/wp-load.php';
+  global $wpdb; $wpdb->query("SET time_zone='+9:00'");
+  if (!wp_next_scheduled('cloudpress_health_check'))
+    wp_schedule_event(time(),'hourly','cloudpress_health_check');
   flush_rewrite_rules(true);
-  echo json_encode(['ok'=>true,'step'=>5]);
+  echo json_encode(['ok'=>true,'step'=>5,'msg'=>'최종 설정 완료']);
   exit;
 }
 
 if ($step === 6) {
   $f = __FILE__;
-  echo json_encode(['ok'=>true,'step'=>6]);
+  echo json_encode(['ok'=>true,'step'=>6,'msg'=>'인스톨러 삭제 완료']);
   @unlink($f);
   exit;
 }
