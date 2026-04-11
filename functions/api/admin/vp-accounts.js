@@ -1,5 +1,5 @@
 // functions/api/admin/vp-accounts.js
-// VP 계정 관리 API — clone_zip_url 은 GitHub Raw URL 직접 입력
+// VP 계정 관리 API — v9.0: clone_zip_url 불필요 (PHP installer 자동 설치)
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
