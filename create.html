@@ -517,60 +517,68 @@ async function startCreation() {
   document.getElementById('createBtn').disabled = true;
   goStep(3);
 
+  const token = CP.getToken();
+
+  // ── Step A: 사이트 레코드 생성 ──
+  let data;
   try {
-    const token = CP.getToken();
     const res = await fetch('/api/sites', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
       body: JSON.stringify({
-        siteName:       WD.siteName,
-        adminLogin:     WD.adminLogin,
-        personalDomain: WD.personalDomain,
-        cfEmail:        WD.cfEmail,
-        cfApiKey:       WD.cfApiKey,
-        cfAccountId:    WD.cfAccountId,
+        siteName:   WD.siteName,
+        adminLogin: WD.adminLogin,
       }),
     });
 
-    let data;
     const ct = res.headers.get('content-type') || '';
-    if (ct.includes('application/json')) {
-      data = await res.json();
-    } else {
+    if (!ct.includes('application/json')) {
       showFail('서버 오류 (' + res.status + '): 잠시 후 다시 시도해주세요.');
       document.getElementById('createBtn').disabled = false;
       return;
     }
-
-    if (!data.ok) {
-      showFail(data.error || '사이트 생성 요청 실패');
-      document.getElementById('createBtn').disabled = false;
-      return;
-    }
-
-    currentSiteId = data.siteId;
-    addLog(`✅ 사이트 생성 요청 완료 (ID: ${data.siteId})`);
-    addLog(`📋 플랜: ${data.plan || 'free'}`);
-    addLog(`🚀 WordPress 자동 설치를 시작합니다...`);
-
-    // 프로비저닝 파이프라인 즉시 실행 (waitUntil 의존 없이)
-    fetch(`/api/sites/${data.siteId}/provision`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-    }).catch(() => {}); // fire-and-forget, 폴링으로 진행 상황 추적
-
-    startPolling(data.siteId);
-
+    data = await res.json();
   } catch (e) {
-    showFail('네트워크 오류: ' + e.message);
+    showFail('네트워크 오류 (사이트 생성): ' + e.message);
     document.getElementById('createBtn').disabled = false;
+    return;
   }
+
+  if (!data.ok) {
+    showFail(data.error || '사이트 생성 요청 실패');
+    document.getElementById('createBtn').disabled = false;
+    return;
+  }
+
+  currentSiteId = data.siteId;
+  addLog(`✅ 사이트 레코드 생성 완료 (ID: ${data.siteId})`);
+  addLog(`📋 플랜: ${data.plan || 'free'} | VP: ${data.vpAccount || '—'}`);
+  addLog(`🚀 WordPress 자동 설치를 시작합니다...`);
+
+  // ── Step B: provision 엔드포인트 호출 (파이프라인 시작) ──
+  // 응답을 기다리지 않고 폴링으로 진행상황 추적
+  fetch(`/api/sites/${data.siteId}/provision`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+  }).then(async r => {
+    const ct = r.headers.get('content-type') || '';
+    if (ct.includes('application/json')) {
+      const pd = await r.json().catch(() => ({}));
+      if (!pd.ok && pd.error) addLog('⚠️ ' + pd.error);
+    }
+  }).catch(() => {
+    // 네트워크 끊겨도 폴링이 상태를 추적하므로 무시
+  });
+
+  // ── Step C: 폴링 시작 ──
+  startPolling(data.siteId);
 }
 
 /* provision_step → 단계 UI 매핑 */
 const STEP_MAP = {
-  // ── 실제 파이프라인 provision_step 값 (v9 PHP installer) ──
+  // ── 실제 파이프라인 provision_step 값 (v10 PHP installer) ──
   'init':                  { step: 1, msg: '① 설치 준비 중...',                            title: '⏳ 설치 준비 중...' },
+  'starting':              { step: 1, msg: '① 파이프라인 시작 중...',                      title: '⏳ 파이프라인 시작...' },
   'uploading_installer':   { step: 1, msg: '① installer.php 업로드 중...',                 title: '① 인스톨러 업로드 중...' },
   'checking_php':          { step: 1, msg: '① PHP 환경 확인 중...',                        title: '① PHP 환경 확인 중...' },
   'provisioning_account':  { step: 1, msg: '① 호스팅 계정 확보 중...',                    title: '① 계정 준비 중...' },
@@ -681,13 +689,12 @@ function startPolling(siteId) {
           }
         }
 
-        addLog('⚡ PHP 8.3 설정 완료');
-        addLog('📦 WordPress 최신 (한국어) 설치 완료');
+        addLog('⚡ PHP ' + (site.php_version || '8.x') + ' 환경 설정 완료');
+        addLog('📦 WordPress ' + (site.wp_version || '최신') + ' (한국어) 설치 완료');
         addLog('🕐 timezone: Asia/Seoul (KST) 설정 완료');
-        addLog('⏰ Cron Job 강제 활성화 완료');
-        addLog('☁️ Cloudflare Worker 배포 완료 → ' + (site.custom_domain || WD.personalDomain));
-        addLog('🗄️ Cloudflare D1 + KV 연동 완료');
-        addLog('🎉 모든 설치 완료! 개인 도메인으로 접속하세요.');
+        addLog('⏰ Cron Job 활성화 완료');
+        if (site.speed_optimized) addLog('⚡ Breeze 캐시 플러그인 설치 완료');
+        addLog('🎉 WordPress 설치 완료! wp-admin으로 접속하세요.');
 
         showSuccess(site);
 
@@ -716,26 +723,29 @@ function startPolling(siteId) {
 function showSuccess(site) {
   goStep(4);
 
-  const personalDomain = site.custom_domain || WD.personalDomain || site.primary_domain || '';
-  const personalUrl    = personalDomain ? 'https://' + personalDomain : (site.wp_url || '#');
-  const adminUrl       = personalDomain ? 'https://' + personalDomain + '/wp-admin/' : (site.wp_admin_url || '#');
-  const workerName     = site.cf_worker_name || (personalDomain ? personalDomain.replace(/\./g, '-') + '-proxy' : '—');
+  // wp_url = 실제 호스팅 도메인 (subdomain.server_domain)
+  // personalDomain = 사용자 도메인 (CNAME 연결 후 사용)
+  const hostingUrl   = site.wp_url || '';
+  const personalD    = site.custom_domain || WD.personalDomain || '';
+  const displayUrl   = personalD ? 'https://' + personalD : hostingUrl;
+  const adminUrl     = hostingUrl ? hostingUrl.replace(/\/$/, '') + '/wp-admin/' : (site.wp_admin_url || '#');
+  const loginUrl     = site.login_url || (hostingUrl ? hostingUrl.replace(/\/$/, '') + '/wp-login.php' : '#');
 
-  document.getElementById('credPersonalDomain').textContent = personalUrl;
+  document.getElementById('credPersonalDomain').textContent = displayUrl || hostingUrl || '—';
   document.getElementById('credAdminUrl').textContent       = adminUrl;
   document.getElementById('credUser').textContent           = site.wp_username || WD.adminLogin || '—';
   document.getElementById('credPw').value                   = site.wp_password || '—';
-  document.getElementById('credWorker').textContent         = workerName + ' ✅';
-  document.getElementById('credPhp').textContent            = (site.php_version || 'PHP 8.3') + ' ✅';
+  document.getElementById('credWorker').textContent         = personalD ? personalD + ' (CNAME 연결 필요)' : '호스팅 도메인 직접 사용';
+  document.getElementById('credPhp').textContent            = (site.php_version || 'PHP 8.x') + ' ✅';
   document.getElementById('credWpVer').textContent          = (site.wp_version  || '최신') + ' (한국어) ✅';
-  document.getElementById('credCron').textContent           = site.cron_enabled ? '✅ 활성화됨 (강제 실행)' : '⏳ 설정 중';
-  document.getElementById('credSpeed').textContent          = site.speed_optimized ? '✅ 최적화됨' : '⏳ 적용 중';
+  document.getElementById('credCron').textContent           = site.cron_enabled ? '✅ 활성화됨' : '⏳ 설정 중';
+  document.getElementById('credSpeed').textContent          = site.speed_optimized ? '✅ Breeze 최적화' : '⏳ 적용 중';
 
-  document.getElementById('wpSiteLink').href  = personalUrl;
+  document.getElementById('wpSiteLink').href  = hostingUrl || '#';
   document.getElementById('wpAdminLink').href = adminUrl;
 
   document.getElementById('successDesc').textContent =
-    `"${site.name}" 사이트가 ${personalUrl} 으로 성공적으로 설치되었습니다.`;
+    `"${site.name}" 사이트가 성공적으로 설치되었습니다. 아래 wp-admin으로 접속하세요.`;
 }
 
 function showFail(msg) {
