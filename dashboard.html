@@ -179,7 +179,7 @@ async function loadSites(){
       </div>`;
     }).join('');
 
-    sites.filter(s=>['provisioning','installing_wp','pending'].includes(s.status)).forEach(s=>pollStatus(s.id));
+    sites.filter(s=>['provisioning','installing_wp','pending','init'].includes(s.status)).forEach(s=>pollStatus(s.id));
   } catch(e) {
     console.error('사이트 로딩 오류:', e);
     const el=document.getElementById('sitesList');
