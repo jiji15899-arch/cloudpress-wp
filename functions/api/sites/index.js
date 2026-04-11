@@ -122,7 +122,7 @@ export async function onRequestGet({ request, env }) {
 
   try {
     const { results } = await env.DB.prepare(
-      `SELECT id, name, primary_domain, www_domain, domain_status,
+      `SELECT id, name, primary_domain, domain_status,
               site_prefix, worker_name, wp_admin_url,
               wp_username, wp_password, status, provision_step,
               error_message, suspended, suspension_reason,
@@ -176,8 +176,8 @@ export async function onRequestPost({ request, env }) {
 
   // 도메인 중복 확인
   const existing = await env.DB.prepare(
-    `SELECT id FROM sites WHERE (primary_domain=? OR www_domain=?) AND deleted_at IS NULL`
-  ).bind(domain, 'www.' + domain).first();
+    `SELECT id FROM sites WHERE primary_domain=? AND deleted_at IS NULL`
+  ).bind(domain).first();
   if (existing) return err('이미 사용 중인 도메인입니다.');
 
   // 플랜 한도 확인
@@ -200,15 +200,15 @@ export async function onRequestPost({ request, env }) {
     await env.DB.prepare(
       `INSERT INTO sites (
         id, user_id, name,
-        primary_domain, www_domain, domain_status,
+        primary_domain, domain_status,
         site_prefix,
         wp_username, wp_password, wp_admin_email,
         wp_admin_url,
         status, provision_step, plan
-      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
     ).bind(
       siteId, user.id, siteName.trim(),
-      domain, 'www.' + domain, 'pending',
+      domain, 'pending',
       sitePrefix,
       adminLogin, wpAdminPw, user.email,
       wpOrigin.replace(/\/$/, '') + '/wp-admin/?cp_site=' + sitePrefix,
