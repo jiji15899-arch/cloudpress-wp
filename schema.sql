@@ -169,3 +169,10 @@ INSERT OR IGNORE INTO settings (key, value) VALUES
   ('site_domain',            'cloudpress.site'),
   ('toss_client_key',        ''),
   ('toss_secret_key',        '');
+
+-- ─────────────────────────────────────────────
+-- Migration: www_domain 컬럼 추가 (기존 DB 호환)
+-- 이미 컬럼이 있으면 무시됨 (SQLite는 IF NOT EXISTS 미지원 → 앱 레벨에서 처리)
+-- Cloudflare D1 콘솔 또는 wrangler에서 아래 구문을 직접 실행:
+--   ALTER TABLE sites ADD COLUMN www_domain TEXT;
+-- ─────────────────────────────────────────────
