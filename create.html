@@ -130,6 +130,14 @@
     </div>
 
     <div class="content">
+
+      <!-- CF API Key 미등록 경고 배너 (JS에서 표시) -->
+      <div id="cfApiBanner" style="display:none;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);border-radius:10px;padding:14px 18px;margin-bottom:18px;display:none;align-items:center;gap:12px;flex-wrap:wrap">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="flex-shrink:0;color:#ef4444"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" stroke="currentColor" stroke-width="1.5"/><line x1="12" y1="9" x2="12" y2="13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="12" y1="17" x2="12.01" y2="17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <span style="flex:1;font-size:.88rem;color:var(--text)"><strong>Cloudflare API 키가 등록되지 않았습니다.</strong> 사이트 생성 전에 <a href="/account.html" style="color:var(--accent);text-decoration:underline">내 계정</a>에서 Global API Key를 먼저 등록해주세요.</span>
+        <a href="/account.html" style="background:rgba(239,68,68,.15);color:#ef4444;border:1px solid rgba(239,68,68,.3);padding:6px 14px;border-radius:6px;font-size:.82rem;font-weight:600;white-space:nowrap;text-decoration:none">API 키 등록 →</a>
+      </div>
+
       <div class="wizard">
         <!-- 단계 표시 -->
         <div class="steps" id="stepsBar">
@@ -380,7 +388,7 @@
           </div>
         </div>
 
-      </div>
+      </div><!-- /wizard -->
     </div>
   </main>
 </div>
@@ -678,6 +686,19 @@ document.addEventListener('DOMContentLoaded', async () => {
       setEl('sbEmail', u.email || '—');
       const av = document.getElementById('sbAvatar');
       if (av) av.textContent = (u.name || u.email || '?')[0].toUpperCase();
+
+      // CF API Key 등록 여부 확인 → 없으면 상단 경고 배너 표시
+      try {
+        const token = CP.getToken();
+        const res = await fetch('/api/user', {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        const d = await res.json();
+        if (d.ok && !d.user?.has_cf_api) {
+          const banner = document.getElementById('cfApiBanner');
+          if (banner) banner.style.display = '';
+        }
+      } catch (_) {}
     }
   }
 });
