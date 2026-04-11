@@ -300,19 +300,19 @@
             <div style="margin:16px 0;text-align:left">
               <div class="provision-step" id="pstep1">
                 <span class="pstep-icon">⏳</span>
-                <span class="pstep-name">1단계: WordPress 설치 (PHP 8.3 + 한국어 + 반응형)</span>
+                <span class="pstep-name">1단계: 인스톨러 업로드 + PHP 환경 확인</span>
               </div>
               <div class="provision-step" id="pstep2">
                 <span class="pstep-icon">⏳</span>
-                <span class="pstep-name">2단계: 플러그인 설치 및 최적화</span>
+                <span class="pstep-name">2단계: WordPress 다운로드 + 설정 파일 생성</span>
               </div>
               <div class="provision-step" id="pstep3">
                 <span class="pstep-icon">⏳</span>
-                <span class="pstep-name">3단계: Cloudflare Worker 배포 (개인도메인 프록시)</span>
+                <span class="pstep-name">3단계: DB 설치 + 플러그인 (breeze 등) 적용</span>
               </div>
               <div class="provision-step" id="pstep4">
                 <span class="pstep-icon">⏳</span>
-                <span class="pstep-name">4단계: 도메인 DNS + 사이트 활성화</span>
+                <span class="pstep-name">4단계: 최종 설정 (cron, permalink, KST) + 활성화</span>
               </div>
             </div>
 
@@ -565,24 +565,27 @@ async function startCreation() {
 
 /* provision_step → 단계 UI 매핑 */
 const STEP_MAP = {
-  // ── 실제 파이프라인 provision_step 값 ──
-  'init':                 { step: 1, msg: '① 초기화 중...',                               title: '⏳ 설치 준비 중...' },
-  'provisioning_account': { step: 1, msg: '① 호스팅 계정 확보 중...',                    title: '① 계정 준비 중...' },
-  'installing_wp':        { step: 2, msg: '② WordPress 설치 중 (PHP 8.3 + 한국어)...',    title: '② WordPress 설치 중...' },
-  'configuring':          { step: 2, msg: '② 공유 호스팅 환경 설정 중...',               title: '② 환경 설정 중...' },
-  'cloning_site':         { step: 2, msg: '② 사이트 복제 중...',                         title: '② 사이트 복제 중...' },
-  'cloudflare_setup':     { step: 3, msg: '③ Cloudflare CDN 연동 중...',                title: '③ CDN 설정 중...' },
-  'optimizing':           { step: 3, msg: '③ 속도 최적화 적용 중...',                   title: '③ 속도 최적화 중...' },
-  'completed':            { step: 4, msg: '✅ 사이트 생성 완료!',                         title: '✅ 사이트 생성 완료!' },
-  'pipeline_error':       { step: 1, msg: '❌ 파이프라인 오류',                           title: '❌ 오류 발생' },
+  // ── 실제 파이프라인 provision_step 값 (v9 PHP installer) ──
+  'init':                  { step: 1, msg: '① 설치 준비 중...',                            title: '⏳ 설치 준비 중...' },
+  'uploading_installer':   { step: 1, msg: '① installer.php 업로드 중...',                 title: '① 인스톨러 업로드 중...' },
+  'checking_php':          { step: 1, msg: '① PHP 환경 확인 중...',                        title: '① PHP 환경 확인 중...' },
+  'provisioning_account':  { step: 1, msg: '① 호스팅 계정 확보 중...',                    title: '① 계정 준비 중...' },
+  'installing_wp':         { step: 2, msg: '② WordPress 다운로드 + 설치 중...',            title: '② WordPress 설치 중...' },
+  'configuring':           { step: 2, msg: '② 설정 파일 생성 중 (wp-config, .htaccess)...',title: '② 환경 설정 중...' },
+  'cloning_site':          { step: 2, msg: '② 사이트 복제 중...',                          title: '② 사이트 복제 중...' },
+  'installing_plugins':    { step: 3, msg: '③ 플러그인 설치 중 (breeze 등)...',            title: '③ 플러그인 설치 중...' },
+  'cloudflare_setup':      { step: 3, msg: '③ Cloudflare CDN 연동 중...',                 title: '③ CDN 설정 중...' },
+  'optimizing':            { step: 3, msg: '③ 속도 최적화 적용 중...',                    title: '③ 속도 최적화 중...' },
+  'completed':             { step: 4, msg: '✅ 사이트 생성 완료!',                          title: '✅ 사이트 생성 완료!' },
+  'pipeline_error':        { step: 1, msg: '❌ 파이프라인 오류',                            title: '❌ 오류 발생' },
   // ── 레거시 값 호환 ──
-  'initializing':         { step: 1, msg: '① 초기화 중...',                              title: '⏳ 설치 준비 중...' },
-  'wordpress_install':    { step: 2, msg: '② WordPress 설치 중...',                      title: '② WordPress 설치 중...' },
-  'cron_setup':           { step: 3, msg: '③ 플러그인 설치 및 최적화 중...',             title: '③ 플러그인 설치 중...' },
-  'suspend_protection':   { step: 3, msg: '③ 보호 설정 중...',                          title: '③ 보호 설정 중...' },
-  'speed_optimization':   { step: 3, msg: '③ 속도 최적화 적용 중...',                   title: '③ 속도 최적화 중...' },
-  'worker_deploy':        { step: 4, msg: '④ Cloudflare Worker 배포 중...',             title: '④ CF Worker 배포 중...' },
-  'dns_setup':            { step: 4, msg: '④ DNS 설정 및 사이트 활성화 중...',           title: '④ 사이트 활성화 중...' },
+  'initializing':          { step: 1, msg: '① 초기화 중...',                               title: '⏳ 설치 준비 중...' },
+  'wordpress_install':     { step: 2, msg: '② WordPress 설치 중...',                       title: '② WordPress 설치 중...' },
+  'cron_setup':            { step: 3, msg: '③ 플러그인 설치 및 최적화 중...',              title: '③ 플러그인 설치 중...' },
+  'suspend_protection':    { step: 3, msg: '③ 보호 설정 중...',                            title: '③ 보호 설정 중...' },
+  'speed_optimization':    { step: 3, msg: '③ 속도 최적화 적용 중...',                    title: '③ 속도 최적화 중...' },
+  'worker_deploy':         { step: 4, msg: '④ Cloudflare Worker 배포 중...',              title: '④ CF Worker 배포 중...' },
+  'dns_setup':             { step: 4, msg: '④ DNS 설정 및 사이트 활성화 중...',            title: '④ 사이트 활성화 중...' },
 };
 
 function updateProvisionSteps(provisionStep, status) {
@@ -646,9 +649,12 @@ function startPolling(siteId) {
 
       if (provStep !== prevProvisionStep) {
         prevProvisionStep = provStep;
+        if (provStep === 'uploading_installer')  addLog('📤 [1/4] installer.php 업로드 중...');
+        if (provStep === 'checking_php')         addLog('🔍 [1/4] PHP 환경 확인 중...');
         if (provStep === 'provisioning_account') addLog('🔑 [1/4] 호스팅 계정 슬롯 확보 중...');
-        if (provStep === 'installing_wp')        addLog('📦 [2/4] WordPress 설치 중... (PHP 8.3 + 한국어)');
-        if (provStep === 'configuring')          addLog('🔧 [2/4] 공유 호스팅 환경 설정 중...');
+        if (provStep === 'installing_wp')        addLog('📦 [2/4] WordPress 다운로드 + 설치 중... (한국어)');
+        if (provStep === 'configuring')          addLog('🔧 [2/4] 설정 파일 생성 중 (wp-config, .htaccess)...');
+        if (provStep === 'installing_plugins')   addLog('🔌 [3/4] 플러그인 설치 중 (breeze 등)...');
         if (provStep === 'cloudflare_setup')     addLog('☁️ [3/4] Cloudflare CDN 연동 중...');
         if (provStep === 'optimizing')           addLog('⚡ [3/4] 속도 최적화 적용 중...');
         if (provStep === 'completed')            addLog('✅ [4/4] 사이트 생성 완료!');
