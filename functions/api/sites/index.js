@@ -1,9 +1,13 @@
-// functions/api/sites/index.js — CloudPress v11.0
-// 단일 WP origin + prefix 격리 방식
-// 사이트 생성 흐름:
-//   1. site_prefix 생성 (7자 고유 ID)
-//   2. WP origin에 사이트 초기화 요청 (테이블 생성 + 관리자 계정)
-//   3. provision 엔드포인트에서 도메인 연결 (CF DNS + Worker Route)
+// functions/api/sites/index.js — CloudPress v12.0
+//
+// 사이트 생성 방식:
+//   WP origin에 아무것도 요청하지 않음 (오리진 부하 제로)
+//   1. site_prefix(고유 ID) 생성
+//   2. DB 레코드 생성
+//   3. provision.js 에서 사이트 전용 D1 + KV 생성 → DNS + Worker Route 등록
+//
+// 각 사이트는 완전히 독립된 D1 + KV를 가지므로 데이터 격리 보장
+// WP origin은 오직 프록시 타겟으로만 사용 (이 파일에서 origin 호출 없음)
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -45,8 +49,8 @@ function genId() {
   return 'site_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
 
+// s_ + 5자 영숫자 소문자 — CF 리소스 이름 / KV key에 안전
 function genPrefix() {
-  // s_ + 5자 영숫자 (소문자) — WP 테이블 prefix에 안전하게 쓸 수 있는 형태
   const chars = 'abcdefghjkmnpqrstuvwxyz23456789';
   let s = 's_';
   const arr = new Uint8Array(5);
@@ -73,47 +77,6 @@ async function getMaxSites(env, plan) {
   } catch { return FALLBACK[plan] ?? 1; }
 }
 
-// WP origin에 사이트 초기화 요청
-// WP origin이 site_prefix 헤더를 보고 해당 prefix로 WP 테이블 생성 + admin 계정 생성
-async function initWpSite(env, { sitePrefix, siteName, adminUser, adminPw, adminEmail, siteUrl }) {
-  const wpOrigin  = await getSetting(env, 'wp_origin_url');
-  const wpSecret  = await getSetting(env, 'wp_origin_secret');
-
-  if (!wpOrigin) return { ok: false, error: 'WP origin URL이 설정되지 않았습니다. 관리자 설정을 확인해주세요.' };
-
-  // WP origin의 특수 엔드포인트로 초기화 요청
-  // (origin WP에 cloudpress-origin.php mu-plugin + REST 엔드포인트 필요)
-  try {
-    const res = await fetch(`${wpOrigin.replace(/\/$/, '')}/wp-json/cloudpress/v1/init-site`, {
-      method: 'POST',
-      headers: {
-        'Content-Type':          'application/json',
-        'X-CloudPress-Site':     sitePrefix,
-        'X-CloudPress-Secret':   wpSecret,
-        'X-CloudPress-Domain':   siteUrl.replace(/^https?:\/\//, ''),
-      },
-      body: JSON.stringify({
-        site_prefix: sitePrefix,
-        site_name:   siteName,
-        admin_user:  adminUser,
-        admin_pass:  adminPw,
-        admin_email: adminEmail,
-        site_url:    siteUrl,
-      }),
-    });
-
-    if (!res.ok) {
-      const text = await res.text().catch(() => '');
-      return { ok: false, error: `WP origin 응답 오류 (${res.status}): ${text.slice(0, 200)}` };
-    }
-
-    const data = await res.json().catch(() => ({}));
-    return data?.success ? { ok: true } : { ok: false, error: data?.message || 'WP 초기화 실패' };
-  } catch (e) {
-    return { ok: false, error: 'WP origin 연결 실패: ' + e.message };
-  }
-}
-
 export const onRequestOptions = () => new Response(null, { status: 204, headers: CORS });
 
 export async function onRequestGet({ request, env }) {
@@ -126,7 +89,9 @@ export async function onRequestGet({ request, env }) {
               site_prefix, worker_name, wp_admin_url,
               wp_username, wp_password, status, provision_step,
               error_message, suspended, suspension_reason,
-              disk_used, bandwidth_used, plan, created_at, updated_at
+              disk_used, bandwidth_used, plan,
+              site_d1_id, site_d1_name, site_kv_id, site_kv_title,
+              created_at, updated_at
        FROM sites
        WHERE user_id=? AND deleted_at IS NULL
        ORDER BY created_at DESC`
@@ -144,7 +109,7 @@ export async function onRequestPost({ request, env }) {
   let body;
   try { body = await request.json(); } catch { return err('요청 형식 오류'); }
 
-  // 푸시 구독
+  // ── 푸시 구독 ──────────────────────────────────────────────────
   if (body.action === 'save-push-subscription') {
     const { subscription } = body;
     if (!subscription?.endpoint) return err('구독 정보 없음');
@@ -157,22 +122,32 @@ export async function onRequestPost({ request, env }) {
     } catch (e) { return err('구독 저장 실패: ' + e.message, 500); }
   }
 
-  // 사이트 생성
+  // ── 사이트 생성 ────────────────────────────────────────────────
   const { siteName, adminLogin, personalDomain, sitePlan } = body;
-  if (!siteName?.trim())         return err('사이트 이름을 입력해주세요.');
+  if (!siteName?.trim())        return err('사이트 이름을 입력해주세요.');
   if (!adminLogin || adminLogin.length < 3) return err('관리자 아이디는 3자 이상 입력해주세요.');
   if (!/^[a-zA-Z0-9_]+$/.test(adminLogin)) return err('관리자 아이디는 영문/숫자/언더바만 사용 가능합니다.');
-  if (!personalDomain?.trim())   return err('개인 도메인을 입력해주세요.');
+  if (!personalDomain?.trim())  return err('개인 도메인을 입력해주세요.');
 
-  // 도메인 형식 검증
-  const domain = personalDomain.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/$/, '').replace(/^www\./, '');
+  // 도메인 정규화
+  const domain = personalDomain.trim().toLowerCase()
+    .replace(/^https?:\/\//, '').replace(/\/$/, '').replace(/^www\./, '');
   if (!/^[a-z0-9]([a-z0-9\-]{0,61}[a-z0-9])?(\.[a-z]{2,})+$/.test(domain)) {
     return err('올바른 도메인 형식이 아닙니다. (예: myblog.com)');
   }
 
-  // WP origin 설정 확인
+  // WP Origin 설정 확인 (프록시 타겟 — 이 시점에서 origin에 요청하지 않음)
   const wpOrigin = await getSetting(env, 'wp_origin_url');
-  if (!wpOrigin) return err('WP origin이 설정되지 않았습니다. 관리자 → 설정에서 WP Origin URL을 먼저 입력해주세요.', 503);
+  if (!wpOrigin) {
+    return err('WP Origin URL이 설정되지 않았습니다. 관리자 → 설정에서 먼저 입력해주세요.', 503);
+  }
+
+  // CF 설정 확인 (provision 단계에서 D1/KV 생성에 필요)
+  const cfToken   = await getSetting(env, 'cf_api_token');
+  const cfAccount = await getSetting(env, 'cf_account_id');
+  if (!cfToken || !cfAccount) {
+    return err('Cloudflare API Token과 Account ID가 설정되지 않았습니다. 관리자 → 설정을 확인해주세요.', 503);
+  }
 
   // 도메인 중복 확인
   const existing = await env.DB.prepare(
@@ -185,17 +160,19 @@ export async function onRequestPost({ request, env }) {
   const maxSites = await getMaxSites(env, user.plan);
   if (maxSites !== -1) {
     const { c } = await env.DB.prepare(
-      "SELECT COUNT(*) as c FROM sites WHERE user_id=? AND deleted_at IS NULL"
+      'SELECT COUNT(*) as c FROM sites WHERE user_id=? AND deleted_at IS NULL'
     ).bind(user.id).first() ?? { c: 0 };
-    if (c >= maxSites) return err(`플랜(${user.plan})의 최대 사이트 수(${maxSites}개)를 초과했습니다.`, 403);
+    if (c >= maxSites) {
+      return err(`플랜(${user.plan})의 최대 사이트 수(${maxSites}개)를 초과했습니다.`, 403);
+    }
   }
 
   const siteId     = genId();
-  const sitePrefix = genPrefix();       // 예: s_a3k9x2
+  const sitePrefix = genPrefix();
   const wpAdminPw  = genPw(20);
-  const siteUrl    = 'https://' + domain;
 
-  // DB 레코드 먼저 생성
+  // DB 레코드 생성
+  // site_d1_id / site_kv_id 는 provision 단계에서 채워짐
   try {
     await env.DB.prepare(
       `INSERT INTO sites (
@@ -211,7 +188,7 @@ export async function onRequestPost({ request, env }) {
       domain, 'pending',
       sitePrefix,
       adminLogin, wpAdminPw, user.email,
-      wpOrigin.replace(/\/$/, '') + '/wp-admin/?cp_site=' + sitePrefix,
+      wpOrigin.replace(/\/$/, '') + '/wp-admin',
       'pending', 'init', effectivePlan
     ).run();
   } catch (e) {
@@ -223,6 +200,6 @@ export async function onRequestPost({ request, env }) {
     sitePrefix,
     plan: effectivePlan,
     domain,
-    message: '사이트 생성을 시작합니다.',
+    message: '사이트 레코드가 생성되었습니다. 인프라 구성을 시작합니다.',
   });
 }
