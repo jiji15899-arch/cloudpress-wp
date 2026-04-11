@@ -11,7 +11,7 @@ pages_build_output_dir = "."
 [[d1_databases]]
 binding  = "DB"
 database_name = "cloudpress-db"
-database_id   = "8c7ccd41-f885-404b-9b17-060565c0399f"   # wrangler d1 create cloudpress-db 실행 후 채우기
+database_id   = "02d86436-b49f-4efa-a93b-baa90f3ee095"   # wrangler d1 create cloudpress-db 실행 후 채우기
 
 # ── KV Namespace ──
 # 용도: 도메인→사이트 매핑 캐시 + 페이지 캐시 + 세션
