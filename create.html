@@ -551,9 +551,13 @@ async function startCreation() {
     currentSiteId = data.siteId;
     addLog(`✅ 사이트 생성 요청 완료 (ID: ${data.siteId})`);
     addLog(`📋 플랜: ${data.plan || 'free'}`);
-    addLog(`🌐 개인 도메인: ${WD.personalDomain}`);
-    addLog(`☁️ Cloudflare Worker 배포 준비 중...`);
     addLog(`🚀 WordPress 자동 설치를 시작합니다...`);
+
+    // 프로비저닝 파이프라인 즉시 실행 (waitUntil 의존 없이)
+    fetch(`/api/sites/${data.siteId}/provision`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+    }).catch(() => {}); // fire-and-forget, 폴링으로 진행 상황 추적
 
     startPolling(data.siteId);
 
