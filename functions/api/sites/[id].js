@@ -46,7 +46,7 @@ export async function onRequest({ request, env, params }) {
 
   const siteId = params.id;
   const site = await env.DB.prepare(
-    `SELECT id, user_id, name, primary_domain, www_domain, domain_status,
+    `SELECT id, user_id, name, primary_domain, domain_status,
             site_prefix, worker_name, worker_route, worker_route_www,
             worker_route_id, worker_route_www_id, cf_zone_id,
             wp_username, wp_password, wp_admin_email, wp_admin_url,
@@ -91,7 +91,7 @@ export async function onRequest({ request, env, params }) {
     // 2. KV 캐시 삭제
     try {
       await env.CACHE.delete(`site_domain:${site.primary_domain}`);
-      await env.CACHE.delete(`site_domain:${site.www_domain}`);
+      await env.CACHE.delete(`site_domain:${`www.${site.primary_domain}`}`);
       await env.CACHE.delete(`site_prefix:${site.site_prefix}`);
     } catch (_) {}
 
@@ -129,7 +129,7 @@ export async function onRequest({ request, env, params }) {
       // KV 캐시 무효화
       try {
         await env.CACHE.delete(`site_domain:${site.primary_domain}`);
-        await env.CACHE.delete(`site_domain:${site.www_domain}`);
+        await env.CACHE.delete(`site_domain:${`www.${site.primary_domain}`}`);
       } catch (_) {}
 
       return ok({ message: suspended ? '사이트가 일시정지되었습니다.' : '일시정지가 해제되었습니다.' });
@@ -185,7 +185,7 @@ export async function onRequest({ request, env, params }) {
         try {
           const siteData = JSON.stringify({ id: siteId, name: site.name, site_prefix: site.site_prefix, status: 'active', suspended: 0 });
           await env.CACHE.put(`site_domain:${domain}`, siteData, { expirationTtl: 86400 });
-          await env.CACHE.put(`site_domain:${site.www_domain}`, siteData, { expirationTtl: 86400 });
+          await env.CACHE.put(`site_domain:${`www.${site.primary_domain}`}`, siteData, { expirationTtl: 86400 });
         } catch (_) {}
         return ok({ message: '도메인 연결 확인 완료', domain_status: 'active' });
       }
