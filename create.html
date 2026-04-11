@@ -478,18 +478,59 @@ async function startCreation() {
 
   currentSiteId = data.siteId;
   addLog(`✅ 사이트 레코드 생성 완료 (prefix: ${data.sitePrefix})`);
+  addLog('🚀 인프라 구성을 시작합니다...');
 
-  // B: provision 호출 (비동기 — 폴링으로 추적)
-  fetch(`/api/sites/${data.siteId}/provision`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-  }).then(async r => {
-    const pd = await r.json().catch(() => ({}));
-    if (!pd.ok && pd.error) addLog('⚠️ ' + pd.error);
-  }).catch(() => {});
-
-  // C: 폴링 시작
+  // B: provision 호출 — 동기 await (파이프라인이 완료될 때까지 기다림)
+  //    UI 진행 표시를 위해 폴링도 병행 실행
   startPolling(data.siteId);
+
+  let provData;
+  try {
+    const provRes = await fetch(`/api/sites/${data.siteId}/provision`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+    });
+    provData = await provRes.json().catch(() => ({}));
+  } catch (e) {
+    clearInterval(pollInterval); pollInterval = null;
+    showFail('provision 요청 실패: ' + e.message);
+    document.getElementById('createBtn').disabled = false;
+    return;
+  }
+
+  // 폴링 중지 (provision이 완료됐으므로)
+  clearInterval(pollInterval); pollInterval = null;
+
+  if (!provData.ok) {
+    showFail(provData.error || '인프라 구성에 실패했습니다.');
+    document.getElementById('createBtn').disabled = false;
+    return;
+  }
+
+  // provision 응답에 site 정보가 있으면 바로 완료 처리
+  if (provData.site?.status === 'active') {
+    showSuccess(provData.site);
+  } else if (provData.site?.status === 'failed') {
+    showFail(provData.site.error_message || '인프라 구성에 실패했습니다.');
+    document.getElementById('createBtn').disabled = false;
+  } else {
+    // 만약 상태가 불명확하면 한 번 더 조회
+    try {
+      const checkRes = await fetch(`/api/sites/${data.siteId}`, {
+        headers: { 'Authorization': 'Bearer ' + token },
+      });
+      const checkData = await checkRes.json().catch(() => ({}));
+      if (checkData.ok && checkData.site?.status === 'active') {
+        showSuccess(checkData.site);
+      } else {
+        showFail(checkData.site?.error_message || '상태를 확인할 수 없습니다. 대시보드에서 확인해주세요.');
+        document.getElementById('createBtn').disabled = false;
+      }
+    } catch {
+      showFail('최종 상태 확인 실패. 대시보드에서 확인해주세요.');
+      document.getElementById('createBtn').disabled = false;
+    }
+  }
 }
 
 /* ── provision_step → 단계 UI 매핑 ── */
@@ -540,14 +581,13 @@ function updateProvisionSteps(provStep, status) {
 function startPolling(siteId) {
   let prevStep = null;
   let count    = 0;
-  const MAX    = 60; // 60 * 4s = 4분
+  const MAX    = 90; // provision await 중 UI 업데이트용 (90 * 2s = 3분)
 
   pollInterval = setInterval(async () => {
     count++;
     if (count > MAX) {
       clearInterval(pollInterval); pollInterval = null;
-      showFail('인프라 구성 시간이 초과되었습니다. 관리자에게 문의하거나 다시 시도해주세요.');
-      return;
+      return; // provision await가 타임아웃 처리
     }
     try {
       const token = CP.getToken();
@@ -574,17 +614,12 @@ function startPolling(siteId) {
         if (step === 'completed')    addLog('✅ 인프라 구성 완료!');
       }
 
-      if (st === 'active') {
-        clearInterval(pollInterval); pollInterval = null;
-        showSuccess(site);
-      } else if (st === 'failed') {
-        clearInterval(pollInterval); pollInterval = null;
-        showFail(site.error_message || '인프라 구성에 실패했습니다.');
-      }
+      // provision await가 완료되면 폴링이 자동 중지되므로
+      // 여기서는 UI 업데이트만 담당
     } catch (e) {
       console.warn('폴링 오류:', e);
     }
-  }, 4000);
+  }, 2000);
 }
 
 function showSuccess(site) {
