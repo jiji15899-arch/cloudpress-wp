@@ -1,0 +1,23 @@
+# cloudpress-proxy Worker 전용 설정
+# wrangler deploy --config wrangler.worker.toml 로 배포
+
+name = "cloudpress-proxy"
+main = "worker.js"
+compatibility_date = "2024-09-23"
+
+# Worker가 사용하는 바인딩 (Pages Functions와 동일한 DB/CACHE 공유)
+[[d1_databases]]
+binding       = "DB"
+database_name = "cloudpress-db"
+database_id   = ""   # Pages와 동일한 ID
+
+[[kv_namespaces]]
+binding = "CACHE"
+id      = ""   # Pages의 CACHE KV와 동일한 ID
+
+[vars]
+WP_ORIGIN_URL    = ""   # wrangler secret put WP_ORIGIN_URL --config wrangler.worker.toml
+WP_ORIGIN_SECRET = ""
+
+# Worker Routes는 CF 대시보드 또는 provision.js에서 자동 설정됨
+# 각 사이트별 도메인/*  →  cloudpress-proxy 라우트

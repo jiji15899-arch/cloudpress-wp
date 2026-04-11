@@ -1,41 +1,39 @@
+# CloudPress v11.0 — wrangler.toml
+# Pages Functions + 단일 Worker 배포 설정
+
 name = "cloudpress-wp"
-compatibility_date = "2025-01-01"
+compatibility_date = "2024-09-23"
+
+# ── Pages Functions 빌드 설정 ──
 pages_build_output_dir = "."
 
-# D1 데이터베이스 (사용자/사이트 관리)
+# ── D1 Database ──
 [[d1_databases]]
-binding = "DB"
+binding  = "DB"
 database_name = "cloudpress-db"
-database_id = "c7dea0ce-2e22-439f-9a1c-38ed24cbfc40"
+database_id   = ""   # wrangler d1 create cloudpress-db 실행 후 채우기
 
-# KV 네임스페이스 (세션)
+# ── KV Namespace ──
+# 용도: 도메인→사이트 매핑 캐시 + 페이지 캐시 + 세션
 [[kv_namespaces]]
-binding = "SESSIONS"
-id = "9cb18ceb35d24067a124b6c05e29915f"
+binding   = "SESSIONS"
+id        = ""   # wrangler kv namespace create SESSIONS 실행 후 채우기
 
+[[kv_namespaces]]
+binding   = "CACHE"
+id        = ""   # wrangler kv namespace create CACHE 실행 후 채우기
+
+# ── 환경 변수 (민감한 값은 wrangler secret put으로 설정) ──
 [vars]
-# 사이트 도메인
-SITE_DOMAIN = "cloud-press.co.kr"
-ADMIN_EMAIL = "choichoi3227@gmail.com"
-ADMIN_PASSWORD = "Swsh120327!"  # 필수: 배포 전 반드시 변경하세요 (Cloudflare Dashboard > Pages > 환경변수에서 설정 권장)
+# Worker가 읽는 WP origin URL (wrangler secret put WP_ORIGIN_URL 으로 설정 권장)
+WP_ORIGIN_URL    = ""   # 예: https://origin.cloudpress.site
+WP_ORIGIN_SECRET = ""   # mu-plugin 공유 시크릿 (wrangler secret put WP_ORIGIN_SECRET)
 
-# Puppeteer Worker URL (호스팅 자동화)
-PUPPETEER_WORKER_URL = "https://cloudpress-puppet.workers.dev"
-PUPPETEER_WORKER_SECRET = "Swsh120327!"
+# ── 배포된 단일 Worker 설정 (worker.js) ──
+# worker.js는 별도 wrangler.worker.toml로 배포
+# Pages Functions와 별개로 Workers에 배포됨
 
-# ✅ R2 공개 URL (선택사항)
-# R2 버킷에 Public Access 또는 Custom Domain 설정 시 여기에 base URL 입력
-# 예: R2_PUBLIC_URL = "https://zip.cloud-press.co.kr"
-# 미설정 시 Worker 경유 내부 URL 사용
-R2_PUBLIC_URL = ""
-
-# Cloudflare CDN 자동 연동 (선택사항 - 사용자 도메인에 CDN 연동 시)
-CF_API_TOKEN = ""
-CF_ACCOUNT_ID = ""
-
-# 결제 (Toss Payments)
-TOSS_CLIENT_KEY = ""
-TOSS_SECRET_KEY = ""
-
-# 암호화 솔트
-ENCRYPTION_KEY = "cloudpress_enc_salt_change_me_v3"
+# ── 개발 환경 ──
+[dev]
+port = 8788
+local_protocol = "http"
