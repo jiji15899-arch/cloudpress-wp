@@ -78,7 +78,8 @@
         <h3 style="margin:0 0 10px;font-size:1rem">💡 VP 계정이란?</h3>
         <p style="margin:0;font-size:.88rem;color:var(--muted);line-height:1.6">
           VP(Vesta Panel) 계정은 사용자들이 생성하는 WordPress 사이트가 배포될 호스팅 서버 계정입니다.<br>
-          각 VP 계정마다 <strong>GitHub에 올린 복제용 ZIP 또는 7Z 파일의 Raw URL</strong>을 설정하면, 사이트 생성 시 자동으로 해당 파일을 다운로드하여 새 사이트를 생성합니다.
+          VP(Vesta Panel) 계정은 WordPress 사이트가 배포될 호스팅 서버 계정입니다.<br>
+          공식 WordPress 다운로드 링크를 직접 입력하거나, 비워두면 <strong>자동으로 공식 최신 버전(한국어)</strong>을 사용합니다.
         </p>
       </div>
 
@@ -152,21 +153,22 @@
         </div>
       </div>
 
-      <!-- 복제 파일 GitHub Raw URL (.zip / .7z) -->
+      <!-- WordPress 공식 다운로드 링크 (선택) -->
       <div class="field">
-        <label>복제 파일 — GitHub Raw URL 🎯 (.zip / .7z)</label>
+        <label>WordPress 다운로드 링크 <span style="color:var(--muted);font-weight:400">(선택 — 비우면 자동으로 공식 최신 버전 사용)</span></label>
         <div class="github-url-wrap">
-          <input type="url" id="clone_zip_url"
-            placeholder="https://raw.githubusercontent.com/user/repo/main/template.zip"
+          <input type="url" id="wp_download_url"
+            placeholder="https://wordpress.org/latest.zip (비워두면 자동 사용)"
             oninput="resetUrlStatus()"/>
-          <button type="button" class="btn sm url-verify-btn" onclick="verifyZipUrl()">확인</button>
+          <button type="button" class="btn sm url-verify-btn" onclick="verifyWpUrl()">확인</button>
         </div>
         <div id="urlStatus" class="url-status"></div>
         <div class="hint" style="margin-top:6px">
-          GitHub 저장소에 <strong>.zip</strong> 또는 <strong>.7z</strong> 파일 업로드 후 <strong>Raw URL</strong>을 붙여넣으세요.<br>
-          예: <code>https://raw.githubusercontent.com/아이디/저장소/main/template.zip</code><br>
-          &nbsp;&nbsp;&nbsp;&nbsp;<code>https://raw.githubusercontent.com/아이디/저장소/main/template.7z</code><br>
-          비공개 저장소의 경우 GitHub Personal Access Token이 포함된 URL을 사용하세요.
+          공식 WordPress 다운로드 링크만 입력 가능합니다 (<code>wordpress.org</code> 도메인).<br>
+          예: <code>https://wordpress.org/latest.zip</code><br>
+          &nbsp;&nbsp;&nbsp;&nbsp;<code>https://ko.wordpress.org/latest-ko_KR.zip</code><br>
+          &nbsp;&nbsp;&nbsp;&nbsp;<code>https://wordpress.org/wordpress-6.8.zip</code><br>
+          비워두면 <strong>자동으로 공식 한국어 최신 버전</strong>을 사용합니다.
         </div>
       </div>
 
@@ -208,7 +210,7 @@ function renderAccounts() {
 
   container.innerHTML = accounts.map(function(acc) {
     var active = acc.is_active == 1 || acc.is_active === true;
-    var zipSet = !!(acc.clone_zip_url && acc.clone_zip_url.trim());
+    var wpUrlSet = !!(acc.wp_download_url && acc.wp_download_url.trim());
     return '<div class="vp-card">' +
       '<div class="vp-header">' +
         '<div>' +
@@ -221,11 +223,11 @@ function renderAccounts() {
         '<div class="vp-info-item"><div class="vp-info-label">VP 사용자명</div><div class="vp-info-value">' + acc.vp_username + '</div></div>' +
         '<div class="vp-info-item"><div class="vp-info-label">서버 도메인</div><div class="vp-info-value">' + acc.server_domain + '</div></div>' +
         '<div class="vp-info-item"><div class="vp-info-label">사이트 사용</div><div class="vp-info-value">' + acc.current_sites + ' / ' + acc.max_sites + '</div></div>' +
-        '<div class="vp-info-item"><div class="vp-info-label">복제 파일</div><div class="vp-info-value">' + (zipSet ? '✅ 설정됨' : '❌ 미설정') + '</div></div>' +
+        '<div class="vp-info-item"><div class="vp-info-label">WP 다운로드</div><div class="vp-info-value">' + (wpUrlSet ? '✅ 커스텀' : '🔄 자동(공식)') + '</div></div>' +
       '</div>' +
-      (zipSet ? '<div style="background:var(--surface2);border-radius:8px;padding:10px;margin-bottom:12px;font-size:.82rem">' +
-        '<div style="color:var(--muted);margin-bottom:4px">📦 복제 파일 URL:</div>' +
-        '<div style="word-break:break-all;font-family:monospace;font-size:.75rem">' + acc.clone_zip_url + '</div>' +
+      (wpUrlSet ? '<div style="background:var(--surface2);border-radius:8px;padding:10px;margin-bottom:12px;font-size:.82rem">' +
+        '<div style="color:var(--muted);margin-bottom:4px">🔗 WP 다운로드 URL:</div>' +
+        '<div style="word-break:break-all;font-family:monospace;font-size:.75rem">' + acc.wp_download_url + '</div>' +
         '</div>' : '') +
       '<div class="vp-actions">' +
         '<button class="btn sm" onclick="editAccount(\'' + acc.id + '\')">✏️ 수정</button>' +
@@ -255,7 +257,7 @@ function editAccount(id) {
   document.getElementById('php_bin').value = acc.php_bin || '';
   document.getElementById('mysql_host').value = acc.mysql_host || '';
   document.getElementById('max_sites').value = acc.max_sites || '';
-  document.getElementById('clone_zip_url').value = acc.clone_zip_url || '';
+  document.getElementById('wp_download_url').value = acc.wp_download_url || '';
   resetUrlStatus();
   document.getElementById('vpModal').classList.add('show');
 }
@@ -267,7 +269,7 @@ function hideModal() {
 
 function resetForm() {
   ['accountId','label','vp_username','vp_password','panel_url',
-   'server_domain','web_root','php_bin','mysql_host','max_sites','clone_zip_url']
+   'server_domain','web_root','php_bin','mysql_host','max_sites','wp_download_url']
     .forEach(function(id) { document.getElementById(id).value = ''; });
   resetUrlStatus();
 }
@@ -278,46 +280,54 @@ function resetUrlStatus() {
   el.textContent = '';
 }
 
-// GitHub Raw URL 접근 가능 여부 확인
-async function verifyZipUrl() {
-  var url = document.getElementById('clone_zip_url').value.trim();
+// WordPress 공식 다운로드 URL 확인
+async function verifyWpUrl() {
+  var url = document.getElementById('wp_download_url').value.trim();
   var statusEl = document.getElementById('urlStatus');
-  if (!url) { statusEl.className = 'url-status fail'; statusEl.textContent = 'URL을 입력해주세요.'; return; }
-
-  // raw.githubusercontent.com 또는 일반 URL 모두 허용
+  if (!url) {
+    statusEl.className = 'url-status ok';
+    statusEl.textContent = '✅ 비어 있음 — 공식 최신 한국어 버전이 자동으로 사용됩니다.';
+    statusEl.style.display = 'block';
+    return;
+  }
   statusEl.className = 'url-status';
   statusEl.textContent = '확인 중...';
   statusEl.style.display = 'block';
 
-  // 확장자 검증 (.zip / .7z)
-  if (!/\.(zip|7z)(\?.*)?$/i.test(url)) {
+  // 도메인 검증
+  var allowedDomains = ['wordpress.org', 'downloads.wordpress.org', 'ko.wordpress.org'];
+  try {
+    var parsed = new URL(url);
+    if (!parsed.hostname.endsWith('wordpress.org')) {
+      statusEl.className = 'url-status fail';
+      statusEl.textContent = '❌ 공식 WordPress 도메인(wordpress.org)만 허용됩니다.';
+      return;
+    }
+    if (!url.endsWith('.zip')) {
+      statusEl.className = 'url-status fail';
+      statusEl.textContent = '❌ .zip 파일 링크를 입력해주세요. (예: https://wordpress.org/latest.zip)';
+      return;
+    }
+  } catch(e) {
     statusEl.className = 'url-status fail';
-    statusEl.textContent = '❌ 지원하지 않는 파일 형식입니다. (.zip 또는 .7z 파일만 허용됩니다)';
+    statusEl.textContent = '❌ 올바른 URL 형식이 아닙니다.';
     return;
   }
 
   try {
-    // HEAD 요청으로 가볍게 확인 (CORS 이슈로 실패할 수 있어 fetch 실패 시 OK로 처리)
     var res = await fetch(url, { method: 'HEAD', signal: AbortSignal.timeout(8000) });
     if (res.ok) {
-      var ct = res.headers.get('content-type') || '';
       var cl = res.headers.get('content-length');
       var sizeText = cl ? ' (' + (parseInt(cl) / 1024 / 1024).toFixed(1) + ' MB)' : '';
       statusEl.className = 'url-status ok';
       statusEl.textContent = '✅ 접근 가능' + sizeText;
     } else {
       statusEl.className = 'url-status fail';
-      statusEl.textContent = '❌ 접근 실패 (HTTP ' + res.status + ') — URL을 다시 확인해주세요.';
+      statusEl.textContent = '❌ 접근 실패 (HTTP ' + res.status + ')';
     }
   } catch (e) {
-    // CORS 등으로 fetch 자체가 막히면 URL 형식만 검증
-    if (url.startsWith('http://') || url.startsWith('https://')) {
-      statusEl.className = 'url-status ok';
-      statusEl.textContent = '⚠️ CORS로 직접 확인 불가 — URL 형식은 올바릅니다. 저장 후 사이트 생성 시 검증됩니다.';
-    } else {
-      statusEl.className = 'url-status fail';
-      statusEl.textContent = '❌ 올바른 URL 형식이 아닙니다.';
-    }
+    statusEl.className = 'url-status ok';
+    statusEl.textContent = '⚠️ CORS로 직접 확인 불가 — URL 형식은 올바릅니다.';
   }
 }
 
@@ -329,21 +339,22 @@ async function saveAccount() {
   var vp_password   = document.getElementById('vp_password').value.trim();
   var panel_url     = document.getElementById('panel_url').value.trim();
   var server_domain = document.getElementById('server_domain').value.trim();
-  var clone_zip_url = document.getElementById('clone_zip_url').value.trim();
+  var wp_download_url = document.getElementById('wp_download_url').value.trim();
 
   if (!label)         { showToast('계정 레이블을 입력해주세요.', 'error'); return; }
   if (!vp_username)   { showToast('VP 사용자명을 입력해주세요.', 'error'); return; }
   if (!isEdit && !vp_password) { showToast('VP 비밀번호를 입력해주세요.', 'error'); return; }
   if (!panel_url)     { showToast('패널 URL을 입력해주세요.', 'error'); return; }
   if (!server_domain) { showToast('서버 도메인을 입력해주세요.', 'error'); return; }
-  if (!clone_zip_url) { showToast('복제 파일 URL을 입력해주세요.', 'error'); return; }
-  if (!/\.(zip|7z)(\?.*)?$/i.test(clone_zip_url)) { showToast('지원하지 않는 파일 형식입니다. (.zip 또는 .7z)', 'error'); return; }
+  // wp_download_url은 선택 필드 — 비워도 됨
+  if (wp_download_url && !wp_download_url.endsWith('.zip')) { showToast('WordPress .zip 링크를 입력해주세요. (예: https://wordpress.org/latest.zip)', 'error'); return; }
+  if (wp_download_url && !wp_download_url.includes('wordpress.org')) { showToast('공식 WordPress 도메인(wordpress.org) 링크만 사용 가능합니다.', 'error'); return; }
 
   var saveBtn = document.getElementById('saveBtn');
   saveBtn.disabled = true;
   saveBtn.textContent = '저장 중...';
 
-  var data = { label: label, vp_username: vp_username, panel_url: panel_url, server_domain: server_domain, clone_zip_url: clone_zip_url };
+  var data = { label: label, vp_username: vp_username, panel_url: panel_url, server_domain: server_domain, wp_download_url: wp_download_url || null };
   if (vp_password) data.vp_password = vp_password;
   if (isEdit) data.id = accountId;
   var wr = document.getElementById('web_root').value.trim();
