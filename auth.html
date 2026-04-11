@@ -93,7 +93,7 @@ async function doLogin(){
   const r=await CP.login(email,pass);
   setLoading('btnLogin',false);
   if(r.ok){
-    window.location.href = r.user?.role==='admin' ? '/admin-info.html' : '/dashboard.html';
+    window.location.href = _afterLoginUrl(r.user);
   } else if(r.requires_2fa){
     _2faEmail=email; _2faPass=pass;
     show2FA(r.twofa_type);
@@ -116,7 +116,7 @@ async function doTwoFa(){
   const r=await CP.login(_2faEmail,_2faPass,code);
   setLoading('btnTwoFa',false);
   if(r.ok){
-    window.location.href = r.user?.role==='admin' ? '/admin-info.html' : '/dashboard.html';
+    window.location.href = _afterLoginUrl(r.user);
   } else showErr(r.error||'인증 실패');
 }
 
@@ -130,7 +130,7 @@ async function doRegister(){
   const r=await CP.register(name,email,pass);
   setLoading('btnReg',false);
   if(r.ok){
-    window.location.href = r.user?.role==='admin' ? '/admin-info.html' : '/dashboard.html';
+    window.location.href = _afterLoginUrl(r.user);
   } else showErr(r.error||'회원가입 실패');
 }
 
@@ -141,7 +141,8 @@ document.addEventListener('keydown',e=>{
   else doRegister();
 });
 
-(async()=>{if(CP.getToken()){const d=await CP.get('/auth/me');if(d.ok)window.location.href=d.user?.role==='admin'?'/admin-info.html':'/dashboard.html';}})();
+(async()=>{if(CP.getToken()){const d=await CP.get('/auth/me');if(d.ok)window.location.href=_afterLoginUrl(d.user);}})();
+function _afterLoginUrl(user){const p=new URLSearchParams(window.location.search).get('returnTo');if(p&&p.startsWith('/'))return p;return user?.role==='admin'?'/admin-info.html':'/dashboard.html';}
 </script>
   <script src="script.js"></script>
 </body>
