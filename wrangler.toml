@@ -11,17 +11,17 @@ pages_build_output_dir = "."
 [[d1_databases]]
 binding  = "DB"
 database_name = "cloudpress-db"
-database_id   = ""   # wrangler d1 create cloudpress-db 실행 후 채우기
+database_id   = "c7dea0ce-2e22-439f-9a1c-38ed24cbfc40"   # wrangler d1 create cloudpress-db 실행 후 채우기
 
 # ── KV Namespace ──
 # 용도: 도메인→사이트 매핑 캐시 + 페이지 캐시 + 세션
 [[kv_namespaces]]
 binding   = "SESSIONS"
-id        = ""   # wrangler kv namespace create SESSIONS 실행 후 채우기
+id        = "9cb18ceb35d24067a124b6c05e29915f"   # wrangler kv namespace create SESSIONS 실행 후 채우기
 
 [[kv_namespaces]]
 binding   = "CACHE"
-id        = ""   # wrangler kv namespace create CACHE 실행 후 채우기
+id        = "e1acf814c1244a59bbc24865723e479d"   # wrangler kv namespace create CACHE 실행 후 채우기
 
 # ── 환경 변수 (민감한 값은 wrangler secret put으로 설정) ──
 [vars]
