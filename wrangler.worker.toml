@@ -1,23 +1,25 @@
-# cloudpress-proxy Worker 전용 설정
-# wrangler deploy --config wrangler.worker.toml 로 배포
+# CloudPress v12.0 — wrangler.worker.toml
+# Proxy Worker 단독 배포 설정
+# 사용: wrangler deploy --config wrangler.worker.toml
 
 name = "cloudpress-proxy"
 main = "worker.js"
 compatibility_date = "2024-09-23"
 
-# Worker가 사용하는 바인딩 (Pages Functions와 동일한 DB/CACHE 공유)
+# ── 메인 D1 (도메인→사이트 fallback 조회) ──
 [[d1_databases]]
 binding       = "DB"
 database_name = "cloudpress-db"
-database_id   = ""   # Pages와 동일한 ID
+database_id   = "02d86436-b49f-4efa-a93b-baa90f3ee095"
 
+# ── 전역 CACHE KV (도메인 매핑 캐시) ──
 [[kv_namespaces]]
 binding = "CACHE"
-id      = ""   # Pages의 CACHE KV와 동일한 ID
+id      = "e1acf814c1244a59bbc24865723e479d"
 
+# ── 환경 변수 ──
 [vars]
-WP_ORIGIN_URL    = ""   # wrangler secret put WP_ORIGIN_URL --config wrangler.worker.toml
-WP_ORIGIN_SECRET = ""
-
-# Worker Routes는 CF 대시보드 또는 provision.js에서 자동 설정됨
-# 각 사이트별 도메인/*  →  cloudpress-proxy 라우트
+WP_ORIGIN_URL    = "https://wpjiwungum100.dpdns.org/"   # wrangler secret put WP_ORIGIN_URL    --config wrangler.worker.toml
+WP_ORIGIN_SECRET = "Swsh120327!"   # wrangler secret put WP_ORIGIN_SECRET --config wrangler.worker.toml
+CF_ACCOUNT_ID    = ""   # wrangler secret put CF_ACCOUNT_ID    --config wrangler.worker.toml
+CF_API_TOKEN     = ""   # wrangler secret put CF_API_TOKEN     --config wrangler.worker.toml
