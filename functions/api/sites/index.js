@@ -292,7 +292,7 @@ async function runInstallerStep(installerUrl, secret, step, timeoutMs = 120000) 
    — WP 다운로드 → 설정 → DB 설치 → 플러그인(breeze 등) → mu-plugin → 자체 삭제
 ══════════════════════════════════════════════════════════════ */
 function buildInstallerPHP({ dbName, dbUser, dbPass, dbHost, siteUrl, siteName,
-  wpAdminUser, wpAdminPw, wpAdminEmail, plan, secret }) {
+  wpAdminUser, wpAdminPw, wpAdminEmail, plan, secret, wpDownloadUrl }) {
 
   // wp-config.php 내용
   const authKeys = Array.from({ length: 8 }, () =>
@@ -457,11 +457,13 @@ if ($step === 0) {
 // ── Step 1: WordPress 다운로드 + 압축 해제 ──
 if ($step === 1) {
   $zip_path = $base.'/wp_install.zip';
-  $urls = [
+  $custom_url = '${wpDownloadUrl ? wpDownloadUrl.replace(/'/g, "\'") : ""}';
+  $urls = array_values(array_filter([
+    $custom_url,
     'https://ko.wordpress.org/latest-ko_KR.zip',
     'https://downloads.wordpress.org/release/ko_KR/latest.zip',
     'https://wordpress.org/latest.zip',
-  ];
+  ], function($u){ return !empty(trim((string)$u)); }));
   $ok = false; $src_url = '';
   foreach ($urls as $url) {
     $ctx = stream_context_create(['http'=>['timeout'=>180,'follow_location'=>true,'max_redirects'=>5],
@@ -651,6 +653,8 @@ async function runProvisioningPipeline(env, siteId, payload) {
   const mysqlHost     = vpAccount.mysql_host || 'localhost';
   const cpBase        = (vpAccount.panel_url || '').replace(/\/+$/, '');
   const authHdr       = 'Basic ' + btoa(`${vpAccount.vp_username}:${vpAccount.vp_password}`);
+  // VP 계정에 wp_download_url이 있으면 우선 사용, 없으면 공식 링크 자동 사용
+  const wpDownloadUrl = vpAccount.wp_download_url?.trim() || null;
 
   // 서브도메인 계산
   const baseSlug    = payload.siteName.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 10) || 'cp';
@@ -700,6 +704,7 @@ async function runProvisioningPipeline(env, siteId, payload) {
     wpAdminEmail: payload.wpAdminEmail,
     plan:   payload.plan,
     secret,
+    wpDownloadUrl,
   });
 
   const uploadResult = await cpanelSaveFile(cpBase, authHdr, webRoot, 'cloudpress-installer.php', installerScript);
