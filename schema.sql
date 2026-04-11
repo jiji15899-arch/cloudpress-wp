@@ -1,7 +1,12 @@
--- CloudPress v11 — schema.sql
+-- CloudPress v12 — schema.sql
 -- D1 콘솔 또는: wrangler d1 execute <DB명> --file=schema.sql --remote
+--
+-- v12 변경사항:
+--   sites 테이블에 site_d1_id, site_d1_name, site_kv_id, site_kv_title 컬럼 추가
+--   각 사이트는 독립된 D1 DB + KV 네임스페이스를 가짐
+--   vp_accounts 테이블 제거 (VP 방식 미사용)
 
--- ── users ────────────────────────────────────────────────────────
+-- ── users ──────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS users (
   id                  TEXT PRIMARY KEY,
   name                TEXT NOT NULL,
@@ -10,9 +15,6 @@ CREATE TABLE IF NOT EXISTS users (
   role                TEXT NOT NULL DEFAULT 'user',
   plan                TEXT NOT NULL DEFAULT 'free',
   plan_expires_at     INTEGER,
-  cf_global_api_key   TEXT,
-  cf_account_email    TEXT,
-  cf_account_id       TEXT,
   twofa_type          TEXT,
   twofa_secret        TEXT,
   twofa_enabled       INTEGER DEFAULT 0,
@@ -22,7 +24,7 @@ CREATE TABLE IF NOT EXISTS users (
   updated_at          TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- ── sessions ─────────────────────────────────────────────────────
+-- ── sessions ───────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS sessions (
   token       TEXT PRIMARY KEY,
   user_id     TEXT NOT NULL REFERENCES users(id),
@@ -30,14 +32,26 @@ CREATE TABLE IF NOT EXISTS sessions (
   created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- ── sites ────────────────────────────────────────────────────────
+-- ── sites ──────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS sites (
   id                  TEXT PRIMARY KEY,
   user_id             TEXT NOT NULL REFERENCES users(id),
   name                TEXT NOT NULL,
+
+  -- 도메인
   primary_domain      TEXT,
   domain_status       TEXT DEFAULT 'pending',
-  site_prefix         TEXT UNIQUE,
+
+  -- 사이트 격리 ID
+  site_prefix         TEXT UNIQUE,           -- 7자 고유 prefix (예: s_a3k9x2)
+
+  -- 사이트 전용 Cloudflare 리소스 (CF API로 생성)
+  site_d1_id          TEXT,                  -- 사이트 전용 D1 DB UUID
+  site_d1_name        TEXT,                  -- 사이트 전용 D1 DB 이름
+  site_kv_id          TEXT,                  -- 사이트 전용 KV 네임스페이스 ID
+  site_kv_title       TEXT,                  -- 사이트 전용 KV 이름
+
+  -- Cloudflare Worker/DNS
   worker_name         TEXT,
   worker_route        TEXT,
   worker_route_www    TEXT,
@@ -46,10 +60,14 @@ CREATE TABLE IF NOT EXISTS sites (
   cf_zone_id          TEXT,
   dns_record_id       TEXT,
   dns_record_www_id   TEXT,
+
+  -- WordPress 접속 정보 (origin WP admin)
   wp_username         TEXT,
   wp_password         TEXT,
   wp_admin_email      TEXT,
   wp_admin_url        TEXT,
+
+  -- 상태
   status              TEXT NOT NULL DEFAULT 'pending',
   provision_step      TEXT DEFAULT 'init',
   error_message       TEXT,
@@ -58,19 +76,20 @@ CREATE TABLE IF NOT EXISTS sites (
   disk_used           INTEGER DEFAULT 0,
   bandwidth_used      INTEGER DEFAULT 0,
   plan                TEXT NOT NULL DEFAULT 'free',
+
   created_at          TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at          TEXT NOT NULL DEFAULT (datetime('now')),
   deleted_at          TEXT
 );
 
--- ── settings ─────────────────────────────────────────────────────
+-- ── settings ───────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS settings (
   key        TEXT PRIMARY KEY,
   value      TEXT NOT NULL,
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- ── notices ──────────────────────────────────────────────────────
+-- ── notices ────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS notices (
   id          TEXT PRIMARY KEY,
   title       TEXT NOT NULL,
@@ -81,7 +100,7 @@ CREATE TABLE IF NOT EXISTS notices (
   created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- ── payments ─────────────────────────────────────────────────────
+-- ── payments ───────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS payments (
   id           TEXT PRIMARY KEY,
   user_id      TEXT NOT NULL REFERENCES users(id),
@@ -97,7 +116,7 @@ CREATE TABLE IF NOT EXISTS payments (
   created_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- ── push_subscriptions ───────────────────────────────────────────
+-- ── push_subscriptions ─────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS push_subscriptions (
   id         TEXT PRIMARY KEY,
   user_id    TEXT NOT NULL,
@@ -107,7 +126,7 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- ── domain_verifications ─────────────────────────────────────────
+-- ── domain_verifications ───────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS domain_verifications (
   id          TEXT PRIMARY KEY,
   site_id     TEXT NOT NULL REFERENCES sites(id),
@@ -118,29 +137,11 @@ CREATE TABLE IF NOT EXISTS domain_verifications (
   created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- ── vp_accounts ──────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS vp_accounts (
-  id              TEXT PRIMARY KEY,
-  label           TEXT NOT NULL,
-  vp_username     TEXT NOT NULL,
-  vp_password     TEXT NOT NULL,
-  panel_url       TEXT NOT NULL,
-  server_domain   TEXT NOT NULL,
-  web_root        TEXT DEFAULT '/htdocs',
-  php_bin         TEXT,
-  mysql_host      TEXT,
-  wp_download_url TEXT,
-  max_sites       INTEGER DEFAULT 5,
-  current_sites   INTEGER DEFAULT 0,
-  is_active       INTEGER DEFAULT 1,
-  created_at      TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
--- ── traffic_logs ─────────────────────────────────────────────────
+-- ── traffic_logs ───────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS traffic_logs (
   id         TEXT PRIMARY KEY,
   user_id    TEXT REFERENCES users(id),
+  site_id    TEXT REFERENCES sites(id),
   path       TEXT NOT NULL,
   referrer   TEXT,
   country    TEXT,
@@ -149,16 +150,18 @@ CREATE TABLE IF NOT EXISTS traffic_logs (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- ── 인덱스 ───────────────────────────────────────────────────────
+-- ── 인덱스 ─────────────────────────────────────────────────────────
 CREATE INDEX IF NOT EXISTS idx_sites_user_id        ON sites(user_id);
 CREATE INDEX IF NOT EXISTS idx_sites_status         ON sites(status);
 CREATE INDEX IF NOT EXISTS idx_sites_primary_domain ON sites(primary_domain);
 CREATE INDEX IF NOT EXISTS idx_sites_site_prefix    ON sites(site_prefix);
+CREATE INDEX IF NOT EXISTS idx_sites_site_d1_id     ON sites(site_d1_id);
+CREATE INDEX IF NOT EXISTS idx_sites_site_kv_id     ON sites(site_kv_id);
 CREATE INDEX IF NOT EXISTS idx_payments_user_id     ON payments(user_id);
 CREATE INDEX IF NOT EXISTS idx_payments_order_id    ON payments(order_id);
 CREATE INDEX IF NOT EXISTS idx_traffic_created_at   ON traffic_logs(created_at);
 
--- ── settings 기본값 ───────────────────────────────────────────────
+-- ── settings 기본값 ────────────────────────────────────────────────
 INSERT OR IGNORE INTO settings (key, value) VALUES
   ('plan_free_sites',        '1'),
   ('plan_starter_sites',     '3'),
@@ -175,7 +178,14 @@ INSERT OR IGNORE INTO settings (key, value) VALUES
   ('cf_worker_name',         'cloudpress-proxy'),
   ('worker_cname_target',    ''),
   ('maintenance_mode',       '0'),
-  ('site_name',              'CloudPress'),
-  ('site_domain',            'cloudpress.site'),
+  ('site_name',              '클라우드프레스'),
+  ('site_domain',            'cloud-press.co.kr),
   ('toss_client_key',        ''),
   ('toss_secret_key',        '');
+
+-- ── 기존 DB 마이그레이션 (컬럼 추가) ──────────────────────────────
+-- 이미 sites 테이블이 있는 경우 아래 ALTER를 실행하세요:
+-- ALTER TABLE sites ADD COLUMN site_d1_id    TEXT;
+-- ALTER TABLE sites ADD COLUMN site_d1_name  TEXT;
+-- ALTER TABLE sites ADD COLUMN site_kv_id    TEXT;
+-- ALTER TABLE sites ADD COLUMN site_kv_title TEXT;
