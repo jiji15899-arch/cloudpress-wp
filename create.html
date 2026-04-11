@@ -526,8 +526,12 @@ async function startCreation() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
       body: JSON.stringify({
-        siteName:   WD.siteName,
-        adminLogin: WD.adminLogin,
+        siteName:       WD.siteName,
+        adminLogin:     WD.adminLogin,
+        personalDomain: WD.personalDomain,
+        cfEmail:        WD.cfEmail,
+        cfApiKey:       WD.cfApiKey,
+        cfAccountId:    WD.cfAccountId,
       }),
     });
 
