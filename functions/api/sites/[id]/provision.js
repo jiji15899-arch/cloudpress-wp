@@ -93,6 +93,57 @@ function deobfuscate(str, salt) {
 // ── CF API 헬퍼 ──────────────────────────────────────────────────
 const CF = 'https://api.cloudflare.com/client/v4';
 
+// ── WP Origin 사이트 초기화 ──────────────────────────────────────
+// POST /wp-json/cloudpress/v1/init-site
+// WordPress 테이블 생성 + 관리자 계정 + siteurl/home/permalink 등 설정
+async function initWpSite(wpOrigin, wpSecret, params) {
+  // params: { site_prefix, site_name, admin_user, admin_pass, admin_email, site_url }
+  if (!wpOrigin) return { ok:false, error:'WP Origin URL이 설정되지 않았습니다.' };
+
+  var url = wpOrigin.replace(/\/$/, '') + '/wp-json/cloudpress/v1/init-site';
+
+  var headers = {
+    'Content-Type':       'application/json',
+    'X-CloudPress-Secret': wpSecret || '',
+    'X-CloudPress-Site':   params.site_prefix,
+  };
+
+  var body = {
+    site_prefix: params.site_prefix,
+    site_name:   params.site_name   || params.site_prefix,
+    admin_user:  params.admin_user,
+    admin_pass:  params.admin_pass,
+    admin_email: params.admin_email,
+    site_url:    params.site_url,
+  };
+
+  console.log('[initWpSite] POST '+url+' prefix='+params.site_prefix+' user='+params.admin_user+' url='+params.site_url);
+
+  var res;
+  try {
+    res = await fetch(url, {
+      method:  'POST',
+      headers: headers,
+      body:    JSON.stringify(body),
+    });
+  } catch(e) {
+    return { ok:false, error:'WP Origin 연결 실패: ' + e.message };
+  }
+
+  var json;
+  try { json = await res.json(); } catch {
+    return { ok:false, error:'WP Origin 응답 파싱 실패 (HTTP '+res.status+')' };
+  }
+
+  if (!res.ok || json.code) {
+    // WP REST API 오류는 { code, message, data } 형태
+    var msg = json.message || json.error || ('HTTP '+res.status);
+    return { ok:false, error: msg };
+  }
+
+  return { ok:true, message: json.message || '초기화 완료' };
+}
+
 function makeAuth(cfKey, cfEmail) {
   if (cfEmail && cfEmail.indexOf('@') !== -1) return { type:'global', key:cfKey, email:cfEmail };
   return { type:'bearer', value:cfKey };
@@ -550,7 +601,28 @@ export async function onRequestPost({ request, env, params }) {
     console.log('[provision] CACHE KV 매핑 완료');
   } catch(e) { console.error('[provision] CACHE KV 실패(무시):', e.message); }
 
-  // ── Step 4: DNS 설정 ────────────────────────────────────────────
+  // ── Step 4: WP Origin 사이트 초기화 ────────────────────────────
+  // WordPress 테이블 생성 + 관리자 계정 + 기본 설정을 WP Origin에 요청
+  await updateSite(env.DB, siteId, { provision_step:'wp_init' });
+  console.log('[provision] WP Origin init-site 호출...');
+
+  var wpInitResult = await initWpSite(wpOrigin, wpSecret, {
+    site_prefix:  prefix,
+    site_name:    site.name,
+    admin_user:   site.wp_username,
+    admin_pass:   site.wp_password,
+    admin_email:  site.wp_admin_email || user.email,
+    site_url:     'https://' + domain,
+  });
+
+  if (!wpInitResult.ok) {
+    await failSite(env.DB, siteId, 'wp_init',
+      'WP 사이트 초기화 실패: ' + wpInitResult.error);
+    return jsonRes({ ok:false, error: wpInitResult.error }, 500);
+  }
+  console.log('[provision] WP init-site 완료:', wpInitResult.message);
+
+  // ── Step 5: DNS 설정 ────────────────────────────────────────────
   await updateSite(env.DB, siteId, { provision_step:'dns_setup' });
   var cfZoneId=null, dnsRecordId=null, dnsRecordWwwId=null, domainStatus='manual_required';
   var zone = await cfGetZone(auth, domain);
