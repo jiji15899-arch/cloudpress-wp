@@ -155,20 +155,22 @@
 
       <!-- WordPress 공식 다운로드 링크 (선택) -->
       <div class="field">
-        <label>WordPress 다운로드 링크 <span style="color:var(--muted);font-weight:400">(선택 — 비우면 자동으로 공식 최신 버전 사용)</span></label>
-        <div class="github-url-wrap">
-          <input type="url" id="wp_download_url"
-            placeholder="https://wordpress.org/latest.zip (비워두면 자동 사용)"
-            oninput="resetUrlStatus()"/>
-          <button type="button" class="btn sm url-verify-btn" onclick="verifyWpUrl()">확인</button>
+        <label>WordPress 다운로드 링크 <span style="color:var(--muted);font-weight:400">(선택)</span></label>
+        <input type="url" id="wp_download_url" placeholder="비워두면 자동으로 공식 한국어 최신 버전 사용"/>
+        <div class="hint">예: https://ko.wordpress.org/latest-ko_KR.zip</div>
+      </div>
+
+      <!-- PHPSESSID -->
+      <div class="field" style="background:rgba(99,102,241,.06);border:1px solid rgba(99,102,241,.2);border-radius:10px;padding:14px">
+        <label style="color:#6366f1;font-weight:700">🍪 PHPSESSID <span style="font-weight:400;color:var(--muted)">(VP 패널 쿠키 세션)</span></label>
+        <div style="display:flex;gap:8px">
+          <input type="text" id="phpsessid" placeholder="VP 패널에서 복사한 PHPSESSID 값" style="font-family:monospace;font-size:.82rem;flex:1"/>
+          <button type="button" class="btn sm" onclick="testVpSession()">연결 테스트</button>
         </div>
-        <div id="urlStatus" class="url-status"></div>
-        <div class="hint" style="margin-top:6px">
-          공식 WordPress 다운로드 링크만 입력 가능합니다 (<code>wordpress.org</code> 도메인).<br>
-          예: <code>https://wordpress.org/latest.zip</code><br>
-          &nbsp;&nbsp;&nbsp;&nbsp;<code>https://ko.wordpress.org/latest-ko_KR.zip</code><br>
-          &nbsp;&nbsp;&nbsp;&nbsp;<code>https://wordpress.org/wordpress-6.8.zip</code><br>
-          비워두면 <strong>자동으로 공식 한국어 최신 버전</strong>을 사용합니다.
+        <div id="sessionStatus" style="font-size:.78rem;margin-top:6px;display:none"></div>
+        <div class="hint" style="margin-top:8px">
+          <strong>획득:</strong> VP 패널 로그인 → F12 → Application → Cookies → <code>PHPSESSID</code> 값 복사<br>
+          서브도메인·DB 생성, WP 설치를 완전 자동화합니다. 만료 시 자동 재로그인.
         </div>
       </div>
 
@@ -224,6 +226,7 @@ function renderAccounts() {
         '<div class="vp-info-item"><div class="vp-info-label">서버 도메인</div><div class="vp-info-value">' + acc.server_domain + '</div></div>' +
         '<div class="vp-info-item"><div class="vp-info-label">사이트 사용</div><div class="vp-info-value">' + acc.current_sites + ' / ' + acc.max_sites + '</div></div>' +
         '<div class="vp-info-item"><div class="vp-info-label">WP 다운로드</div><div class="vp-info-value">' + (wpUrlSet ? '✅ 커스텀' : '🔄 자동(공식)') + '</div></div>' +
+        '<div class="vp-info-item"><div class="vp-info-label">🍪 VP 세션</div><div class="vp-info-value" style="color:' + (acc.has_phpsessid ? '#16a34a' : '#dc2626') + '">' + (acc.has_phpsessid ? '✅ 세션 있음' : '❌ 없음 (필요)') + '</div></div>' +
       '</div>' +
       (wpUrlSet ? '<div style="background:var(--surface2);border-radius:8px;padding:10px;margin-bottom:12px;font-size:.82rem">' +
         '<div style="color:var(--muted);margin-bottom:4px">🔗 WP 다운로드 URL:</div>' +
@@ -258,7 +261,11 @@ function editAccount(id) {
   document.getElementById('mysql_host').value = acc.mysql_host || '';
   document.getElementById('max_sites').value = acc.max_sites || '';
   document.getElementById('wp_download_url').value = acc.wp_download_url || '';
-  resetUrlStatus();
+  document.getElementById('phpsessid').value = '';
+  var ss2 = document.getElementById('sessionStatus');
+  ss2.style.display = acc.has_phpsessid ? 'block' : 'none';
+  ss2.style.color = '#16a34a';
+  ss2.textContent = acc.has_phpsessid ? ('✅ 세션 저장됨 (갱신: ' + (acc.phpsessid_updated_at ? acc.phpsessid_updated_at.slice(0,10) : '알 수 없음') + ')') : '';
   document.getElementById('vpModal').classList.add('show');
 }
 
@@ -269,92 +276,62 @@ function hideModal() {
 
 function resetForm() {
   ['accountId','label','vp_username','vp_password','panel_url',
-   'server_domain','web_root','php_bin','mysql_host','max_sites','wp_download_url']
+   'server_domain','web_root','php_bin','mysql_host','max_sites','wp_download_url','phpsessid']
     .forEach(function(id) { document.getElementById(id).value = ''; });
-  resetUrlStatus();
+  var ss = document.getElementById('sessionStatus');
+  ss.style.display = 'none'; ss.textContent = '';
 }
 
-function resetUrlStatus() {
-  var el = document.getElementById('urlStatus');
-  el.className = 'url-status';
-  el.textContent = '';
-}
-
-// WordPress 공식 다운로드 URL 확인
-async function verifyWpUrl() {
-  var url = document.getElementById('wp_download_url').value.trim();
-  var statusEl = document.getElementById('urlStatus');
-  if (!url) {
-    statusEl.className = 'url-status ok';
-    statusEl.textContent = '✅ 비어 있음 — 공식 최신 한국어 버전이 자동으로 사용됩니다.';
-    statusEl.style.display = 'block';
-    return;
-  }
-  statusEl.className = 'url-status';
-  statusEl.textContent = '확인 중...';
+// VP 세션 연결 테스트
+async function testVpSession() {
+  var phpsessid  = document.getElementById('phpsessid').value.trim();
+  var panel_url  = document.getElementById('panel_url').value.trim();
+  var statusEl   = document.getElementById('sessionStatus');
+  if (!panel_url) { showToast('패널 URL을 먼저 입력해주세요.', 'error'); return; }
+  if (!phpsessid) { showToast('PHPSESSID를 입력해주세요.', 'error'); return; }
   statusEl.style.display = 'block';
-
-  // 도메인 검증
-  var allowedDomains = ['wordpress.org', 'downloads.wordpress.org', 'ko.wordpress.org'];
+  statusEl.style.color = '#6366f1';
+  statusEl.textContent = '⏳ 연결 테스트 중...';
   try {
-    var parsed = new URL(url);
-    if (!parsed.hostname.endsWith('wordpress.org')) {
-      statusEl.className = 'url-status fail';
-      statusEl.textContent = '❌ 공식 WordPress 도메인(wordpress.org)만 허용됩니다.';
-      return;
-    }
-    if (!url.endsWith('.zip')) {
-      statusEl.className = 'url-status fail';
-      statusEl.textContent = '❌ .zip 파일 링크를 입력해주세요. (예: https://wordpress.org/latest.zip)';
-      return;
-    }
-  } catch(e) {
-    statusEl.className = 'url-status fail';
-    statusEl.textContent = '❌ 올바른 URL 형식이 아닙니다.';
-    return;
-  }
-
-  try {
-    var res = await fetch(url, { method: 'HEAD', signal: AbortSignal.timeout(8000) });
-    if (res.ok) {
-      var cl = res.headers.get('content-length');
-      var sizeText = cl ? ' (' + (parseInt(cl) / 1024 / 1024).toFixed(1) + ' MB)' : '';
-      statusEl.className = 'url-status ok';
-      statusEl.textContent = '✅ 접근 가능' + sizeText;
-    } else {
-      statusEl.className = 'url-status fail';
-      statusEl.textContent = '❌ 접근 실패 (HTTP ' + res.status + ')';
-    }
+    var res = await fetch(panel_url + '/vpanel/api/status', {
+      method: 'GET',
+      headers: { 'Cookie': 'PHPSESSID=' + phpsessid },
+      mode: 'no-cors',
+    });
+    statusEl.style.color = '#16a34a';
+    statusEl.textContent = '✅ 연결 시도 완료 (CORS로 인해 응답 확인 불가 — 저장 후 사이트 생성으로 확인)';
   } catch (e) {
-    statusEl.className = 'url-status ok';
-    statusEl.textContent = '⚠️ CORS로 직접 확인 불가 — URL 형식은 올바릅니다.';
+    statusEl.style.color = '#dc2626';
+    statusEl.textContent = '❌ 연결 실패: ' + e.message;
   }
 }
 
 async function saveAccount() {
-  var accountId = document.getElementById('accountId').value;
-  var isEdit = !!accountId;
+  var accountId     = document.getElementById('accountId').value;
+  var isEdit        = !!accountId;
   var label         = document.getElementById('label').value.trim();
   var vp_username   = document.getElementById('vp_username').value.trim();
   var vp_password   = document.getElementById('vp_password').value.trim();
   var panel_url     = document.getElementById('panel_url').value.trim();
   var server_domain = document.getElementById('server_domain').value.trim();
   var wp_download_url = document.getElementById('wp_download_url').value.trim();
+  var phpsessid     = document.getElementById('phpsessid').value.trim();
 
   if (!label)         { showToast('계정 레이블을 입력해주세요.', 'error'); return; }
   if (!vp_username)   { showToast('VP 사용자명을 입력해주세요.', 'error'); return; }
   if (!isEdit && !vp_password) { showToast('VP 비밀번호를 입력해주세요.', 'error'); return; }
   if (!panel_url)     { showToast('패널 URL을 입력해주세요.', 'error'); return; }
   if (!server_domain) { showToast('서버 도메인을 입력해주세요.', 'error'); return; }
-  // wp_download_url은 선택 필드 — 비워도 됨
-  if (wp_download_url && !wp_download_url.endsWith('.zip')) { showToast('WordPress .zip 링크를 입력해주세요. (예: https://wordpress.org/latest.zip)', 'error'); return; }
-  if (wp_download_url && !wp_download_url.includes('wordpress.org')) { showToast('공식 WordPress 도메인(wordpress.org) 링크만 사용 가능합니다.', 'error'); return; }
 
   var saveBtn = document.getElementById('saveBtn');
   saveBtn.disabled = true;
   saveBtn.textContent = '저장 중...';
 
-  var data = { label: label, vp_username: vp_username, panel_url: panel_url, server_domain: server_domain, wp_download_url: wp_download_url || null };
+  var data = {
+    label, vp_username, panel_url, server_domain,
+    wp_download_url: wp_download_url || null,
+    phpsessid: phpsessid || null,
+  };
   if (vp_password) data.vp_password = vp_password;
   if (isEdit) data.id = accountId;
   var wr = document.getElementById('web_root').value.trim();
