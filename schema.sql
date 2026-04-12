@@ -191,7 +191,7 @@ INSERT OR IGNORE INTO settings (key, value) VALUES
   ('sessions_kv_id',         ''),   -- wrangler.toml [[kv_namespaces]] SESSIONS id
   ('maintenance_mode',       '0'),
   ('site_name',              '클라우드프레스'),
-  ('site_domain',            'cloud-press.co.kr),
+  ('site_domain',            'cloud-press.co.kr'),
   ('toss_client_key',        ''),
   ('toss_secret_key',        '');
 
