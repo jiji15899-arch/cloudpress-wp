@@ -119,11 +119,52 @@
       <div class="field-row">
         <div class="field">
           <label>패널 URL *</label>
-          <input type="url" id="panel_url" placeholder="https://panel.example.com:8083"/>
+          <input type="url" id="panel_url" placeholder="https://panel.example.com:8083" oninput="onPanelUrlChange()"/>
         </div>
         <div class="field">
           <label>서버 도메인 *</label>
           <input type="text" id="server_domain" placeholder="example.com"/>
+        </div>
+      </div>
+
+      <!-- 패널 타입 선택 -->
+      <div class="field">
+        <label>패널 종류 <span style="color:var(--muted);font-weight:400">(자동 감지 또는 직접 선택)</span></label>
+        <select id="panel_type" onchange="onPanelTypeChange()" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-size:.9rem">
+          <option value="">🔍 자동 감지</option>
+          <option value="hestia">🟢 HestiaCP (:8083)</option>
+          <option value="vesta">🟡 VestaCP (:8083)</option>
+          <option value="vistapanel">🔵 VistaPanel (byethost / InfinityFree)</option>
+          <option value="spanel">🟣 SPanel (ScalaHosting)</option>
+          <option value="cyberpanel">🟠 CyberPanel (:8090)</option>
+          <option value="aapanel">🔴 aaPanel / 宝塔 (:7800)</option>
+          <option value="directadmin">⚫ DirectAdmin (:2222)</option>
+          <option value="plesk">🟤 Plesk (:8443)</option>
+        </select>
+        <div class="hint">자동 감지가 실패하면 직접 선택하세요.</div>
+      </div>
+
+      <!-- VistaPanel 전용 안내 박스 -->
+      <div id="vistapanel-notice" style="display:none;background:rgba(59,130,246,.07);border:1px solid rgba(59,130,246,.25);border-radius:10px;padding:14px;margin-bottom:6px">
+        <div style="font-weight:700;color:#2563eb;margin-bottom:8px">🔵 VistaPanel (byethost / InfinityFree) 안내</div>
+        <div style="font-size:.83rem;line-height:1.7;color:var(--text)">
+          <strong>⚠️ 공식 API 없음</strong> — 웹 폼 스크래핑 방식으로 동작합니다.<br>
+          <strong>패널 URL:</strong> <code>https://panel.byethost.com</code> 또는 <code>https://cpanel.infinityfree.net</code><br>
+          <strong>서버 도메인:</strong> <code>byethost7.com</code> 등 배정된 서브도메인 베이스<br>
+          <strong>웹 루트:</strong> <code>/htdocs</code> (기본값 유지)<br>
+          <strong>⚠️ WP 설치:</strong> shell 접근 불가로 자동 설치가 제한됩니다.<br>
+          &nbsp;&nbsp;→ 서브도메인·DB는 자동 생성, WP 파일은 FTP로 직접 업로드 후 <code>/wp-admin/install.php</code> 실행<br>
+          <strong>PHP / MySQL:</strong> 패널이 관리하므로 php_bin · mysql_host 입력 불필요
+        </div>
+      </div>
+
+      <!-- SPanel 안내 -->
+      <div id="spanel-notice" style="display:none;background:rgba(139,92,246,.07);border:1px solid rgba(139,92,246,.25);border-radius:10px;padding:14px;margin-bottom:6px">
+        <div style="font-weight:700;color:#7c3aed;margin-bottom:8px">🟣 SPanel (ScalaHosting) 안내</div>
+        <div style="font-size:.83rem;line-height:1.7;color:var(--text)">
+          <strong>패널 URL:</strong> <code>https://your-server.scalahosting.com:2083</code><br>
+          <strong>REST API</strong> 지원 — 서브도메인, DB, WP 설치 완전 자동화 가능<br>
+          <strong>WP 설치 API:</strong> <code>/api/v1/wordpress/install</code> 사용
         </div>
       </div>
 
@@ -213,6 +254,13 @@ function renderAccounts() {
   container.innerHTML = accounts.map(function(acc) {
     var active = acc.is_active == 1 || acc.is_active === true;
     var wpUrlSet = !!(acc.wp_download_url && acc.wp_download_url.trim());
+    var panelLabel = {
+      hestia: '🟢 HestiaCP', vesta: '🟡 VestaCP',
+      vistapanel: '🔵 VistaPanel', spanel: '🟣 SPanel',
+      cyberpanel: '🟠 CyberPanel', aapanel: '🔴 aaPanel',
+      directadmin: '⚫ DirectAdmin', plesk: '🟤 Plesk',
+    }[acc.panel_type] || '🔍 자동 감지';
+    var isVista = acc.panel_type === 'vistapanel';
     return '<div class="vp-card">' +
       '<div class="vp-header">' +
         '<div>' +
@@ -222,12 +270,16 @@ function renderAccounts() {
         '<span class="vp-status ' + (active ? 'active' : 'inactive') + '">' + (active ? '✅ 활성' : '❌ 비활성') + '</span>' +
       '</div>' +
       '<div class="vp-info">' +
+        '<div class="vp-info-item"><div class="vp-info-label">패널 종류</div><div class="vp-info-value">' + panelLabel + '</div></div>' +
         '<div class="vp-info-item"><div class="vp-info-label">VP 사용자명</div><div class="vp-info-value">' + acc.vp_username + '</div></div>' +
         '<div class="vp-info-item"><div class="vp-info-label">서버 도메인</div><div class="vp-info-value">' + acc.server_domain + '</div></div>' +
         '<div class="vp-info-item"><div class="vp-info-label">사이트 사용</div><div class="vp-info-value">' + acc.current_sites + ' / ' + acc.max_sites + '</div></div>' +
         '<div class="vp-info-item"><div class="vp-info-label">WP 다운로드</div><div class="vp-info-value">' + (wpUrlSet ? '✅ 커스텀' : '🔄 자동(공식)') + '</div></div>' +
         '<div class="vp-info-item"><div class="vp-info-label">🍪 VP 세션</div><div class="vp-info-value" style="color:' + (acc.has_phpsessid ? '#16a34a' : '#dc2626') + '">' + (acc.has_phpsessid ? '✅ 세션 있음' : '❌ 없음 (필요)') + '</div></div>' +
       '</div>' +
+      (isVista ? '<div style="background:rgba(59,130,246,.07);border:1px solid rgba(59,130,246,.2);border-radius:8px;padding:10px;margin-bottom:12px;font-size:.81rem;color:#2563eb">' +
+        '⚠️ VistaPanel: WP 자동 설치 제한 — 서브도메인·DB 자동 생성 후 WP는 FTP 업로드 필요' +
+        '</div>' : '') +
       (wpUrlSet ? '<div style="background:var(--surface2);border-radius:8px;padding:10px;margin-bottom:12px;font-size:.82rem">' +
         '<div style="color:var(--muted);margin-bottom:4px">🔗 WP 다운로드 URL:</div>' +
         '<div style="word-break:break-all;font-family:monospace;font-size:.75rem">' + acc.wp_download_url + '</div>' +
@@ -238,6 +290,34 @@ function renderAccounts() {
         '<button class="btn sm danger" onclick="deleteAccount(\'' + acc.id + '\',\'' + acc.label.replace(/'/g, "\\'") + '\')">🗑️ 삭제</button>' +
       '</div></div>';
   }).join('');
+}
+
+function onPanelTypeChange() {
+  var pt = document.getElementById('panel_type').value;
+  document.getElementById('vistapanel-notice').style.display = (pt === 'vistapanel') ? 'block' : 'none';
+  document.getElementById('spanel-notice').style.display     = (pt === 'spanel')      ? 'block' : 'none';
+}
+
+function onPanelUrlChange() {
+  var url = document.getElementById('panel_url').value.toLowerCase();
+  var sel = document.getElementById('panel_type');
+  if (sel.value) return; // 이미 직접 선택된 경우 건드리지 않음
+  // URL 힌트로 패널 타입 자동 선택
+  if (url.includes('byethost') || url.includes('infinityfree') || url.includes('ifastnet') ||
+      url.includes(':2082') || url.includes('cpanel.net')) {
+    sel.value = 'vistapanel';
+  } else if (url.includes('scalahosting') || url.includes(':2083')) {
+    sel.value = 'spanel';
+  } else if (url.includes(':8090')) {
+    sel.value = 'cyberpanel';
+  } else if (url.includes(':7800') || url.includes(':7788')) {
+    sel.value = 'aapanel';
+  } else if (url.includes(':2222')) {
+    sel.value = 'directadmin';
+  } else if (url.includes(':8443')) {
+    sel.value = 'plesk';
+  }
+  onPanelTypeChange();
 }
 
 function showCreateModal() {
@@ -262,6 +342,8 @@ function editAccount(id) {
   document.getElementById('max_sites').value = acc.max_sites || '';
   document.getElementById('wp_download_url').value = acc.wp_download_url || '';
   document.getElementById('phpsessid').value = '';
+  document.getElementById('panel_type').value = acc.panel_type || '';
+  onPanelTypeChange();
   var ss2 = document.getElementById('sessionStatus');
   ss2.style.display = acc.has_phpsessid ? 'block' : 'none';
   ss2.style.color = '#16a34a';
@@ -278,22 +360,38 @@ function resetForm() {
   ['accountId','label','vp_username','vp_password','panel_url',
    'server_domain','web_root','php_bin','mysql_host','max_sites','wp_download_url','phpsessid']
     .forEach(function(id) { document.getElementById(id).value = ''; });
+  document.getElementById('panel_type').value = '';
+  document.getElementById('vistapanel-notice').style.display = 'none';
+  document.getElementById('spanel-notice').style.display = 'none';
   var ss = document.getElementById('sessionStatus');
   ss.style.display = 'none'; ss.textContent = '';
 }
 
-// VP 세션 연결 테스트
+// VP 세션 연결 테스트 (패널 타입 인식)
 async function testVpSession() {
   var phpsessid  = document.getElementById('phpsessid').value.trim();
   var panel_url  = document.getElementById('panel_url').value.trim();
+  var panel_type = document.getElementById('panel_type').value;
   var statusEl   = document.getElementById('sessionStatus');
   if (!panel_url) { showToast('패널 URL을 먼저 입력해주세요.', 'error'); return; }
   if (!phpsessid) { showToast('PHPSESSID를 입력해주세요.', 'error'); return; }
   statusEl.style.display = 'block';
   statusEl.style.color = '#6366f1';
   statusEl.textContent = '⏳ 연결 테스트 중...';
+
+  // 패널별 ping 경로
+  var pingPath = '/';
+  if (panel_type === 'hestia')      pingPath = '/list/web/';
+  if (panel_type === 'vesta')       pingPath = '/vpanel/api/status';
+  if (panel_type === 'vistapanel')  pingPath = '/index.php';
+  if (panel_type === 'spanel')      pingPath = '/api/v1/domain';
+  if (panel_type === 'cyberpanel')  pingPath = '/api/verifyConn';
+  if (panel_type === 'aapanel')     pingPath = '/site';
+  if (panel_type === 'directadmin') pingPath = '/';
+  if (panel_type === 'plesk')       pingPath = '/';
+
   try {
-    var res = await fetch(panel_url + '/vpanel/api/status', {
+    var res = await fetch(panel_url + pingPath, {
       method: 'GET',
       headers: { 'Cookie': 'PHPSESSID=' + phpsessid },
       mode: 'no-cors',
@@ -316,6 +414,7 @@ async function saveAccount() {
   var server_domain = document.getElementById('server_domain').value.trim();
   var wp_download_url = document.getElementById('wp_download_url').value.trim();
   var phpsessid     = document.getElementById('phpsessid').value.trim();
+  var panel_type    = document.getElementById('panel_type').value;
 
   if (!label)         { showToast('계정 레이블을 입력해주세요.', 'error'); return; }
   if (!vp_username)   { showToast('VP 사용자명을 입력해주세요.', 'error'); return; }
@@ -331,6 +430,7 @@ async function saveAccount() {
     label, vp_username, panel_url, server_domain,
     wp_download_url: wp_download_url || null,
     phpsessid: phpsessid || null,
+    panel_type: panel_type || null,
   };
   if (vp_password) data.vp_password = vp_password;
   if (isEdit) data.id = accountId;
