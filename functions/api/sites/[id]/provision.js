@@ -1,4 +1,4 @@
-// functions/api/sites/[id]/provision.js — CloudPress v12.9
+// functions/api/sites/[id]/provision.js — CloudPress v12.8
 //
 // [수정 사항]
 // 1. Pages 바인딩 자동화: provision 완료 후 Cloudflare Pages API로 DB/SESSIONS/CACHE 바인딩 자동 저장
@@ -6,9 +6,6 @@
 // 3. 워커 이름 고정 방지: cloudpress-proxy-{6자리 랜덤} 으로 생성 (중복 방지)
 // 4. D1 생성 후 site 전용 schema 자동 초기화 (wp_posts, wp_options 등)
 // 5. D1/KV 이름에 타임스탬프+랜덤 접미사 추가로 완전한 중복 방지
-// 6. [NEW] D1/KV 생성 직후 Worker 바인딩에 자동 연결 (updateWorkerBindings)
-//    → 코드 자체에서 CF API로 Workers 바인딩을 직접 등록하여 env 주입 없이도 동작
-// 7. [NEW] env.SESSIONS 누락 시 graceful 처리 (undefined 에러 방지)
 'use strict';
 
 var CORS = {
@@ -36,13 +33,11 @@ function getToken(req) {
 
 async function getUser(env, req) {
   try {
+    if (!env || !env.SESSIONS || !env.DB) return null;
     var t = getToken(req);
     if (!t) return null;
-    // env.SESSIONS 바인딩 없으면 undefined 에러 방지
-    if (!env || !env.SESSIONS) return null;
     var uid = await env.SESSIONS.get('session:' + t);
     if (!uid) return null;
-    if (!env.DB) return null;
     return await env.DB.prepare('SELECT id,name,email,role,plan FROM users WHERE id=?').bind(uid).first();
   } catch (e) { return null; }
 }
@@ -275,7 +270,62 @@ async function initKVData(auth, accountId, kvId, siteData) {
   console.log('[provision] KV 초기 데이터 저장 완료');
 }
 
+// ── Pages 프로젝트명 자동 탐색 ──────────────────────────────────────
+async function findPagesProjectName(auth, accountId) {
+  try {
+    var listRes = await cfReq(auth, '/accounts/' + accountId + '/pages/projects?per_page=50');
+    if (listRes.success && Array.isArray(listRes.result)) {
+      for (var i = 0; i < listRes.result.length; i++) {
+        var p = listRes.result[i];
+        if (p.name && p.name.toLowerCase().includes('cloudpress')) return p.name;
+      }
+      if (listRes.result.length > 0) return listRes.result[0].name;
+    }
+  } catch (e) {
+    console.warn('[provision] Pages 프로젝트 목록 조회 실패:', e.message);
+  }
+  return null;
+}
+
+// ── wrangler.toml 바인딩 ID를 CF API로 자동 감지 후 settings에 저장 ──
+// env.DB / env.SESSIONS / env.CACHE 는 이미 바인딩된 객체이지만
+// 그 내부 ID는 런타임에서 직접 노출되지 않으므로,
+// Pages 프로젝트 API를 통해 현재 연결된 binding ID를 역으로 읽어서 확보한다.
+async function resolveAndSaveBindingIds(auth, accountId, projectName, DB) {
+  var result = { mainDbId: '', cacheKvId: '', sessionsKvId: '' };
+  try {
+    var projRes = await cfReq(auth, '/accounts/' + accountId + '/pages/projects/' + projectName);
+    if (!projRes.success || !projRes.result) {
+      console.warn('[provision] Pages 프로젝트 조회 실패 — binding ID 자동 감지 불가');
+      return result;
+    }
+    var prodCfg = (projRes.result.deployment_configs && projRes.result.deployment_configs.production) || {};
+    var d1Cfg   = prodCfg.d1_databases  || {};
+    var kvCfg   = prodCfg.kv_namespaces || {};
+
+    // Pages API 응답 구조: { DB: { id: '...' }, ... }
+    if (d1Cfg['DB']       && d1Cfg['DB'].id)       result.mainDbId     = d1Cfg['DB'].id;
+    if (kvCfg['SESSIONS'] && kvCfg['SESSIONS'].id) result.sessionsKvId = kvCfg['SESSIONS'].id;
+    if (kvCfg['CACHE']    && kvCfg['CACHE'].id)    result.cacheKvId    = kvCfg['CACHE'].id;
+
+    console.log('[provision] Pages 바인딩 ID 자동 감지:', JSON.stringify(result));
+
+    // settings DB에 저장 (없으면 insert, 있으면 update)
+    var upsertSql = "INSERT INTO settings (key,value,updated_at) VALUES (?,?,datetime('now'))" +
+      " ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at";
+    if (result.mainDbId)     { try { await DB.prepare(upsertSql).bind('main_db_id',     result.mainDbId).run();     } catch(_) {} }
+    if (result.sessionsKvId) { try { await DB.prepare(upsertSql).bind('sessions_kv_id', result.sessionsKvId).run(); } catch(_) {} }
+    if (result.cacheKvId)    { try { await DB.prepare(upsertSql).bind('cache_kv_id',    result.cacheKvId).run();    } catch(_) {} }
+
+  } catch (e) {
+    console.warn('[provision] binding ID 자동 감지 오류:', e.message);
+  }
+  return result;
+}
+
 // ── Pages 바인딩 자동 업데이트 ──────────────────────────────────────
+// opts.mainDbId / opts.sessionsKvId / opts.cacheKvId 가 비어있으면
+// 현재 Pages 프로젝트에 이미 연결된 값을 그대로 유지한다.
 async function updatePagesBindings(auth, accountId, projectName, opts) {
   console.log('[provision] Pages 바인딩 업데이트: project=' + projectName);
 
@@ -284,7 +334,7 @@ async function updatePagesBindings(auth, accountId, projectName, opts) {
     return { ok: false, error: 'Pages 프로젝트 조회 실패: ' + cfErrMsg(projRes) };
   }
 
-  var proj = projRes.result;
+  var proj    = projRes.result;
   var prodCfg = (proj.deployment_configs && proj.deployment_configs.production) || {};
   var existingD1  = prodCfg.d1_databases  || {};
   var existingKV  = prodCfg.kv_namespaces || {};
@@ -296,15 +346,22 @@ async function updatePagesBindings(auth, accountId, projectName, opts) {
   var newKV  = Object.assign({}, existingKV);
   var newVar = Object.assign({}, existingVar);
 
-  if (opts.mainDbId)     newD1['DB']       = { id: opts.mainDbId };
-  if (opts.sessionsKvId) newKV['SESSIONS'] = { id: opts.sessionsKvId };
-  if (opts.cacheKvId)    newKV['CACHE']    = { id: opts.cacheKvId };
+  // 기존 Pages에 이미 연결된 ID가 있으면 유지, opts에 값이 있으면 덮어쓰기
+  var dbId       = opts.mainDbId     || (existingD1['DB']       && existingD1['DB'].id)       || '';
+  var sessionsId = opts.sessionsKvId || (existingKV['SESSIONS'] && existingKV['SESSIONS'].id) || '';
+  var cacheId    = opts.cacheKvId    || (existingKV['CACHE']    && existingKV['CACHE'].id)    || '';
+
+  if (dbId)       newD1['DB']       = { id: dbId };
+  if (sessionsId) newKV['SESSIONS'] = { id: sessionsId };
+  if (cacheId)    newKV['CACHE']    = { id: cacheId };
 
   if (opts.wpOriginUrl)    newVar['WP_ORIGIN_URL']    = { type: 'plain_text', value: opts.wpOriginUrl };
   if (opts.wpOriginSecret) newVar['WP_ORIGIN_SECRET'] = { type: 'plain_text', value: opts.wpOriginSecret };
   if (opts.cfAccountId)    newVar['CF_ACCOUNT_ID']    = { type: 'plain_text', value: opts.cfAccountId };
   if (opts.cfApiKey)       newVar['CF_API_TOKEN']     = { type: 'plain_text', value: opts.cfApiKey };
   if (opts.encryptionKey)  newVar['ENCRYPTION_KEY']   = { type: 'plain_text', value: opts.encryptionKey };
+
+  console.log('[provision] Pages PATCH — DB=' + dbId + ' SESSIONS=' + sessionsId + ' CACHE=' + cacheId);
 
   var envBlock = {
     d1_databases:       newD1,
@@ -326,24 +383,7 @@ async function updatePagesBindings(auth, accountId, projectName, opts) {
   }
 
   console.log('[provision] Pages 바인딩 업데이트 완료');
-  return { ok: true };
-}
-
-// ── Pages 프로젝트명 자동 탐색 ──────────────────────────────────────
-async function findPagesProjectName(auth, accountId) {
-  try {
-    var listRes = await cfReq(auth, '/accounts/' + accountId + '/pages/projects?per_page=50');
-    if (listRes.success && Array.isArray(listRes.result)) {
-      for (var i = 0; i < listRes.result.length; i++) {
-        var p = listRes.result[i];
-        if (p.name && p.name.toLowerCase().includes('cloudpress')) return p.name;
-      }
-      if (listRes.result.length > 0) return listRes.result[0].name;
-    }
-  } catch (e) {
-    console.warn('[provision] Pages 프로젝트 목록 조회 실패:', e.message);
-  }
-  return null;
+  return { ok: true, resolvedIds: { dbId: dbId, sessionsId: sessionsId, cacheId: cacheId } };
 }
 
 async function cfGetZone(auth, domain) {
@@ -627,106 +667,6 @@ async function uploadWorker(auth, accountId, workerName, opts) {
   }
 }
 
-// ── Worker 바인딩 직접 업데이트 (D1 + KV 자동 연결) ────────────────
-// CF Workers API PATCH /settings 엔드포인트로 바인딩을 직접 등록.
-// wrangler.toml 재배포 없이 코드 자체에서 D1/KV를 Worker에 자동 연결.
-async function updateWorkerBindings(auth, accountId, workerName, opts) {
-  console.log('[provision] Worker 바인딩 업데이트 시작: ' + workerName);
-
-  // 1. 현재 Worker settings 조회 (기존 바인딩 유지용)
-  var settingsRes = await cfReq(
-    auth,
-    '/accounts/' + accountId + '/workers/scripts/' + workerName + '/settings',
-    'GET'
-  );
-
-  var existingBindings = [];
-  if (settingsRes.success && settingsRes.result && Array.isArray(settingsRes.result.bindings)) {
-    existingBindings = settingsRes.result.bindings;
-  }
-
-  // 2. 새 바인딩 맵 구성 (이름 기준으로 기존 것 대체)
-  var bindingMap = {};
-  for (var i = 0; i < existingBindings.length; i++) {
-    var b = existingBindings[i];
-    if (b.name) bindingMap[b.name] = b;
-  }
-
-  // DB (메인 D1)
-  if (opts.mainDbId) {
-    bindingMap['DB'] = { type: 'd1', name: 'DB', id: opts.mainDbId };
-  }
-  // CACHE KV
-  if (opts.cacheKvId) {
-    bindingMap['CACHE'] = { type: 'kv_namespace', name: 'CACHE', namespace_id: opts.cacheKvId };
-  }
-  // SESSIONS KV
-  if (opts.sessionsKvId) {
-    bindingMap['SESSIONS'] = { type: 'kv_namespace', name: 'SESSIONS', namespace_id: opts.sessionsKvId };
-  }
-  // 환경 변수
-  if (opts.wpOriginUrl) {
-    bindingMap['WP_ORIGIN_URL'] = { type: 'plain_text', name: 'WP_ORIGIN_URL', text: opts.wpOriginUrl };
-  }
-  if (opts.wpOriginSecret) {
-    bindingMap['WP_ORIGIN_SECRET'] = { type: 'plain_text', name: 'WP_ORIGIN_SECRET', text: opts.wpOriginSecret };
-  }
-  if (opts.cfAccountId) {
-    bindingMap['CF_ACCOUNT_ID'] = { type: 'plain_text', name: 'CF_ACCOUNT_ID', text: opts.cfAccountId };
-  }
-  if (opts.cfApiKey) {
-    bindingMap['CF_API_TOKEN'] = { type: 'plain_text', name: 'CF_API_TOKEN', text: opts.cfApiKey };
-  }
-
-  var newBindings = Object.values(bindingMap);
-
-  // 3. multipart/form-data로 settings PATCH (바인딩 포함)
-  var boundary = '----CPSettingsBound' + Date.now().toString(36);
-  var CRLF = '\r\n';
-  var metadata = JSON.stringify({ bindings: newBindings });
-  var enc = new TextEncoder();
-  var p1h = '--' + boundary + CRLF +
-    'Content-Disposition: form-data; name="settings"' + CRLF +
-    'Content-Type: application/json' + CRLF + CRLF;
-  var end = CRLF + '--' + boundary + '--' + CRLF;
-  var chunks = [enc.encode(p1h), enc.encode(metadata), enc.encode(end)];
-  var total = chunks.reduce(function(s, c) { return s + c.length; }, 0);
-  var bodyBuf = new Uint8Array(total);
-  var off = 0;
-  for (var j = 0; j < chunks.length; j++) { bodyBuf.set(chunks[j], off); off += chunks[j].length; }
-
-  var hdrs;
-  if (auth.type === 'global') {
-    hdrs = {
-      'Content-Type': 'multipart/form-data; boundary=' + boundary,
-      'X-Auth-Email': auth.email,
-      'X-Auth-Key':   auth.key,
-    };
-  } else {
-    hdrs = {
-      'Content-Type':  'multipart/form-data; boundary=' + boundary,
-      'Authorization': 'Bearer ' + (auth.value || auth.key),
-    };
-  }
-
-  try {
-    var patchRes = await fetch(
-      CF_API + '/accounts/' + accountId + '/workers/scripts/' + workerName + '/settings',
-      { method: 'PATCH', headers: hdrs, body: bodyBuf.buffer }
-    );
-    var patchJson = await patchRes.json();
-    if (!patchJson.success) {
-      console.warn('[provision] Worker 바인딩 PATCH 실패:', cfErrMsg(patchJson));
-      return { ok: false, error: 'Worker 바인딩 PATCH 실패: ' + cfErrMsg(patchJson) };
-    }
-    console.log('[provision] Worker 바인딩 자동 연결 완료 (' + newBindings.length + '개)');
-    return { ok: true, count: newBindings.length };
-  } catch (e) {
-    console.warn('[provision] Worker 바인딩 업데이트 오류:', e.message);
-    return { ok: false, error: 'Worker 바인딩 업데이트 오류: ' + e.message };
-  }
-}
-
 export const onRequestOptions = () => new Response(null, { status: 204, headers: CORS });
 
 export async function onRequestPost({ request, env, params }) {
@@ -922,25 +862,6 @@ export async function onRequestPost({ request, env, params }) {
     console.log('[provision] Worker 업로드 완료');
   }
 
-  // ── Step 6-B: Worker 바인딩 자동 연결 (D1 + KV) ─────────────────
-  // 코드 자체에서 CF API로 Worker 바인딩을 직접 등록
-  // → Pages/wrangler.toml 재배포 없이 D1/KV 자동 연결
-  await updateSite(env.DB, siteId, { provision_step: 'worker_binding' });
-  var workerBindingRes = await updateWorkerBindings(auth, cfAccount, workerName, {
-    mainDbId:       mainDbId,
-    cacheKvId:      cacheKvId,
-    sessionsKvId:   sessionsKvId,
-    wpOriginUrl:    wpOrigin,
-    wpOriginSecret: wpSecret,
-    cfAccountId:    cfAccount,
-    cfApiKey:       cfKey,
-  });
-  if (!workerBindingRes.ok) {
-    console.warn('[provision] Worker 바인딩 자동 연결 실패(계속):', workerBindingRes.error);
-  } else {
-    console.log('[provision] Worker 바인딩 자동 연결 완료');
-  }
-
   // ── Step 7: Worker Route 등록 ────────────────────────────────────
   if (zone.ok && cfZoneId) {
     await updateSite(env.DB, siteId, { provision_step: 'worker_route' });
@@ -961,10 +882,27 @@ export async function onRequestPost({ request, env, params }) {
   }
 
   // ── Step 8: Pages 바인딩 자동 업데이트 ──────────────────────────
+  // 전략:
+  //   1) Pages 프로젝트명 탐색
+  //   2) resolveAndSaveBindingIds → Pages API에서 현재 연결된 D1/KV ID를 역으로 읽어
+  //      settings DB에 자동 저장 (main_db_id / sessions_kv_id / cache_kv_id)
+  //   3) settings에서 읽은 값이 없으면 resolveAndSaveBindingIds 결과값 사용
+  //   4) updatePagesBindings → 확보된 ID로 Pages 바인딩 PATCH
   await updateSite(env.DB, siteId, { provision_step: 'pages_binding' });
   var pagesProjectName = await findPagesProjectName(auth, cfAccount);
   var bindingResult = { ok: false, error: 'Pages 프로젝트명 탐색 실패' };
   if (pagesProjectName) {
+    // Step 8-a: Pages에서 현재 binding ID 역추적 → settings DB에 저장
+    var resolvedIds = await resolveAndSaveBindingIds(auth, cfAccount, pagesProjectName, env.DB);
+
+    // Step 8-b: settings에서 다시 읽기 (resolveAndSaveBindingIds가 저장했을 수 있음)
+    if (!mainDbId)     mainDbId     = resolvedIds.mainDbId     || await getSetting(env, 'main_db_id', '');
+    if (!cacheKvId)    cacheKvId    = resolvedIds.cacheKvId    || await getSetting(env, 'cache_kv_id', '');
+    if (!sessionsKvId) sessionsKvId = resolvedIds.sessionsKvId || await getSetting(env, 'sessions_kv_id', '');
+
+    console.log('[provision] 최종 binding IDs — DB:' + mainDbId + ' CACHE:' + cacheKvId + ' SESSIONS:' + sessionsKvId);
+
+    // Step 8-c: Pages 바인딩 PATCH
     bindingResult = await updatePagesBindings(auth, cfAccount, pagesProjectName, {
       mainDbId:       mainDbId,
       cacheKvId:      cacheKvId,
@@ -1015,9 +953,6 @@ export async function onRequestPost({ request, env, params }) {
     wp_note:             wpRes.skipped ? wpRes.message : null,
     dns_note:            dnsNote,
     cname_instructions:  cnameInstructions,
-    worker_binding:      workerBindingRes.ok
-      ? ('자동 완료 (' + (workerBindingRes.count || 0) + '개 바인딩)')
-      : ('실패: ' + (workerBindingRes.error || '오류')),
     pages_binding:       bindingResult.ok
       ? '자동 완료 (Pages 재배포 후 적용)'
       : ('수동 필요: ' + (bindingResult.error || '오류')),
