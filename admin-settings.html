@@ -243,6 +243,32 @@
             <input type="text" id="cf_account_id" placeholder="Account ID"/>
           </div>
         </div>
+        <div class="field-row">
+          <div class="field">
+            <label>Worker 이름 <span style="font-size:.76rem;color:var(--muted)">(wrangler.toml name)</span></label>
+            <input type="text" id="cf_worker_name" placeholder="cloudpress-proxy"/>
+          </div>
+          <div class="field">
+            <label>CNAME Target <span style="font-size:.76rem;color:var(--muted)">(workers.dev URL)</span></label>
+            <input type="text" id="worker_cname_target" placeholder="cloudpress-proxy.xxx.workers.dev"/>
+          </div>
+        </div>
+        <p style="font-size:.8rem;color:var(--accent);margin:8px 0 6px;font-weight:600">⚙️ Worker Script 자동 업로드용 바인딩 ID</p>
+        <p style="font-size:.78rem;color:var(--muted);margin-bottom:10px">wrangler.toml 의 database_id / KV namespace id 를 그대로 입력하세요. 사이트 생성 시 Worker 코드와 D1·KV 바인딩이 자동으로 연결됩니다.</p>
+        <div class="field-row">
+          <div class="field">
+            <label>메인 D1 Database ID <span style="font-size:.76rem;color:var(--muted)">(cloudpress-db)</span></label>
+            <input type="text" id="main_db_id" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"/>
+          </div>
+          <div class="field">
+            <label>CACHE KV Namespace ID</label>
+            <input type="text" id="cache_kv_id" placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"/>
+          </div>
+        </div>
+        <div class="field" style="max-width:360px">
+          <label>SESSIONS KV Namespace ID</label>
+          <input type="text" id="sessions_kv_id" placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"/>
+        </div>
         <div class="field">
           <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
             <input type="checkbox" id="cloudflare_cdn_enabled"/> Cloudflare CDN 자동 연동 활성화
@@ -365,6 +391,11 @@ async function loadSettings() {
   }
 
   setVal('cf_account_id', 'cf_account_id');
+  setVal('cf_worker_name', 'cf_worker_name');
+  setVal('worker_cname_target', 'worker_cname_target');
+  setVal('main_db_id', 'main_db_id');
+  setVal('cache_kv_id', 'cache_kv_id');
+  setVal('sessions_kv_id', 'sessions_kv_id');
   setChk('cloudflare_cdn_enabled', 'cloudflare_cdn_enabled', true);
   // 호스팅 서버 설정 로드
   setVal('hosting_cpanel_url', 'hosting_cpanel_url', '');
@@ -496,8 +527,14 @@ async function saveHostingServerSettings() {
 }
 
 async function saveCfSettings() {
+  const g = id => (document.getElementById(id) ? document.getElementById(id).value.trim() : '');
   await saveSettings({
-    cf_account_id: document.getElementById('cf_account_id').value,
+    cf_account_id:         g('cf_account_id'),
+    cf_worker_name:        g('cf_worker_name'),
+    worker_cname_target:   g('worker_cname_target'),
+    main_db_id:            g('main_db_id'),
+    cache_kv_id:           g('cache_kv_id'),
+    sessions_kv_id:        g('sessions_kv_id'),
     cloudflare_cdn_enabled: document.getElementById('cloudflare_cdn_enabled').checked ? '1' : '0',
   });
   const token = document.getElementById('cf_api_token').value;
