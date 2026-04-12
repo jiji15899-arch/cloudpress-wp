@@ -509,7 +509,7 @@ async function startCreation() {
 
   // provision 응답에 site 정보가 있으면 바로 완료 처리
   if (provData.site?.status === 'active') {
-    showSuccess(provData.site);
+    showSuccess(provData.site, provData);
   } else if (provData.site?.status === 'failed') {
     showFail(provData.site.error_message || '인프라 구성에 실패했습니다.');
     document.getElementById('createBtn').disabled = false;
@@ -543,8 +543,10 @@ const STEP_MAP = {
   'wp_init':       { step: 3, msg: '③ WordPress 사이트 초기화 중 (테이블 생성 + 관리자 계정)...' },
   'dns_setup':     { step: 4, msg: '④ DNS 레코드 등록 중...' },
   'worker_upload': { step: 4, msg: '④ Worker 스크립트 업로드 + 바인딩 연결 중...' },
-  'worker_route':  { step: 4, msg: '④ Worker Route 등록 중...' },
-  'completed':     { step: 4, msg: '✅ 인프라 구성 완료!' },
+  'worker_route':   { step: 4, msg: '④ Worker Route 등록 중...' },
+  'pages_binding':  { step: 4, msg: '④ Pages 바인딩 자동 연결 중...' },
+  'd1_schema':      { step: 1, msg: '① D1 스키마 초기화 중...' },
+  'completed':      { step: 4, msg: '✅ 인프라 구성 완료!' },
   // 오류
   'config_missing': { step: 0, msg: '❌ CF API 키 미등록' },
   'wp_init':        { step: 3, msg: '❌ WP 초기화 실패' },
@@ -616,7 +618,8 @@ function startPolling(siteId) {
         if (step === 'wp_init')       addLog('🔧 [4/5] WordPress 사이트 초기화 중 (테이블 생성 + 관리자 계정 등록)...');
         if (step === 'dns_setup')     addLog('🌐 [5/5] DNS CNAME 레코드 등록 중...');
         if (step === 'worker_upload') addLog('🚀 [5/5] Worker 스크립트 업로드 + D1/KV 바인딩 연결 중...');
-        if (step === 'worker_route')  addLog('☁️ [5/5] Cloudflare Worker Route 등록 중...');
+        if (step === 'worker_route')   addLog('☁️ [5/5] Cloudflare Worker Route 등록 중...');
+        if (step === 'pages_binding')  addLog('🔗 [5/5] Pages 바인딩 자동 연결 중...');
         if (step === 'completed')    addLog('✅ 인프라 구성 완료!');
       }
 
@@ -628,7 +631,7 @@ function startPolling(siteId) {
   }, 2000);
 }
 
-function showSuccess(site) {
+function showSuccess(site, provData) {
   goStep(4);
 
   // 모든 URL을 개인 도메인 기준으로
@@ -650,12 +653,25 @@ function showSuccess(site) {
   document.getElementById('successDesc').textContent =
     `"${site.name}" 사이트가 성공적으로 구성되었습니다.`;
 
-  // DNS 수동 설정 안내
-  if (site.domain_status === 'manual_required' && site.error_message) {
-    document.getElementById('dnsNotice').innerHTML =
-      `⚠️ <strong>DNS 수동 설정 필요:</strong><br>${site.error_message}`;
-    document.getElementById('dnsNotice').style.background = 'rgba(234,179,8,.06)';
-    document.getElementById('dnsNotice').style.borderColor = 'rgba(234,179,8,.25)';
+  // DNS 수동 설정 안내 (CNAME 값 명시)
+  const dnsEl = document.getElementById('dnsNotice');
+  if (site.domain_status === 'manual_required') {
+    const ci = (typeof provData !== 'undefined' && provData.cname_instructions) || null;
+    const cnameVal = ci ? ci.root.value : (site.worker_name ? site.worker_name + '.workers.dev' : '설정 중...');
+    dnsEl.innerHTML =
+      `⚠️ <strong>외부 DNS 수동 설정 필요</strong><br>` +
+      `DNS 제공업체(가비아, 후이즈 등)에서 아래 CNAME 레코드를 추가해주세요.<br><br>` +
+      `<table style="width:100%;border-collapse:collapse;font-size:.8rem;margin-top:4px">` +
+      `<tr style="background:rgba(0,0,0,.04)"><th style="padding:5px 8px;text-align:left">구분</th><th style="padding:5px 8px;text-align:left">타입</th><th style="padding:5px 8px;text-align:left">호스트(이름)</th><th style="padding:5px 8px;text-align:left">값(대상)</th><th style="padding:5px 8px;text-align:left">TTL</th></tr>` +
+      `<tr><td style="padding:5px 8px">루트</td><td style="padding:5px 8px">CNAME</td><td style="padding:5px 8px">@</td><td style="padding:5px 8px;font-weight:600;word-break:break-all">${cnameVal}</td><td style="padding:5px 8px">3600</td></tr>` +
+      `<tr style="background:rgba(0,0,0,.02)"><td style="padding:5px 8px">www</td><td style="padding:5px 8px">CNAME</td><td style="padding:5px 8px">www</td><td style="padding:5px 8px;font-weight:600;word-break:break-all">${cnameVal}</td><td style="padding:5px 8px">3600</td></tr>` +
+      `</table>`;
+    dnsEl.style.background   = 'rgba(234,179,8,.06)';
+    dnsEl.style.borderColor  = 'rgba(234,179,8,.3)';
+  } else if (site.domain_status === 'dns_propagating') {
+    dnsEl.innerHTML = '🌐 <strong>DNS 전파 중:</strong> Cloudflare DNS가 자동으로 설정되었습니다. 최대 48시간(보통 1~2시간) 내 접속 가능합니다.';
+    dnsEl.style.background   = 'rgba(34,197,94,.04)';
+    dnsEl.style.borderColor  = 'rgba(34,197,94,.2)';
   }
 }
 
