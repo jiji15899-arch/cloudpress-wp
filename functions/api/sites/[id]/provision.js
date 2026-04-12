@@ -1,4 +1,4 @@
-// functions/api/sites/[id]/provision.js — CloudPress v12.8
+// functions/api/sites/[id]/provision.js — CloudPress v12.9
 //
 // [수정 사항]
 // 1. Pages 바인딩 자동화: provision 완료 후 Cloudflare Pages API로 DB/SESSIONS/CACHE 바인딩 자동 저장
@@ -6,6 +6,9 @@
 // 3. 워커 이름 고정 방지: cloudpress-proxy-{6자리 랜덤} 으로 생성 (중복 방지)
 // 4. D1 생성 후 site 전용 schema 자동 초기화 (wp_posts, wp_options 등)
 // 5. D1/KV 이름에 타임스탬프+랜덤 접미사 추가로 완전한 중복 방지
+// 6. [NEW] D1/KV 생성 직후 Worker 바인딩에 자동 연결 (updateWorkerBindings)
+//    → 코드 자체에서 CF API로 Workers 바인딩을 직접 등록하여 env 주입 없이도 동작
+// 7. [NEW] env.SESSIONS 누락 시 graceful 처리 (undefined 에러 방지)
 'use strict';
 
 var CORS = {
@@ -35,8 +38,11 @@ async function getUser(env, req) {
   try {
     var t = getToken(req);
     if (!t) return null;
+    // env.SESSIONS 바인딩 없으면 undefined 에러 방지
+    if (!env || !env.SESSIONS) return null;
     var uid = await env.SESSIONS.get('session:' + t);
     if (!uid) return null;
+    if (!env.DB) return null;
     return await env.DB.prepare('SELECT id,name,email,role,plan FROM users WHERE id=?').bind(uid).first();
   } catch (e) { return null; }
 }
@@ -621,6 +627,106 @@ async function uploadWorker(auth, accountId, workerName, opts) {
   }
 }
 
+// ── Worker 바인딩 직접 업데이트 (D1 + KV 자동 연결) ────────────────
+// CF Workers API PATCH /settings 엔드포인트로 바인딩을 직접 등록.
+// wrangler.toml 재배포 없이 코드 자체에서 D1/KV를 Worker에 자동 연결.
+async function updateWorkerBindings(auth, accountId, workerName, opts) {
+  console.log('[provision] Worker 바인딩 업데이트 시작: ' + workerName);
+
+  // 1. 현재 Worker settings 조회 (기존 바인딩 유지용)
+  var settingsRes = await cfReq(
+    auth,
+    '/accounts/' + accountId + '/workers/scripts/' + workerName + '/settings',
+    'GET'
+  );
+
+  var existingBindings = [];
+  if (settingsRes.success && settingsRes.result && Array.isArray(settingsRes.result.bindings)) {
+    existingBindings = settingsRes.result.bindings;
+  }
+
+  // 2. 새 바인딩 맵 구성 (이름 기준으로 기존 것 대체)
+  var bindingMap = {};
+  for (var i = 0; i < existingBindings.length; i++) {
+    var b = existingBindings[i];
+    if (b.name) bindingMap[b.name] = b;
+  }
+
+  // DB (메인 D1)
+  if (opts.mainDbId) {
+    bindingMap['DB'] = { type: 'd1', name: 'DB', id: opts.mainDbId };
+  }
+  // CACHE KV
+  if (opts.cacheKvId) {
+    bindingMap['CACHE'] = { type: 'kv_namespace', name: 'CACHE', namespace_id: opts.cacheKvId };
+  }
+  // SESSIONS KV
+  if (opts.sessionsKvId) {
+    bindingMap['SESSIONS'] = { type: 'kv_namespace', name: 'SESSIONS', namespace_id: opts.sessionsKvId };
+  }
+  // 환경 변수
+  if (opts.wpOriginUrl) {
+    bindingMap['WP_ORIGIN_URL'] = { type: 'plain_text', name: 'WP_ORIGIN_URL', text: opts.wpOriginUrl };
+  }
+  if (opts.wpOriginSecret) {
+    bindingMap['WP_ORIGIN_SECRET'] = { type: 'plain_text', name: 'WP_ORIGIN_SECRET', text: opts.wpOriginSecret };
+  }
+  if (opts.cfAccountId) {
+    bindingMap['CF_ACCOUNT_ID'] = { type: 'plain_text', name: 'CF_ACCOUNT_ID', text: opts.cfAccountId };
+  }
+  if (opts.cfApiKey) {
+    bindingMap['CF_API_TOKEN'] = { type: 'plain_text', name: 'CF_API_TOKEN', text: opts.cfApiKey };
+  }
+
+  var newBindings = Object.values(bindingMap);
+
+  // 3. multipart/form-data로 settings PATCH (바인딩 포함)
+  var boundary = '----CPSettingsBound' + Date.now().toString(36);
+  var CRLF = '\r\n';
+  var metadata = JSON.stringify({ bindings: newBindings });
+  var enc = new TextEncoder();
+  var p1h = '--' + boundary + CRLF +
+    'Content-Disposition: form-data; name="settings"' + CRLF +
+    'Content-Type: application/json' + CRLF + CRLF;
+  var end = CRLF + '--' + boundary + '--' + CRLF;
+  var chunks = [enc.encode(p1h), enc.encode(metadata), enc.encode(end)];
+  var total = chunks.reduce(function(s, c) { return s + c.length; }, 0);
+  var bodyBuf = new Uint8Array(total);
+  var off = 0;
+  for (var j = 0; j < chunks.length; j++) { bodyBuf.set(chunks[j], off); off += chunks[j].length; }
+
+  var hdrs;
+  if (auth.type === 'global') {
+    hdrs = {
+      'Content-Type': 'multipart/form-data; boundary=' + boundary,
+      'X-Auth-Email': auth.email,
+      'X-Auth-Key':   auth.key,
+    };
+  } else {
+    hdrs = {
+      'Content-Type':  'multipart/form-data; boundary=' + boundary,
+      'Authorization': 'Bearer ' + (auth.value || auth.key),
+    };
+  }
+
+  try {
+    var patchRes = await fetch(
+      CF_API + '/accounts/' + accountId + '/workers/scripts/' + workerName + '/settings',
+      { method: 'PATCH', headers: hdrs, body: bodyBuf.buffer }
+    );
+    var patchJson = await patchRes.json();
+    if (!patchJson.success) {
+      console.warn('[provision] Worker 바인딩 PATCH 실패:', cfErrMsg(patchJson));
+      return { ok: false, error: 'Worker 바인딩 PATCH 실패: ' + cfErrMsg(patchJson) };
+    }
+    console.log('[provision] Worker 바인딩 자동 연결 완료 (' + newBindings.length + '개)');
+    return { ok: true, count: newBindings.length };
+  } catch (e) {
+    console.warn('[provision] Worker 바인딩 업데이트 오류:', e.message);
+    return { ok: false, error: 'Worker 바인딩 업데이트 오류: ' + e.message };
+  }
+}
+
 export const onRequestOptions = () => new Response(null, { status: 204, headers: CORS });
 
 export async function onRequestPost({ request, env, params }) {
@@ -816,6 +922,25 @@ export async function onRequestPost({ request, env, params }) {
     console.log('[provision] Worker 업로드 완료');
   }
 
+  // ── Step 6-B: Worker 바인딩 자동 연결 (D1 + KV) ─────────────────
+  // 코드 자체에서 CF API로 Worker 바인딩을 직접 등록
+  // → Pages/wrangler.toml 재배포 없이 D1/KV 자동 연결
+  await updateSite(env.DB, siteId, { provision_step: 'worker_binding' });
+  var workerBindingRes = await updateWorkerBindings(auth, cfAccount, workerName, {
+    mainDbId:       mainDbId,
+    cacheKvId:      cacheKvId,
+    sessionsKvId:   sessionsKvId,
+    wpOriginUrl:    wpOrigin,
+    wpOriginSecret: wpSecret,
+    cfAccountId:    cfAccount,
+    cfApiKey:       cfKey,
+  });
+  if (!workerBindingRes.ok) {
+    console.warn('[provision] Worker 바인딩 자동 연결 실패(계속):', workerBindingRes.error);
+  } else {
+    console.log('[provision] Worker 바인딩 자동 연결 완료');
+  }
+
   // ── Step 7: Worker Route 등록 ────────────────────────────────────
   if (zone.ok && cfZoneId) {
     await updateSite(env.DB, siteId, { provision_step: 'worker_route' });
@@ -890,6 +1015,9 @@ export async function onRequestPost({ request, env, params }) {
     wp_note:             wpRes.skipped ? wpRes.message : null,
     dns_note:            dnsNote,
     cname_instructions:  cnameInstructions,
+    worker_binding:      workerBindingRes.ok
+      ? ('자동 완료 (' + (workerBindingRes.count || 0) + '개 바인딩)')
+      : ('실패: ' + (workerBindingRes.error || '오류')),
     pages_binding:       bindingResult.ok
       ? '자동 완료 (Pages 재배포 후 적용)'
       : ('수동 필요: ' + (bindingResult.error || '오류')),
