@@ -128,6 +128,11 @@ async function ensureSchema(DB, env) {
     `ALTER TABLE sites ADD COLUMN disk_used INTEGER DEFAULT 0`,
     `ALTER TABLE sites ADD COLUMN bandwidth_used INTEGER DEFAULT 0`,
     `ALTER TABLE sites ADD COLUMN deleted_at TEXT`,
+    // v12: 사이트 전용 D1/KV 컬럼 마이그레이션
+    `ALTER TABLE sites ADD COLUMN site_d1_id TEXT`,
+    `ALTER TABLE sites ADD COLUMN site_d1_name TEXT`,
+    `ALTER TABLE sites ADD COLUMN site_kv_id TEXT`,
+    `ALTER TABLE sites ADD COLUMN site_kv_title TEXT`,
     // 2FA 컬럼 마이그레이션 (기존 users에 없을 수 있음)
     `ALTER TABLE users ADD COLUMN twofa_type TEXT DEFAULT NULL`,
     `ALTER TABLE users ADD COLUMN twofa_secret TEXT DEFAULT NULL`,
@@ -135,12 +140,21 @@ async function ensureSchema(DB, env) {
     `ALTER TABLE users ADD COLUMN twofa_pending_code TEXT DEFAULT NULL`,
     `ALTER TABLE users ADD COLUMN twofa_code_expires INTEGER DEFAULT NULL`,
     `ALTER TABLE users ADD COLUMN updated_at TEXT DEFAULT (datetime('now'))`,
+    // CF API 키 컬럼 마이그레이션
+    `ALTER TABLE users ADD COLUMN cf_global_api_key TEXT`,
+    `ALTER TABLE users ADD COLUMN cf_account_email TEXT`,
+    `ALTER TABLE users ADD COLUMN cf_account_id TEXT`,
+    // sites 인덱스 (누락 방지)
+    `CREATE INDEX IF NOT EXISTS idx_sites_site_d1_id ON sites(site_d1_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_sites_site_kv_id ON sites(site_kv_id)`,
     // settings 기본값
     `INSERT OR IGNORE INTO settings (key,value) VALUES
       ('plan_free_sites','1'),('plan_starter_sites','3'),('plan_pro_sites','10'),('plan_enterprise_sites','-1'),
+      ('plan_starter_price','9900'),('plan_pro_price','29900'),('plan_enterprise_price','99000'),
       ('wp_origin_url',''),('wp_origin_secret',''),('wp_admin_base_url',''),
       ('cf_api_token',''),('cf_account_id',''),('cf_worker_name','cloudpress-proxy'),
-      ('worker_cname_target',''),('maintenance_mode','0'),
+      ('worker_cname_target',''),('main_db_id',''),('cache_kv_id',''),('sessions_kv_id',''),
+      ('maintenance_mode','0'),
       ('site_name','CloudPress'),('site_domain','cloudpress.site'),
       ('toss_client_key',''),('toss_secret_key','')`,
   ];
