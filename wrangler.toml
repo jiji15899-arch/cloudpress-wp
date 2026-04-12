@@ -32,7 +32,7 @@ id      = "e1acf814c1244a59bbc24865723e479d"  # wrangler kv namespace create CAC
 # 민감한 값은 반드시 wrangler secret put 으로 설정
 [vars]
 # WP origin 프록시 타겟 (origin에 부하 없이 Worker만 프록시)
-WP_ORIGIN_URL    = "https://wpjiwungum100.dpdns.org/"   # wrangler secret put WP_ORIGIN_URL
+WP_ORIGIN_URL    = "https://admin-1775040937976.webcustom-hosting.com/"   # wrangler secret put WP_ORIGIN_URL
 WP_ORIGIN_SECRET = "Swsh120327!"   # wrangler secret put WP_ORIGIN_SECRET
 
 # Cloudflare 계정 정보 (사이트 전용 D1/KV REST API 접근용)
