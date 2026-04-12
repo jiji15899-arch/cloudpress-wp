@@ -1,16 +1,12 @@
-# CloudPress v12.0 — wrangler.toml
+# CloudPress v12.5 — wrangler.toml (fixed)
 # Pages Functions + 단일 Worker 배포 설정
 #
-# v12 변경사항:
-#   - R2 바인딩 제거 (R2 미사용)
-#   - CF_ACCOUNT_ID / CF_API_TOKEN 환경변수 추가
-#     (Worker에서 사이트 전용 KV REST API 접근에 필요)
+# 수정:
+#   - pages_build_output_dir 제거 (Cloudflare Pages 직접 배포 시 불필요, 오히려 라우팅 오작동 원인)
+#   - CF_ACCOUNT_ID / CF_API_TOKEN은 wrangler secret put으로 설정 (빈값으로 두지 말 것)
 
 name = "cloudpress-wp"
 compatibility_date = "2024-09-23"
-
-# ── Pages Functions 빌드 설정 ──
-pages_build_output_dir = "."
 
 # ── 메인 D1 Database (사용자/사이트 메타 저장) ──
 [[d1_databases]]
