@@ -318,7 +318,12 @@ async function loadDomains(siteId) {
       return;
     }
     currentDomains = data.domains || [];
-    currentCnameTarget = data.cnameTarget || '';
+    // cname_instructions에서 실제 값 우선 추출
+    if (data.cname_instructions && data.cname_instructions.root && data.cname_instructions.root.value) {
+      currentCnameTarget = data.cname_instructions.root.value;
+    } else {
+      currentCnameTarget = data.cnameTarget || '';
+    }
     renderDomainList(siteId, currentDomains, data.subdomain, data.primaryDomain, currentCnameTarget);
   } catch (e) {
     document.getElementById('domainList').innerHTML = `<p style="color:var(--muted);font-size:.84rem">오류: ${e.message}</p>`;
