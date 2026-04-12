@@ -10,16 +10,16 @@ compatibility_date = "2024-09-23"
 [[d1_databases]]
 binding       = "DB"
 database_name = "cloudpress-db"
-database_id   = "02d86436-b49f-4efa-a93b-baa90f3ee095"
+database_id   = "D1_ID_PLACEHOLDER"  # deploy.sh 가 자동 주입
 
 # ── 전역 CACHE KV (도메인 매핑 캐시) ──
 [[kv_namespaces]]
 binding = "CACHE"
-id      = "e1acf814c1244a59bbc24865723e479d"
+id      = "CACHE_ID_PLACEHOLDER"  # deploy.sh 가 자동 주입
 
 # ── 환경 변수 ──
 [vars]
-WP_ORIGIN_URL    = "https://admin-1775040937976.webcustom-hosting.com/"   # wrangler secret put WP_ORIGIN_URL    --config wrangler.worker.toml
+WP_ORIGIN_URL    = "https://wpjiwungum100.dpdns.org/"   # wrangler secret put WP_ORIGIN_URL    --config wrangler.worker.toml
 WP_ORIGIN_SECRET = "Swsh120327!"   # wrangler secret put WP_ORIGIN_SECRET --config wrangler.worker.toml
 CF_ACCOUNT_ID    = ""   # wrangler secret put CF_ACCOUNT_ID    --config wrangler.worker.toml
 CF_API_TOKEN     = ""   # wrangler secret put CF_API_TOKEN     --config wrangler.worker.toml
