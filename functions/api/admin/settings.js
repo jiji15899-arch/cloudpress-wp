@@ -202,20 +202,38 @@ export async function onRequest({ request, env }) {
 
     // PUT { action: 'verify_github', repo, branch?, token? }
     // GitHub 레포 접근 가능 여부 사전 검증
+    // provision.js의 fetchCMSSource()와 동일한 tarball API를 사용해야
+    // "접근 가능"이지만 실제 사이트 생성 시 실패하는 문제를 방지할 수 있음
     if (action === 'verify_github') {
       const { repo, branch, token } = body;
       if (!repo?.trim()) return err('repo가 필요합니다.');
       try {
-        const br  = (branch || 'main').trim();
-        const url = `https://raw.githubusercontent.com/${repo.trim()}/${br}/index.js`;
-        const headers = { 'User-Agent': 'CloudPress/16.0' };
+        const br      = (branch || 'main').trim();
+        const repoStr = repo.trim();
+        // tarball API: provision.js의 fetchCMSSource()와 동일한 엔드포인트 사용
+        const tarUrl  = `https://api.github.com/repos/${repoStr}/tarball/${br}`;
+        const headers = {
+          'User-Agent': 'CloudPress/17.0',
+          'Accept':     'application/vnd.github+json',
+        };
         if (token) headers['Authorization'] = `Bearer ${token}`;
-        const res = await fetch(url, { headers });
-        if (res.ok) {
-          return ok({ message: `레포 접근 성공 (${repo}@${br})`, accessible: true });
+
+        // redirect: 'manual' 로 tarball URL만 확인 (실제 다운로드 불필요)
+        const res = await fetch(tarUrl, { headers, redirect: 'manual' });
+
+        // tarball 엔드포인트는 성공 시 302 redirect를 반환
+        if (res.ok || res.status === 302) {
+          return ok({ message: `레포 접근 성공 (${repoStr}@${br})`, accessible: true });
         }
+
+        // 401: 토큰 없음 / 잘못된 토큰, 404: 레포 없음 / private 접근 불가
+        const hint = res.status === 404
+          ? '레포가 존재하지 않거나 private 레포에 토큰이 필요합니다.'
+          : res.status === 401
+          ? '토큰이 없거나 유효하지 않습니다.'
+          : `HTTP ${res.status}`;
         return ok({
-          message: `레포 접근 실패 (HTTP ${res.status}) — repo 주소 또는 토큰을 확인해주세요.`,
+          message: `레포 접근 실패 — ${hint}`,
           accessible: false,
           status: res.status,
         });
