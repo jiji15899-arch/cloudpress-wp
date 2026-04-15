@@ -1,22 +1,28 @@
-// functions/api/sites/[id]/provision.js — CloudPress v16.1
+// functions/api/sites/[id]/provision.js — CloudPress v17.0
 //
-// [v16.1 subrequest 최적화]
+// [v17.0 subrequest 핵심 수정]
 // ────────────────────────────────────────────────────────────────────────────
-//  문제: Cloudflare Workers는 단일 요청당 서브리퀘스트 수에 제한이 있음
-//        (기본 50개, Unbound Workers는 1000개)
-//        기존 코드는 getSetting() 9회, updateSite() 16회, 기타 D1 쿼리 다수 →
-//        "Too many subrequests by single Worker invocation" 에러 발생
+//  근본 원인: fetchCMSSource()가 CMS_FILES(67개) + EXTRA_FILES(1개) = 68개 파일을
+//             Promise.all()로 병렬 fetch → 각각 subrequest 1회씩 = 68회 소비
+//             CF API 호출(~17회) + D1(~4회) + KV(~2회) 합산 → 총 ~91회
+//             → 기본 제한 50회 초과로 "Too many subrequests" 에러 발생
 //
-//  해결 전략:
-//    1. 모든 settings를 최초 1회 SELECT * 로 한꺼번에 로드 → 이후 메모리에서 조회
-//    2. updateSite()를 즉시 DB 쓰기 대신 메모리 내 상태 누적(siteState)으로 변경
-//       → 최종에 1회 UPDATE만 실행 (실패 시 failSite만 즉시 실행)
-//    3. 병렬 가능한 작업(GitHub fetch, D1/KV 생성 등)은 Promise.all로 묶음
-//    4. KV put 3건 → 단일 bulk 엔드포인트로 처리
-//    5. initSiteD1Schema: GitHub fetch 결과 재사용 (별도 fetch 불필요)
+//  해결: GitHub Contents API의 tarball 엔드포인트로 레포 전체를 1회 다운로드
+//        → ArrayBuffer를 메모리에서 직접 파싱 (tar 디코딩, pax/ustar 지원)
+//        → 필요한 파일만 Map으로 추출
+//        GitHub fetch: 68회 → 1회
 //
-//  결과: D1 서브리퀘스트 ~31회 → ~4회로 감소
-//        외부 fetch 총 횟수도 대폭 감소
+//  최종 subrequest 수:
+//    GitHub tar: 1회 (리다이렉트 포함 최대 2회)
+//    D1: 4회 (batch조회, status update, flush, final select)
+//    CF API: ~17회 (D1생성, KV생성, 스키마, 바인딩탐색, worker업로드,
+//                   workersDev, KVbulk, subdomain, zone, dns×2, route×2)
+//    KV SESSIONS: 1회
+//    합계: ~23~24회 → 제한(50회) 이내
+//
+//  주의: tar.gz가 아닌 tar(무압축)로 다운로드하므로 decompress 불필요
+//        GitHub tarball은 gzip이지만 CF Workers에서 fetch 시
+//        Content-Encoding: gzip 자동 디코딩 → ArrayBuffer는 이미 raw tar
 
 'use strict';
 
@@ -80,7 +86,6 @@ async function getUser(env, req) {
 }
 
 // ── 설정 일괄 로드 (D1 1회 쿼리) ────────────────────────────────────────────
-// 반환: { key → value } 순수 JS 객체 (이후 DB 없이 메모리에서 조회)
 async function loadAllSettings(DB) {
   try {
     const { results } = await DB.prepare('SELECT key, value FROM settings').all();
@@ -96,7 +101,6 @@ function settingVal(settings, key, fallback = '') {
 }
 
 // ── 사이트 상태 추적 (메모리) ─────────────────────────────────────────────────
-// updateSite 호출 시 DB 쓰기 대신 메모리 누적 → 마지막에 1회 flush
 function makeSiteState(initial = {}) {
   const state = { ...initial };
   return {
@@ -118,7 +122,7 @@ async function flushSiteState(DB, siteId, fields) {
   } catch (e) { console.error('flushSiteState err:', e.message); }
 }
 
-// ── 즉시 실패 기록 (에러 시에만 개별 DB 쓰기 허용) ──────────────────────────
+// ── 즉시 실패 기록 ────────────────────────────────────────────────────────────
 async function failSite(DB, siteId, step, message) {
   console.error(`[FAIL] ${step}: ${message}`);
   try {
@@ -171,7 +175,6 @@ async function createKV(token, accountId, prefix) {
 }
 
 // ── 사이트 D1 스키마 초기화 ───────────────────────────────────────────────────
-// schemaSql을 직접 받아서 실행 (GitHub fetch는 fetchCMSSource에서 이미 완료)
 async function initSiteD1Schema(token, accountId, d1Id, schemaSql) {
   if (!schemaSql?.trim()) {
     schemaSql = getMinimalSchema();
@@ -191,10 +194,8 @@ async function initSiteD1Schema(token, accountId, d1Id, schemaSql) {
   return { ok: true };
 }
 
-// ── CACHE KV 도메인 매핑 일괄 PUT (CF KV Bulk API) ───────────────────────────
-// 개별 3회 → 단일 bulk 요청 1회
+// ── CACHE KV 도메인 매핑 일괄 PUT ────────────────────────────────────────────
 async function putCacheKVBulk(token, accountId, kvId, entries) {
-  // entries: [{ key, value }]
   if (!entries.length) return;
   try {
     const res = await fetch(
@@ -216,9 +217,152 @@ async function putCacheKVBulk(token, accountId, kvId, entries) {
   }
 }
 
-// ── GitHub에서 cloudflare-cms 소스 파일 목록 조회 ────────────────────────────
+// ── tar 파싱 유틸리티 ──────────────────────────────────────────────────────────
+// GitHub tarball은 fetch 시 CF Workers가 gzip을 자동 디코딩하여
+// ArrayBuffer로 반환함 → 순수 POSIX tar(ustar/pax) 파싱
 
-const CMS_FILES = [
+const DEC = new TextDecoder();
+
+/**
+ * octal 문자열 → 정수
+ */
+function parseOctal(buf, offset, len) {
+  const s = DEC.decode(buf.slice(offset, offset + len)).replace(/\0/g, '').trim();
+  return s ? parseInt(s, 8) : 0;
+}
+
+/**
+ * pax extended header 파싱 → { path, size } 등 추출
+ * 형식: "<length> <key>=<value>\n" 반복
+ */
+function parsePaxHeader(buf) {
+  const text = DEC.decode(buf);
+  const attrs = {};
+  for (const line of text.split('\n')) {
+    const m = line.match(/^\d+ ([^=]+)=(.*)$/);
+    if (m) attrs[m[1]] = m[2];
+  }
+  return attrs;
+}
+
+/**
+ * ArrayBuffer → Map<normalizedPath, string>
+ *
+ * normalizedPath: 레포 루트 디렉토리 prefix 제거 후 경로
+ *   예) "owner-repo-abc123/cp-admin/index.js" → "cp-admin/index.js"
+ *
+ * @param {ArrayBuffer} buffer   raw (already-decompressed) tar data
+ * @param {Set<string>} wantSet  필요한 파일 경로 집합 (없으면 전체)
+ */
+function parseTar(buffer, wantSet) {
+  const buf   = new Uint8Array(buffer);
+  const total = buf.length;
+  const files = new Map();
+
+  let offset    = 0;
+  let paxAttrs  = {};   // pax extended header에서 가져온 속성
+  let repoPrefix = '';  // 첫 번째 디렉토리 엔트리에서 자동 감지
+
+  while (offset + 512 <= total) {
+    const header = buf.slice(offset, offset + 512);
+
+    // 512바이트 전체가 0이면 end-of-archive
+    if (header.every(b => b === 0)) break;
+
+    // 파일명 (ustar: name[0..99] + prefix[345..499])
+    let rawName = DEC.decode(header.slice(0, 100)).replace(/\0/g, '');
+    const ustarPrefix = DEC.decode(header.slice(345, 500)).replace(/\0/g, '');
+    if (ustarPrefix) rawName = ustarPrefix + '/' + rawName;
+
+    // pax 오버라이드
+    if (paxAttrs.path) rawName = paxAttrs.path;
+
+    const typeflag = String.fromCharCode(header[156]) || '0';
+    let fileSize   = parseOctal(header, 124, 12);
+    if (paxAttrs.size) fileSize = parseInt(paxAttrs.size, 10);
+
+    // 다음 512 바이트 경계로 정렬
+    const dataOffset = offset + 512;
+    const paddedSize = Math.ceil(fileSize / 512) * 512;
+
+    // pax 속성 초기화
+    paxAttrs = {};
+
+    // pax extended header (typeflag 'x' 또는 'X')
+    if (typeflag === 'x' || typeflag === 'X') {
+      if (dataOffset + fileSize <= total) {
+        paxAttrs = parsePaxHeader(buf.slice(dataOffset, dataOffset + fileSize));
+      }
+      offset = dataOffset + paddedSize;
+      continue;
+    }
+
+    // gnu long name header (typeflag 'L')
+    if (typeflag === 'L') {
+      if (dataOffset + fileSize <= total) {
+        rawName = DEC.decode(buf.slice(dataOffset, dataOffset + fileSize)).replace(/\0/g, '');
+      }
+      offset = dataOffset + paddedSize;
+      // 다음 헤더가 실제 파일
+      const nextHeader = buf.slice(offset, offset + 512);
+      const nextSize   = parseOctal(nextHeader, 124, 12);
+      const nextOffset = offset + 512;
+      const nextPadded = Math.ceil(nextSize / 512) * 512;
+
+      const normalised = normalisePath(rawName, repoPrefix);
+      if (!repoPrefix) repoPrefix = extractPrefix(rawName);
+
+      if (normalised && (!wantSet || wantSet.has(normalised)) && nextOffset + nextSize <= total) {
+        files.set(normalised, DEC.decode(buf.slice(nextOffset, nextOffset + nextSize)));
+      }
+      offset = nextOffset + nextPadded;
+      continue;
+    }
+
+    // 레포 루트 prefix 자동 감지 (첫 번째 디렉토리 엔트리)
+    if (!repoPrefix) repoPrefix = extractPrefix(rawName);
+
+    const normalised = normalisePath(rawName, repoPrefix);
+
+    // 일반 파일 (typeflag '0' 또는 '\0')
+    if ((typeflag === '0' || typeflag === '\0') && normalised) {
+      if (!wantSet || wantSet.has(normalised)) {
+        if (dataOffset + fileSize <= total) {
+          files.set(normalised, DEC.decode(buf.slice(dataOffset, dataOffset + fileSize)));
+        }
+      }
+    }
+
+    offset = dataOffset + paddedSize;
+  }
+
+  return files;
+}
+
+/**
+ * GitHub tarball의 최상위 디렉토리 이름(prefix) 추출
+ * 예) "owner-repo-abc1234/..." → "owner-repo-abc1234"
+ */
+function extractPrefix(rawName) {
+  const slash = rawName.indexOf('/');
+  return slash > 0 ? rawName.slice(0, slash) : '';
+}
+
+/**
+ * rawName에서 레포 prefix 제거 → 정규화된 경로 반환
+ * 디렉토리 엔트리('/' 끝) 는 null 반환
+ */
+function normalisePath(rawName, prefix) {
+  let p = rawName;
+  if (prefix && p.startsWith(prefix + '/')) {
+    p = p.slice(prefix.length + 1);
+  }
+  if (!p || p.endsWith('/')) return null;
+  return p;
+}
+
+// ── 필요한 파일 경로 집합 ──────────────────────────────────────────────────────
+const CMS_FILES = new Set([
   'index.js',
   'cp-router.js',
   'cp-blog-header.js',
@@ -286,45 +430,61 @@ const CMS_FILES = [
   'cp-includes/theme-loader.js',
   'cp-includes/transient.js',
   'cp-includes/user.js',
-];
-
-// schema.sql도 함께 fetch (initSiteD1Schema에서 별도 fetch 불필요)
-const EXTRA_FILES = ['schema.sql'];
+  'schema.sql',   // schema.sql도 함께 추출
+]);
 
 /**
- * GitHub raw URL에서 모든 CMS 소스 파일을 병렬 fetch.
+ * [v17.0 핵심 변경]
+ * GitHub tarball API로 레포 전체를 1회 다운로드 후 메모리에서 파싱
+ *
+ * 이전: 68개 파일 개별 fetch (subrequest 68회)
+ * 이후: tarball 1회 fetch → 메모리 tar 파싱 → 필요 파일 추출 (subrequest 1~2회)
+ *
  * 반환: { sourceMap: Map<path, content>, schemaSql: string }
  */
 async function fetchCMSSource(githubRepo, githubBranch, githubToken) {
   const branch  = githubBranch || 'main';
-  const baseUrl = `https://raw.githubusercontent.com/${githubRepo}/${branch}`;
-  const headers = { 'User-Agent': 'CloudPress/16.1' };
+
+  // GitHub tarball 다운로드 URL
+  // https://api.github.com/repos/{owner}/{repo}/tarball/{branch}
+  // → 302 redirect → codeload.github.com/... (tar.gz)
+  // CF Workers의 fetch()는 redirect를 자동으로 따라가며,
+  // Content-Encoding: gzip을 자동 디코딩하여 raw tar ArrayBuffer를 반환
+  const tarUrl = `https://api.github.com/repos/${githubRepo}/tarball/${branch}`;
+
+  const headers = {
+    'User-Agent': 'CloudPress/17.0',
+    'Accept':     'application/vnd.github+json',
+  };
   if (githubToken) headers['Authorization'] = `Bearer ${githubToken}`;
 
-  const allFiles = [...CMS_FILES, ...EXTRA_FILES];
+  let buffer;
+  try {
+    const res = await fetch(tarUrl, { headers });
+    if (!res.ok) {
+      console.error(`[provision] GitHub tarball fetch 실패: ${res.status} ${res.statusText}`);
+      return { sourceMap: new Map(), schemaSql: '' };
+    }
+    buffer = await res.arrayBuffer();
+    console.log(`[provision] GitHub tarball 다운로드 완료: ${(buffer.byteLength / 1024).toFixed(0)} KB`);
+  } catch (e) {
+    console.error('[provision] GitHub tarball fetch 오류:', e.message);
+    return { sourceMap: new Map(), schemaSql: '' };
+  }
 
-  const results = await Promise.all(
-    allFiles.map(async (filePath) => {
-      try {
-        const res = await fetch(`${baseUrl}/${filePath}`, { headers });
-        if (!res.ok) {
-          console.warn(`[provision] GitHub fetch 실패: ${filePath} (${res.status})`);
-          return [filePath, null];
-        }
-        const text = await res.text();
-        return [filePath, text];
-      } catch (e) {
-        console.warn(`[provision] GitHub fetch 오류: ${filePath}`, e.message);
-        return [filePath, null];
-      }
-    })
-  );
+  // tar 파싱 (필요한 파일만 추출)
+  let allFiles;
+  try {
+    allFiles = parseTar(buffer, CMS_FILES);
+  } catch (e) {
+    console.error('[provision] tar 파싱 오류:', e.message);
+    return { sourceMap: new Map(), schemaSql: '' };
+  }
 
   const sourceMap = new Map();
-  let schemaSql = '';
+  let schemaSql   = '';
 
-  for (const [path, content] of results) {
-    if (content === null) continue;
+  for (const [path, content] of allFiles) {
     if (path === 'schema.sql') {
       schemaSql = content;
     } else {
@@ -332,6 +492,7 @@ async function fetchCMSSource(githubRepo, githubBranch, githubToken) {
     }
   }
 
+  console.log(`[provision] tar 파싱 완료: ${sourceMap.size}개 JS 파일, schema.sql: ${schemaSql ? '✓' : '내장 fallback'}`);
   return { sourceMap, schemaSql };
 }
 
@@ -369,8 +530,8 @@ async function uploadWorkerWithCMSSource(token, accountId, workerName, opts, cms
   }
 
   const metadata = {
-    main_module:        'index.js',
-    compatibility_date: '2024-09-23',
+    main_module:         'index.js',
+    compatibility_date:  '2024-09-23',
     compatibility_flags: ['nodejs_compat'],
     bindings,
   };
@@ -481,9 +642,6 @@ async function enableWorkersDev(token, accountId, workerName) {
 }
 
 // ── 메인 바인딩 ID 자동 탐색 ─────────────────────────────────────────────────
-// settings에 없을 경우 Pages 프로젝트에서 자동 탐색
-// DB 저장은 여기서 하지 않고 메인 흐름의 final flush에 위임
-
 async function resolveMainBindingIds(token, accountId) {
   const result = { mainDbId: '', cacheKvId: '', sessionsKvId: '' };
 
@@ -532,7 +690,7 @@ export async function onRequestPost({ request, env, params }) {
   const siteId = params?.id;
   if (!siteId) return err('사이트 ID가 없습니다.', 400);
 
-  // ── [D1 #1] 사이트 + settings 동시 조회 (2 쿼리를 batch로) ─────────────────
+  // ── [D1 #1] 사이트 + settings 동시 조회 (batch 1회) ─────────────────────────
   let site, settings;
   try {
     const [siteRow, settingsRows] = await env.DB.batch([
@@ -558,19 +716,18 @@ export async function onRequestPost({ request, env, params }) {
   if (!site) return err('사이트를 찾을 수 없습니다.', 404);
   if (site.status === 'active') return ok({ message: '이미 완료된 사이트입니다.' });
 
-  // ── [D1 #2] 프로비저닝 시작 표시 (즉시 1회 쓰기) ───────────────────────────
+  // ── [D1 #2] 프로비저닝 시작 표시 (즉시 1회 쓰기) ─────────────────────────────
   try {
     await env.DB.prepare(
       "UPDATE sites SET status='provisioning', provision_step='starting', error_message=NULL, updated_at=datetime('now') WHERE id=?"
     ).bind(siteId).run();
   } catch (e) { console.error('initial status update err:', e.message); }
 
-  // 이후 updateSite 대신 메모리 상태 추적
   const siteState = makeSiteState();
 
   const encKey = env?.ENCRYPTION_KEY || 'cp_enc_default';
 
-  // ── CF 인증 키 결정 (설정은 메모리에서) ────────────────────────────────────
+  // ── CF 인증 키 결정 ────────────────────────────────────────────────────────
   const adminCfToken   = settingVal(settings, 'cf_api_token');
   const adminCfAccount = settingVal(settings, 'cf_account_id');
 
@@ -594,7 +751,7 @@ export async function onRequestPost({ request, env, params }) {
     return err(e, 400);
   }
 
-  // ── GitHub CMS 소스 설정 (메모리에서) ──────────────────────────────────────
+  // ── GitHub CMS 소스 설정 ───────────────────────────────────────────────────
   const githubRepo   = settingVal(settings, 'cms_github_repo',   '');
   const githubBranch = settingVal(settings, 'cms_github_branch', 'main');
   const githubToken  = settingVal(settings, 'cms_github_token',  '');
@@ -610,11 +767,20 @@ export async function onRequestPost({ request, env, params }) {
   const prefix     = site.site_prefix;
   const workerName = 'cloudpress-site-' + prefix;
 
-  // ── Step 1: GitHub에서 CMS 소스 fetch (schema.sql 포함, 병렬) ──────────────
-  console.log(`[provision] GitHub fetch 시작: ${githubRepo}@${githubBranch}`);
+  // ── Step 1: GitHub tarball 1회 다운로드 → 메모리 tar 파싱 ──────────────────
+  // [v17.0] 기존 68회 개별 fetch → tarball 1회 fetch로 교체
+  console.log(`[provision] GitHub tarball fetch 시작: ${githubRepo}@${githubBranch}`);
   siteState.set({ provision_step: 'github_fetch' });
 
-  const { sourceMap: cmsSourceMap, schemaSql } = await fetchCMSSource(githubRepo, githubBranch, githubToken);
+  let cmsSourceMap, schemaSql;
+  try {
+    const result = await fetchCMSSource(githubRepo, githubBranch, githubToken);
+    cmsSourceMap = result.sourceMap;
+    schemaSql    = result.schemaSql;
+  } catch (e) {
+    await failSite(env.DB, siteId, 'github_fetch', e.message || String(e));
+    return err('GitHub fetch 오류: ' + (e.message || String(e)), 500);
+  }
 
   if (cmsSourceMap.size === 0) {
     const e = `GitHub 레포(${githubRepo})에서 CMS 소스를 가져오지 못했습니다. 레포 주소와 토큰을 확인해주세요.`;
@@ -628,29 +794,22 @@ export async function onRequestPost({ request, env, params }) {
     return err(e, 500);
   }
 
-  console.log(`[provision] GitHub fetch 완료: ${cmsSourceMap.size}개 파일, schema.sql: ${schemaSql ? '✓' : '내장 fallback'}`);
+  console.log(`[provision] GitHub 소스 준비 완료: ${cmsSourceMap.size}개 파일, schema.sql: ${schemaSql ? '✓' : '내장 fallback'}`);
 
-  // ── Step 2+3: D1 + KV 생성 (이미 있으면 skip, 없으면 병렬 생성) ─────────────
+  // ── Step 2+3: D1 + KV 생성 ────────────────────────────────────────────────
   siteState.set({ provision_step: 'd1_kv_create' });
 
   let d1Id = site.site_d1_id || null;
   let kvId = site.site_kv_id || null;
 
   if (!d1Id && !kvId) {
-    // 둘 다 없으면 병렬 생성
     const [d1Res, kvRes] = await Promise.all([
       createD1(cfToken, cfAccount, prefix),
       createKV(cfToken, cfAccount, prefix),
     ]);
 
-    if (!d1Res.ok) {
-      await failSite(env.DB, siteId, 'd1_create', d1Res.error);
-      return err(d1Res.error, 500);
-    }
-    if (!kvRes.ok) {
-      await failSite(env.DB, siteId, 'kv_create', kvRes.error);
-      return err(kvRes.error, 500);
-    }
+    if (!d1Res.ok) { await failSite(env.DB, siteId, 'd1_create', d1Res.error); return err(d1Res.error, 500); }
+    if (!kvRes.ok) { await failSite(env.DB, siteId, 'kv_create', kvRes.error); return err(kvRes.error, 500); }
 
     d1Id = d1Res.id;
     kvId = kvRes.id;
@@ -659,20 +818,14 @@ export async function onRequestPost({ request, env, params }) {
 
   } else if (!d1Id) {
     const d1Res = await createD1(cfToken, cfAccount, prefix);
-    if (!d1Res.ok) {
-      await failSite(env.DB, siteId, 'd1_create', d1Res.error);
-      return err(d1Res.error, 500);
-    }
+    if (!d1Res.ok) { await failSite(env.DB, siteId, 'd1_create', d1Res.error); return err(d1Res.error, 500); }
     d1Id = d1Res.id;
     siteState.set({ site_d1_id: d1Id, site_d1_name: d1Res.name });
     console.log(`[provision] D1 생성: ${d1Res.name} (${d1Id}), KV 재사용: ${kvId}`);
 
   } else if (!kvId) {
     const kvRes = await createKV(cfToken, cfAccount, prefix);
-    if (!kvRes.ok) {
-      await failSite(env.DB, siteId, 'kv_create', kvRes.error);
-      return err(kvRes.error, 500);
-    }
+    if (!kvRes.ok) { await failSite(env.DB, siteId, 'kv_create', kvRes.error); return err(kvRes.error, 500); }
     kvId = kvRes.id;
     siteState.set({ site_kv_id: kvId, site_kv_title: kvRes.title });
     console.log(`[provision] D1 재사용: ${d1Id}, KV 생성: ${kvRes.title} (${kvId})`);
@@ -681,7 +834,7 @@ export async function onRequestPost({ request, env, params }) {
     console.log(`[provision] D1 재사용: ${d1Id}, KV 재사용: ${kvId}`);
   }
 
-  // ── Step 4: D1 스키마 초기화 + 메인 바인딩 ID 확보 (병렬) ──────────────────
+  // ── Step 4: D1 스키마 초기화 + 메인 바인딩 ID 확보 (병렬) ─────────────────
   siteState.set({ provision_step: 'd1_schema' });
   console.log('[provision] D1 스키마 초기화 + 바인딩 ID 확보 병렬 시작...');
 
@@ -707,7 +860,6 @@ export async function onRequestPost({ request, env, params }) {
     if (!cacheKvId)    cacheKvId    = resolvedIds.cacheKvId    || '';
     if (!sessionsKvId) sessionsKvId = resolvedIds.sessionsKvId || '';
 
-    // 탐색된 ID는 settings에 저장 (비동기 — 결과 기다리지 않음, 실패해도 무방)
     if (resolvedIds.mainDbId || resolvedIds.cacheKvId || resolvedIds.sessionsKvId) {
       const stmts = [];
       const upsertSql = `INSERT INTO settings (key,value,updated_at) VALUES (?,?,datetime('now'))
@@ -719,7 +871,7 @@ export async function onRequestPost({ request, env, params }) {
     }
   }
 
-  // ── Step 5: Workers Script Upload ──────────────────────────────────────────
+  // ── Step 5: Workers Script Upload ─────────────────────────────────────────
   siteState.set({ provision_step: 'worker_upload' });
   console.log(`[provision] Worker 업로드 중: ${workerName}`);
 
@@ -750,10 +902,9 @@ export async function onRequestPost({ request, env, params }) {
   console.log(`[provision] Worker 업로드 완료: ${workerName}`);
   siteState.set({ worker_name: workerName });
 
-  // workers.dev 활성화 (결과 기다리되 실패해도 계속)
   await enableWorkersDev(cfToken, cfAccount, workerName).catch(() => {});
 
-  // ── Step 6: CACHE KV 도메인 매핑 등록 (bulk 1회) ───────────────────────────
+  // ── Step 6: CACHE KV 도메인 매핑 (bulk 1회) ───────────────────────────────
   siteState.set({ provision_step: 'kv_mapping' });
 
   const siteMapping = JSON.stringify({
@@ -774,7 +925,7 @@ export async function onRequestPost({ request, env, params }) {
     ]);
   }
 
-  // ── Step 7: DNS + Worker Route 등록 (병렬) ─────────────────────────────────
+  // ── Step 7: DNS + Worker Route 등록 (병렬) ────────────────────────────────
   siteState.set({ provision_step: 'dns_setup' });
 
   const [cnameTarget, zone] = await Promise.all([
@@ -790,7 +941,6 @@ export async function onRequestPost({ request, env, params }) {
   if (zone.ok) {
     cfZoneId = zone.zoneId;
 
-    // DNS 레코드 2건 병렬
     const [dr, drw] = await Promise.all([
       cfUpsertDns(cfToken, cfZoneId, 'CNAME', domain,    cnameTarget, true),
       cfUpsertDns(cfToken, cfZoneId, 'CNAME', wwwDomain, cnameTarget, true),
@@ -800,7 +950,6 @@ export async function onRequestPost({ request, env, params }) {
 
     siteState.set({ provision_step: 'worker_route' });
 
-    // Worker Route 2건 병렬
     const [rr, rw] = await Promise.all([
       cfUpsertRoute(cfToken, cfZoneId, domain + '/*',    workerName),
       cfUpsertRoute(cfToken, cfZoneId, wwwDomain + '/*', workerName),
@@ -820,7 +969,7 @@ export async function onRequestPost({ request, env, params }) {
     });
   }
 
-  // ── Step 8: 완료 — 메모리에 쌓인 상태를 1회 flush ─────────────────────────
+  // ── Step 8: 완료 — 메모리 상태 1회 flush ──────────────────────────────────
   const adminUrl = `https://${domain}/cp-admin/setup-config`;
 
   siteState.set({
