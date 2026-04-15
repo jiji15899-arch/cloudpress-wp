@@ -471,8 +471,35 @@ async function fetchCMSSource(githubRepo, githubBranch, githubToken) {
       console.error('[provision]', msg);
       throw new Error(msg);
     }
-    buffer = await res.arrayBuffer();
-    console.log(`[provision] GitHub tarball 다운로드 완료: ${(buffer.byteLength / 1024).toFixed(0)} KB`);
+
+    // GitHub tarball은 실제 gzip 바이너리이므로 DecompressionStream으로 명시 해제
+    const compressed = await res.arrayBuffer();
+    try {
+      const ds     = new DecompressionStream('gzip');
+      const writer = ds.writable.getWriter();
+      const reader = ds.readable.getReader();
+      writer.write(compressed);
+      writer.close();
+
+      const chunks = [];
+      let totalLen = 0;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        totalLen += value.length;
+      }
+      const merged = new Uint8Array(totalLen);
+      let off = 0;
+      for (const c of chunks) { merged.set(c, off); off += c.length; }
+      buffer = merged.buffer;
+      console.log(`[provision] GitHub tarball 해제 완료: ${(buffer.byteLength / 1024).toFixed(0)} KB (raw tar)`);
+    } catch (decompErr) {
+      // 환경에 따라 이미 자동 해제된 경우 → 원본 사용
+      console.warn('[provision] gzip 명시 해제 실패, raw buffer 사용:', decompErr.message);
+      buffer = compressed;
+      console.log(`[provision] GitHub tarball 다운로드 완료(raw): ${(buffer.byteLength / 1024).toFixed(0)} KB`);
+    }
   } catch (e) {
     if (e instanceof Error && e.message.includes('tarball fetch 실패')) throw e;
     const msg = `GitHub tarball fetch 오류 (${githubRepo}@${branch}): ${e.message}`;
