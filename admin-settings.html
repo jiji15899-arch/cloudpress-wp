@@ -10,6 +10,8 @@
     .settings-section{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:24px;margin-bottom:20px}
     .settings-title{font-family:var(--font-head);font-weight:700;font-size:.95rem;margin-bottom:18px;display:flex;align-items:center;gap:8px}
     .field-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+    .badge-ok{display:inline-block;padding:2px 8px;border-radius:6px;font-size:.75rem;font-weight:600;background:rgba(34,197,94,.12);color:#16a34a}
+    .badge-err{display:inline-block;padding:2px 8px;border-radius:6px;font-size:.75rem;font-weight:600;background:rgba(239,68,68,.1);color:#dc2626}
     @media(max-width:600px){.field-row{grid-template-columns:1fr}}
     @media(max-width:600px){
       .field-row{grid-template-columns:1fr !important}
@@ -58,32 +60,36 @@
     <div class="content">
       <div id="toast" style="display:none;position:fixed;top:20px;right:20px;z-index:9999;padding:12px 18px;border-radius:10px;font-size:.85rem;font-weight:600;color:#fff"></div>
 
-      <!-- WP Origin 설정 -->
+      <!-- GitHub CMS 소스 설정 (v16.0) -->
       <div class="settings-section">
-        <div class="settings-title">🌐 WP Origin 설정 (핵심)</div>
+        <div class="settings-title">🐙 GitHub CMS 소스 설정 <span style="font-size:.72rem;font-weight:500;color:var(--muted);margin-left:4px">(핵심)</span></div>
         <p style="font-size:.83rem;color:var(--muted);margin-bottom:14px">
-          CloudPress가 WordPress 요청을 프록시할 <strong>단일 Origin 서버</strong> 정보를 입력합니다.<br>
-          Worker는 이 Origin URL로 요청을 전달하며, 공유 시크릿으로 인증합니다.
+          사이트 생성 시 <strong>GitHub 레포에서 cloudflare-cms 코드를 HTTP fetch</strong>하여
+          Workers Script Upload API로 업로드합니다.<br>
+          직접 파일 업로드가 아닌, 코드를 코드로 주입하는 방식입니다.
         </p>
-        <div class="field">
-          <label>WP Origin URL</label>
-          <input type="url" id="wp_origin_url" placeholder="https://origin.cloudpress.site"/>
-          <div class="hint">WordPress가 실제로 실행 중인 Origin 서버의 전체 URL</div>
+        <div class="field-row">
+          <div class="field">
+            <label>GitHub 레포 <span style="font-size:.76rem;color:var(--muted)">(owner/repo)</span></label>
+            <input type="text" id="cms_github_repo" placeholder="myorg/cloudflare-cms"/>
+            <div class="hint">cloudflare-cms 소스가 있는 GitHub 레포. 예: <code>myorg/cloudflare-cms</code></div>
+          </div>
+          <div class="field">
+            <label>브랜치</label>
+            <input type="text" id="cms_github_branch" placeholder="main"/>
+            <div class="hint">기본값: <code>main</code></div>
+          </div>
         </div>
-        <div class="field">
-          <label>WP Origin 시크릿 (Shared Secret)</label>
-          <input type="password" id="wp_origin_secret" placeholder="••••••••"/>
-          <div class="hint">Worker와 Origin mu-plugin이 공유하는 인증 시크릿</div>
+        <div class="field" style="max-width:420px">
+          <label>GitHub Personal Access Token <span style="font-size:.76rem;color:var(--muted)">(비공개 레포용, 선택)</span></label>
+          <input type="password" id="cms_github_token" placeholder="ghp_••••••••"/>
+          <div class="hint">비공개 레포라면 <code>repo</code> 스코프 PAT 필요. 공개 레포면 비워도 됩니다.</div>
         </div>
-        <div class="field">
-          <label>WP Admin Base URL <span style="font-size:.76rem;color:var(--muted)">(선택사항)</span></label>
-          <input type="url" id="wp_admin_base_url" placeholder="https://origin.cloudpress.site/wp-admin"/>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <button class="btn btn-primary" onclick="saveGithubSettings()">GitHub 설정 저장</button>
+          <button class="btn" style="background:var(--surface2,#f1f5f9)" onclick="verifyGithub()">레포 접근 테스트</button>
+          <span id="github-verify-result"></span>
         </div>
-        <div style="background:rgba(249,115,22,.05);border:1px solid rgba(249,115,22,.18);border-radius:10px;padding:12px;margin-bottom:14px;font-size:.82rem;color:var(--muted)">
-          <strong style="color:var(--accent)">⚠️ 변경 후 Worker 재배포 필요</strong><br>
-          WP Origin URL 또는 시크릿 변경 시, <code>wrangler.toml</code>의 환경변수도 함께 업데이트하고 Worker를 재배포해야 합니다.
-        </div>
-        <button class="btn btn-primary" onclick="saveWpOriginSettings()">Origin 설정 저장</button>
       </div>
 
       <!-- 플랜 설정 -->
@@ -114,13 +120,16 @@
 
       <!-- Cloudflare CDN 설정 -->
       <div class="settings-section">
-        <div class="settings-title">⚡ Cloudflare CDN 설정</div>
-        <p style="font-size:.83rem;color:var(--muted);margin-bottom:14px">사이트 생성 시 D1/KV 리소스를 자동으로 생성하고 Worker Route를 등록합니다.</p>
+        <div class="settings-title">⚡ Cloudflare 설정</div>
+        <p style="font-size:.83rem;color:var(--muted);margin-bottom:14px">
+          사이트 생성 시 D1/KV를 <strong>자동 생성</strong>하고 Workers Script Upload API로
+          CMS 코드를 업로드합니다. Worker Route와 DNS CNAME도 자동으로 등록됩니다.
+        </p>
         <div class="field-row">
           <div class="field">
             <label>Cloudflare API Token</label>
-            <input type="password" id="cf_api_token" placeholder="Bearer Token (또는 Global API Key)"/>
-            <div class="hint">Workers, D1, KV 쓰기 권한이 있는 API 토큰</div>
+            <input type="password" id="cf_api_token" placeholder="Bearer Token"/>
+            <div class="hint">Workers, D1, KV, DNS 쓰기 권한이 있는 API 토큰</div>
           </div>
           <div class="field">
             <label>Cloudflare Account ID</label>
@@ -129,8 +138,9 @@
         </div>
         <div class="field-row">
           <div class="field">
-            <label>Worker 이름 <span style="font-size:.76rem;color:var(--muted)">(wrangler.toml name)</span></label>
+            <label>Worker 이름 <span style="font-size:.76rem;color:var(--muted)">(플랫폼 Worker)</span></label>
             <input type="text" id="cf_worker_name" placeholder="cloudpress-proxy"/>
+            <div class="hint">cloudpress 플랫폼 자체 Worker 이름 (wrangler.toml의 name)</div>
           </div>
           <div class="field">
             <label>CNAME Target <span style="font-size:.76rem;color:var(--muted)">(workers.dev URL)</span></label>
@@ -138,8 +148,10 @@
             <div class="hint">사용자 도메인 DNS CNAME 안내용 주소</div>
           </div>
         </div>
-        <p style="font-size:.8rem;color:var(--accent);margin:8px 0 6px;font-weight:600">⚙️ Worker Script 자동 업로드 바인딩 ID</p>
-        <p style="font-size:.78rem;color:var(--muted);margin-bottom:10px">wrangler.toml 의 database_id / KV namespace id 를 입력하세요.</p>
+        <p style="font-size:.8rem;color:var(--accent);margin:8px 0 6px;font-weight:600">⚙️ 메인 바인딩 UUID</p>
+        <p style="font-size:.78rem;color:var(--muted);margin-bottom:10px">
+          비워두면 Pages 프로젝트에서 자동 탐색합니다. 탐색 실패 시 수동 입력하세요.
+        </p>
         <div class="field-row">
           <div class="field">
             <label>메인 D1 Database ID <span style="font-size:.76rem;color:var(--muted)">(cloudpress-db)</span></label>
@@ -215,34 +227,34 @@ async function loadSettings() {
     const el = document.getElementById(id);
     if (el) el.value = settings[key] ?? def;
   };
-  const setChk = (id, key, def = false) => {
+  const setChk = (id, key) => {
     const el = document.getElementById(id);
-    if (el) el.checked = (settings[key] === '1' || settings[key] === true) ?? def;
+    if (el) el.checked = (settings[key] === '1' || settings[key] === true);
   };
 
-  // WP Origin
-  setVal('wp_origin_url', 'wp_origin_url');
-  setVal('wp_admin_base_url', 'wp_admin_base_url');
-  const wpSecretEl = document.getElementById('wp_origin_secret');
-  if (wpSecretEl) {
-    wpSecretEl.value = '';
-    wpSecretEl.placeholder = settings.wp_origin_secret ? '••••••••  (이미 저장됨, 변경하려면 새로 입력)' : '••••••••';
+  // GitHub CMS
+  setVal('cms_github_repo',   'cms_github_repo');
+  setVal('cms_github_branch', 'cms_github_branch', 'main');
+  const ghTokenEl = document.getElementById('cms_github_token');
+  if (ghTokenEl) {
+    ghTokenEl.value = '';
+    ghTokenEl.placeholder = settings.cms_github_token ? '••••••••  (이미 저장됨, 변경하려면 새로 입력)' : 'ghp_••••••••';
   }
 
   // 플랜
-  setVal('plan_free_sites', 'plan_free_sites', '1');
-  setVal('plan_starter_sites', 'plan_starter_sites', '3');
-  setVal('plan_pro_sites', 'plan_pro_sites', '10');
+  setVal('plan_free_sites',       'plan_free_sites',       '1');
+  setVal('plan_starter_sites',    'plan_starter_sites',    '3');
+  setVal('plan_pro_sites',        'plan_pro_sites',        '10');
   setVal('plan_enterprise_sites', 'plan_enterprise_sites', '-1');
 
   // Cloudflare
-  setVal('cf_account_id', 'cf_account_id');
-  setVal('cf_worker_name', 'cf_worker_name', 'cloudpress-proxy');
+  setVal('cf_account_id',       'cf_account_id');
+  setVal('cf_worker_name',      'cf_worker_name',      'cloudpress-proxy');
   setVal('worker_cname_target', 'worker_cname_target');
-  setVal('main_db_id', 'main_db_id');
-  setVal('cache_kv_id', 'cache_kv_id');
-  setVal('sessions_kv_id', 'sessions_kv_id');
-  // cf_api_token은 마스킹됨 — 빈칸으로, placeholder로 안내
+  setVal('main_db_id',          'main_db_id');
+  setVal('cache_kv_id',         'cache_kv_id');
+  setVal('sessions_kv_id',      'sessions_kv_id');
+
   const cfTokenEl = document.getElementById('cf_api_token');
   if (cfTokenEl) {
     cfTokenEl.value = '';
@@ -258,7 +270,7 @@ async function loadSettings() {
   }
 
   // 유지보수
-  setChk('maintenance_mode', 'maintenance_mode', false);
+  setChk('maintenance_mode', 'maintenance_mode');
 }
 
 async function saveSettings(updates) {
@@ -271,7 +283,7 @@ async function saveSettings(updates) {
     });
     const data = await res.json();
     if (data.ok) {
-      showToast('설정이 저장되었습니다.' + (data.notice ? ' (' + data.notice + ')' : ''));
+      showToast('설정이 저장되었습니다.');
     } else {
       showToast('저장 실패: ' + (data.error || '알 수 없는 오류'), false);
     }
@@ -280,17 +292,47 @@ async function saveSettings(updates) {
   }
 }
 
-async function saveWpOriginSettings() {
-  const originUrl = document.getElementById('wp_origin_url').value.trim();
-  const adminBase = document.getElementById('wp_admin_base_url').value.trim();
-  const secret    = document.getElementById('wp_origin_secret').value;
-  if (!originUrl) { showToast('WP Origin URL을 입력해주세요.', false); return; }
+async function saveGithubSettings() {
+  const g = id => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
   const updates = {
-    wp_origin_url:     originUrl,
-    wp_admin_base_url: adminBase,
+    cms_github_repo:   g('cms_github_repo'),
+    cms_github_branch: g('cms_github_branch') || 'main',
   };
-  if (secret && !secret.startsWith('••')) updates.wp_origin_secret = secret;
+  const tok = g('cms_github_token');
+  if (tok && !tok.startsWith('••')) updates.cms_github_token = tok;
+
+  if (!updates.cms_github_repo) { showToast('GitHub 레포를 입력해주세요.', false); return; }
   await saveSettings(updates);
+}
+
+async function verifyGithub() {
+  const el  = document.getElementById('github-verify-result');
+  const repo   = document.getElementById('cms_github_repo').value.trim();
+  const branch = document.getElementById('cms_github_branch').value.trim() || 'main';
+  const tok    = document.getElementById('cms_github_token').value;
+
+  if (!repo) { showToast('레포 주소를 먼저 입력해주세요.', false); return; }
+  el.innerHTML = '<span style="color:var(--muted);font-size:.8rem">테스트 중...</span>';
+
+  try {
+    const token = CP.getToken();
+    const body  = { action: 'verify_github', repo, branch };
+    if (tok && !tok.startsWith('••')) body.token = tok;
+
+    const res  = await fetch('/api/admin/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (data.ok && data.accessible) {
+      el.innerHTML = `<span class="badge-ok">✓ 접근 성공</span>`;
+    } else {
+      el.innerHTML = `<span class="badge-err">✗ ${data.message || '접근 실패'}</span>`;
+    }
+  } catch (e) {
+    el.innerHTML = `<span class="badge-err">✗ 오류: ${e.message}</span>`;
+  }
 }
 
 async function savePlanSettings() {
