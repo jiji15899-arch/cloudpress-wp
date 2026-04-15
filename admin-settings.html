@@ -312,7 +312,7 @@ async function verifyGithub() {
   const tok    = document.getElementById('cms_github_token').value;
 
   if (!repo) { showToast('레포 주소를 먼저 입력해주세요.', false); return; }
-  el.innerHTML = '<span style="color:var(--muted);font-size:.8rem">테스트 중...</span>';
+  el.innerHTML = '<span style="color:var(--muted);font-size:.8rem">테스트 중… (tarball 다운로드 중)</span>';
 
   try {
     const token = CP.getToken();
@@ -326,9 +326,11 @@ async function verifyGithub() {
     });
     const data = await res.json();
     if (data.ok && data.accessible) {
-      el.innerHTML = `<span class="badge-ok">✓ 접근 성공</span>`;
+      const fileInfo = data.cms_files_found != null ? ` (${data.cms_files_found}개 파일 확인)` : '';
+      el.innerHTML = `<span class="badge-ok">✓ 접근 성공 · CMS 파일 확인됨${fileInfo}</span>`;
     } else {
-      el.innerHTML = `<span class="badge-err">✗ ${data.message || '접근 실패'}</span>`;
+      const msg = data.message || '접근 실패';
+      el.innerHTML = `<span class="badge-err">✗ ${msg}</span>`;
     }
   } catch (e) {
     el.innerHTML = `<span class="badge-err">✗ 오류: ${e.message}</span>`;
