@@ -1,35 +1,26 @@
-// functions/api/sites/[id]/provision.js — CloudPress v16.0
+// functions/api/sites/[id]/provision.js — CloudPress v16.1
 //
-// [v16.0 완전 재설계 — VP/Origin 방식 전면 폐지]
-// ────────────────────────────────────────────────
-//  ✅ VP 패널 (HestiaCP/VestaCP/VistaPanel/등) 완전 제거
-//  ✅ WP Origin URL 프록시 방식 완전 제거
-//  ✅ PHP/WordPress 완전 제거
+// [v16.1 subrequest 최적화]
+// ────────────────────────────────────────────────────────────────────────────
+//  문제: Cloudflare Workers는 단일 요청당 서브리퀘스트 수에 제한이 있음
+//        (기본 50개, Unbound Workers는 1000개)
+//        기존 코드는 getSetting() 9회, updateSite() 16회, 기타 D1 쿼리 다수 →
+//        "Too many subrequests by single Worker invocation" 에러 발생
 //
-// 새 아키텍처 (GitHub HTTP fetch 방식):
-//  1. 사용자 CF 계정에 사이트 전용 D1 생성 (cloudpress-site-{prefix})
-//  2. 사용자 CF 계정에 사이트 전용 KV 생성 (cloudpress-site-{prefix}-kv)
-//  3. GitHub raw URL로 cloudflare-cms 전체 소스 HTTP fetch
-//  4. 가져온 코드를 Workers Script Upload API (multipart)로 업로드
-//     - D1/KV 바인딩을 코드 내부에 주입 (metadata bindings)
-//     - 직접 파일 업로드 X — 코드 자체를 번들로 업로드
-//  5. CF DNS + Worker Route 등록
-//  6. 사이트 D1에 CloudPress 스키마 초기화
-//  7. CACHE KV에 도메인 매핑 등록
+//  해결 전략:
+//    1. 모든 settings를 최초 1회 SELECT * 로 한꺼번에 로드 → 이후 메모리에서 조회
+//    2. updateSite()를 즉시 DB 쓰기 대신 메모리 내 상태 누적(siteState)으로 변경
+//       → 최종에 1회 UPDATE만 실행 (실패 시 failSite만 즉시 실행)
+//    3. 병렬 가능한 작업(GitHub fetch, D1/KV 생성 등)은 Promise.all로 묶음
+//    4. KV put 3건 → 단일 bulk 엔드포인트로 처리
+//    5. initSiteD1Schema: GitHub fetch 결과 재사용 (별도 fetch 불필요)
 //
-// 환경변수 (settings DB):
-//   cf_api_token      — 어드민 CF API 토큰
-//   cf_account_id     — 어드민 CF Account ID
-//   cms_github_repo   — cloudflare-cms 소스 레포 (owner/repo)
-//   cms_github_branch — 브랜치 (기본: main)
-//   cms_github_token  — GitHub PAT (비공개 레포용, 선택)
-//   main_db_id        — 메인 D1 UUID
-//   cache_kv_id       — CACHE KV UUID
-//   sessions_kv_id    — SESSIONS KV UUID
+//  결과: D1 서브리퀘스트 ~31회 → ~4회로 감소
+//        외부 fetch 총 횟수도 대폭 감소
 
 'use strict';
 
-// ── CORS ────────────────────────────────────────────────────────────────────
+// ── CORS ──────────────────────────────────────────────────────────────────────
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
   'Access-Control-Allow-Methods': 'POST,OPTIONS',
@@ -42,7 +33,7 @@ const _j  = (d, s = 200) => new Response(JSON.stringify(d), {
 const ok  = (d)      => _j({ ok: true,  ...(d || {}) });
 const err = (msg, s) => _j({ ok: false, error: msg }, s || 400);
 
-// ── Cloudflare API ──────────────────────────────────────────────────────────
+// ── Cloudflare API ────────────────────────────────────────────────────────────
 const CF_API = 'https://api.cloudflare.com/client/v4';
 
 function cfHeaders(apiToken) {
@@ -68,7 +59,7 @@ function cfErrMsg(json) {
   return (json?.errors || []).map(e => (e.code ? `[${e.code}] ` : '') + (e.message || '')).join('; ') || 'unknown';
 }
 
-// ── Auth ────────────────────────────────────────────────────────────────────
+// ── Auth ──────────────────────────────────────────────────────────────────────
 function getToken(req) {
   const a = req.headers.get('Authorization') || '';
   if (a.startsWith('Bearer ')) return a.slice(7);
@@ -88,14 +79,34 @@ async function getUser(env, req) {
   } catch { return null; }
 }
 
-async function getSetting(env, key, fallback = '') {
+// ── 설정 일괄 로드 (D1 1회 쿼리) ────────────────────────────────────────────
+// 반환: { key → value } 순수 JS 객체 (이후 DB 없이 메모리에서 조회)
+async function loadAllSettings(DB) {
   try {
-    const r = await env.DB.prepare('SELECT value FROM settings WHERE key=?').bind(key).first();
-    return (r?.value != null && r.value !== '') ? r.value : fallback;
-  } catch { return fallback; }
+    const { results } = await DB.prepare('SELECT key, value FROM settings').all();
+    const map = {};
+    for (const r of results || []) map[r.key] = r.value ?? '';
+    return map;
+  } catch { return {}; }
 }
 
-async function updateSite(DB, siteId, fields) {
+function settingVal(settings, key, fallback = '') {
+  const v = settings[key];
+  return (v != null && v !== '') ? v : fallback;
+}
+
+// ── 사이트 상태 추적 (메모리) ─────────────────────────────────────────────────
+// updateSite 호출 시 DB 쓰기 대신 메모리 누적 → 마지막에 1회 flush
+function makeSiteState(initial = {}) {
+  const state = { ...initial };
+  return {
+    set(fields) { Object.assign(state, fields); },
+    get() { return { ...state }; },
+  };
+}
+
+// ── DB 일괄 업데이트 (1회 쿼리) ──────────────────────────────────────────────
+async function flushSiteState(DB, siteId, fields) {
   const keys = Object.keys(fields);
   if (!keys.length) return;
   const sets = keys.map(k => k + '=?');
@@ -104,9 +115,10 @@ async function updateSite(DB, siteId, fields) {
     await DB.prepare(
       `UPDATE sites SET ${sets.join(', ')}, updated_at=datetime('now') WHERE id=?`
     ).bind(...vals).run();
-  } catch (e) { console.error('updateSite err:', e.message); }
+  } catch (e) { console.error('flushSiteState err:', e.message); }
 }
 
+// ── 즉시 실패 기록 (에러 시에만 개별 DB 쓰기 허용) ──────────────────────────
 async function failSite(DB, siteId, step, message) {
   console.error(`[FAIL] ${step}: ${message}`);
   try {
@@ -116,6 +128,7 @@ async function failSite(DB, siteId, step, message) {
   } catch (e) { console.error('failSite err:', e.message); }
 }
 
+// ── 유틸리티 ──────────────────────────────────────────────────────────────────
 function randSuffix(len = 6) {
   const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
   let out = '';
@@ -136,7 +149,7 @@ function deobfuscate(str, salt) {
   } catch { return ''; }
 }
 
-// ── CF 리소스 생성 ──────────────────────────────────────────────────────────
+// ── CF 리소스 생성 ────────────────────────────────────────────────────────────
 
 async function createD1(token, accountId, prefix) {
   const name = `cloudpress-site-${prefix}-${Date.now().toString(36)}`;
@@ -157,41 +170,18 @@ async function createKV(token, accountId, prefix) {
   return { ok: false, error: 'KV 생성 실패: ' + cfErrMsg(res) };
 }
 
-// ── 사이트 D1 스키마 초기화 (Workers D1 API) ────────────────────────────────
-// cloudflare-cms의 schema.sql을 HTTP로 fetch 후 D1 API로 실행
-
-async function initSiteD1Schema(token, accountId, d1Id, githubRepo, githubBranch, githubToken) {
-  // GitHub에서 schema.sql fetch
-  const branch = githubBranch || 'main';
-  const rawUrl = `https://raw.githubusercontent.com/${githubRepo}/${branch}/schema.sql`;
-
-  let schemaSql = '';
-  try {
-    const headers = { 'User-Agent': 'CloudPress/16.0' };
-    if (githubToken) headers['Authorization'] = `Bearer ${githubToken}`;
-    const res = await fetch(rawUrl, { headers });
-    if (res.ok) {
-      schemaSql = await res.text();
-    } else {
-      console.warn('[provision] schema.sql fetch 실패 — 내장 최소 스키마 사용');
-    }
-  } catch (e) {
-    console.warn('[provision] schema.sql fetch 오류:', e.message);
-  }
-
-  // fetch 실패 시 최소 내장 스키마 사용
-  if (!schemaSql.trim()) {
+// ── 사이트 D1 스키마 초기화 ───────────────────────────────────────────────────
+// schemaSql을 직접 받아서 실행 (GitHub fetch는 fetchCMSSource에서 이미 완료)
+async function initSiteD1Schema(token, accountId, d1Id, schemaSql) {
+  if (!schemaSql?.trim()) {
     schemaSql = getMinimalSchema();
   }
 
-  // D1 SQL 실행 API — 세미콜론으로 분리해 각 구문 개별 실행
-  // (D1은 단일 세미콜론 분리 구문 지원)
   const res = await cfReq(token, `/accounts/${accountId}/d1/database/${d1Id}/query`, 'POST', {
     sql: schemaSql,
   });
 
   if (!res.success) {
-    // 일부 CREATE INDEX IF NOT EXISTS 실패는 무시
     const errors = (res.errors || []).filter(e => !String(e.message).includes('already exists'));
     if (errors.length > 0) {
       console.warn('[provision] D1 스키마 일부 오류(무시):', JSON.stringify(errors));
@@ -201,31 +191,32 @@ async function initSiteD1Schema(token, accountId, d1Id, githubRepo, githubBranch
   return { ok: true };
 }
 
-// KV 초기값 설정
-async function initKVData(token, accountId, kvId, entries) {
-  for (const [key, value] of Object.entries(entries)) {
-    await cfReq(
-      token,
-      `/accounts/${accountId}/storage/kv/namespaces/${kvId}/values/${encodeURIComponent(key)}`,
-      'PUT',
-      null
-    ).catch(() => {});
-
-    // KV PUT은 form/text body
-    try {
-      await fetch(
-        `${CF_API}/accounts/${accountId}/storage/kv/namespaces/${kvId}/values/${encodeURIComponent(key)}`,
-        {
-          method:  'PUT',
-          headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'text/plain' },
-          body:    value,
-        }
-      );
-    } catch (e) { console.warn('[provision] KV put 오류:', key, e.message); }
+// ── CACHE KV 도메인 매핑 일괄 PUT (CF KV Bulk API) ───────────────────────────
+// 개별 3회 → 단일 bulk 요청 1회
+async function putCacheKVBulk(token, accountId, kvId, entries) {
+  // entries: [{ key, value }]
+  if (!entries.length) return;
+  try {
+    const res = await fetch(
+      `${CF_API}/accounts/${accountId}/storage/kv/namespaces/${kvId}/bulk`,
+      {
+        method:  'PUT',
+        headers: {
+          'Authorization': 'Bearer ' + token,
+          'Content-Type':  'application/json',
+        },
+        body: JSON.stringify(entries.map(({ key, value }) => ({ key, value }))),
+      }
+    );
+    if (!res.ok) {
+      console.warn('[provision] CACHE KV bulk put HTTP 오류:', res.status);
+    }
+  } catch (e) {
+    console.warn('[provision] CACHE KV bulk put 오류:', e.message);
   }
 }
 
-// ── GitHub에서 cloudflare-cms 소스 파일 목록 조회 ──────────────────────────
+// ── GitHub에서 cloudflare-cms 소스 파일 목록 조회 ────────────────────────────
 
 const CMS_FILES = [
   'index.js',
@@ -297,18 +288,23 @@ const CMS_FILES = [
   'cp-includes/user.js',
 ];
 
+// schema.sql도 함께 fetch (initSiteD1Schema에서 별도 fetch 불필요)
+const EXTRA_FILES = ['schema.sql'];
+
 /**
  * GitHub raw URL에서 모든 CMS 소스 파일을 병렬 fetch.
- * 반환: { path → content } Map
+ * 반환: { sourceMap: Map<path, content>, schemaSql: string }
  */
 async function fetchCMSSource(githubRepo, githubBranch, githubToken) {
   const branch  = githubBranch || 'main';
   const baseUrl = `https://raw.githubusercontent.com/${githubRepo}/${branch}`;
-  const headers = { 'User-Agent': 'CloudPress/16.0' };
+  const headers = { 'User-Agent': 'CloudPress/16.1' };
   if (githubToken) headers['Authorization'] = `Bearer ${githubToken}`;
 
+  const allFiles = [...CMS_FILES, ...EXTRA_FILES];
+
   const results = await Promise.all(
-    CMS_FILES.map(async (filePath) => {
+    allFiles.map(async (filePath) => {
       try {
         const res = await fetch(`${baseUrl}/${filePath}`, { headers });
         if (!res.ok) {
@@ -324,21 +320,22 @@ async function fetchCMSSource(githubRepo, githubBranch, githubToken) {
     })
   );
 
-  const map = new Map();
+  const sourceMap = new Map();
+  let schemaSql = '';
+
   for (const [path, content] of results) {
-    if (content !== null) map.set(path, content);
+    if (content === null) continue;
+    if (path === 'schema.sql') {
+      schemaSql = content;
+    } else {
+      sourceMap.set(path, content);
+    }
   }
-  return map;
+
+  return { sourceMap, schemaSql };
 }
 
-// ── Workers Script Upload API (multipart/form-data) ─────────────────────────
-//
-// 업로드 방식: Workers Script Upload API (PUT /accounts/{id}/workers/scripts/{name})
-//   - Content-Type: multipart/form-data
-//   - Part 1: "metadata"  → JSON (bindings, compatibility_date, main_module)
-//   - Part 2+: 각 JS 파일 (name = 파일 경로, filename = 파일 경로)
-//
-// 직접 파일 업로드가 아닌, GitHub에서 가져온 코드를 번들로 Workers API에 업로드.
+// ── Workers Script Upload API (multipart/form-data) ───────────────────────────
 
 async function uploadWorkerWithCMSSource(token, accountId, workerName, opts, cmsSourceMap) {
   const {
@@ -354,32 +351,23 @@ async function uploadWorkerWithCMSSource(token, accountId, workerName, opts, cms
     siteDomain,
   } = opts;
 
-  // ── 바인딩 정의 ───────────────────────────────────────────────────────────
   const bindings = [];
 
-  // 메인 D1 (cloudpress 메인 DB — 사용자/사이트 목록)
   if (mainDbId)     bindings.push({ type: 'd1',          name: 'CP_MAIN_DB',  id: mainDbId });
-  // 캐시 KV
   if (cacheKvId)    bindings.push({ type: 'kv_namespace', name: 'CACHE',      namespace_id: cacheKvId });
-  // 세션 KV
   if (sessionsKvId) bindings.push({ type: 'kv_namespace', name: 'SESSIONS',   namespace_id: sessionsKvId });
-  // 사이트 전용 D1
   if (siteD1Id)     bindings.push({ type: 'd1',          name: 'CP_DB',       id: siteD1Id });
-  // 사이트 전용 KV
   if (siteKvId)     bindings.push({ type: 'kv_namespace', name: 'CP_KV',      namespace_id: siteKvId });
 
-  // 환경 변수 (plain_text)
   bindings.push({ type: 'plain_text', name: 'CP_SITE_NAME',    text: siteName    || '' });
   bindings.push({ type: 'plain_text', name: 'CP_SITE_URL',     text: 'https://' + (siteDomain || '') });
   bindings.push({ type: 'plain_text', name: 'CF_ACCOUNT_ID',   text: cfAccountId || '' });
   bindings.push({ type: 'plain_text', name: 'SITE_PREFIX',     text: sitePrefix  || '' });
 
-  // CF API 토큰은 secret으로 처리 (secret_text binding)
   if (cfApiToken) {
     bindings.push({ type: 'secret_text', name: 'CF_API_TOKEN', text: cfApiToken });
   }
 
-  // ── 메타데이터 ────────────────────────────────────────────────────────────
   const metadata = {
     main_module:        'index.js',
     compatibility_date: '2024-09-23',
@@ -387,13 +375,11 @@ async function uploadWorkerWithCMSSource(token, accountId, workerName, opts, cms
     bindings,
   };
 
-  // ── Multipart 본문 조립 ───────────────────────────────────────────────────
   const boundary = '----CPUpload' + Date.now().toString(36) + randSuffix(4);
   const enc      = new TextEncoder();
   const CRLF     = '\r\n';
   const parts    = [];
 
-  // Part 1: metadata JSON
   parts.push(
     `--${boundary}${CRLF}` +
     `Content-Disposition: form-data; name="metadata"${CRLF}` +
@@ -401,7 +387,6 @@ async function uploadWorkerWithCMSSource(token, accountId, workerName, opts, cms
     JSON.stringify(metadata) + CRLF
   );
 
-  // Part 2+: 각 JS 소스 파일
   for (const [filePath, content] of cmsSourceMap) {
     parts.push(
       `--${boundary}${CRLF}` +
@@ -413,14 +398,12 @@ async function uploadWorkerWithCMSSource(token, accountId, workerName, opts, cms
 
   parts.push(`--${boundary}--${CRLF}`);
 
-  // Uint8Array로 직렬화
   const chunks = parts.map(p => enc.encode(p));
   const total  = chunks.reduce((s, c) => s + c.length, 0);
   const body   = new Uint8Array(total);
   let off = 0;
   for (const c of chunks) { body.set(c, off); off += c.length; }
 
-  // ── Workers Script Upload API 호출 ────────────────────────────────────────
   try {
     const res  = await fetch(
       `${CF_API}/accounts/${accountId}/workers/scripts/${workerName}`,
@@ -443,10 +426,9 @@ async function uploadWorkerWithCMSSource(token, accountId, workerName, opts, cms
   }
 }
 
-// ── CF DNS / Route 유틸리티 ─────────────────────────────────────────────────
+// ── CF DNS / Route 유틸리티 ───────────────────────────────────────────────────
 
 async function cfGetZone(token, domain) {
-  // 루트 도메인으로 존 조회
   const root = domain.split('.').slice(-2).join('.');
   const res  = await cfReq(token, `/zones?name=${encodeURIComponent(root)}&status=active`);
   if (res.success && res.result?.length > 0) {
@@ -456,7 +438,6 @@ async function cfGetZone(token, domain) {
 }
 
 async function cfUpsertDns(token, zoneId, type, name, content, proxied = true) {
-  // 기존 레코드 조회
   const list = await cfReq(token, `/zones/${zoneId}/dns_records?type=${type}&name=${encodeURIComponent(name)}`);
   const existing = list.result?.[0];
 
@@ -482,7 +463,6 @@ async function cfUpsertRoute(token, zoneId, pattern, workerName) {
 }
 
 async function getWorkerSubdomain(token, accountId, workerName) {
-  // workers.dev 서브도메인 확인
   const res = await cfReq(token, `/accounts/${accountId}/workers/subdomain`);
   if (res.success && res.result?.subdomain) {
     return `${workerName}.${res.result.subdomain}.workers.dev`;
@@ -490,7 +470,6 @@ async function getWorkerSubdomain(token, accountId, workerName) {
   return `${workerName}.workers.dev`;
 }
 
-// workers.dev route 활성화
 async function enableWorkersDev(token, accountId, workerName) {
   const res = await cfReq(
     token,
@@ -501,7 +480,49 @@ async function enableWorkersDev(token, accountId, workerName) {
   return res.success;
 }
 
-// ── 메인 핸들러 ─────────────────────────────────────────────────────────────
+// ── 메인 바인딩 ID 자동 탐색 ─────────────────────────────────────────────────
+// settings에 없을 경우 Pages 프로젝트에서 자동 탐색
+// DB 저장은 여기서 하지 않고 메인 흐름의 final flush에 위임
+
+async function resolveMainBindingIds(token, accountId) {
+  const result = { mainDbId: '', cacheKvId: '', sessionsKvId: '' };
+
+  try {
+    const pagesRes = await cfReq(token, `/accounts/${accountId}/pages/projects`);
+    if (!pagesRes.success) return result;
+
+    const project = (pagesRes.result || []).find(p =>
+      p.name?.toLowerCase().includes('cloudpress') ||
+      p.name?.toLowerCase().includes('cp-')
+    );
+    if (!project) return result;
+
+    const projRes = await cfReq(token, `/accounts/${accountId}/pages/projects/${project.name}`);
+    if (!projRes.success) return result;
+
+    const bindings   = projRes.result?.deployment_configs?.production?.d1_databases || {};
+    const kvBindings = projRes.result?.deployment_configs?.production?.kv_namespaces || {};
+
+    for (const [name, val] of Object.entries(bindings)) {
+      const id = val?.id || val?.database_id || '';
+      if (!id) continue;
+      if (name === 'DB' || name === 'MAIN_DB') result.mainDbId = id;
+    }
+
+    for (const [name, val] of Object.entries(kvBindings)) {
+      const id = val?.namespace_id || val?.id || '';
+      if (!id) continue;
+      if (name === 'CACHE')    result.cacheKvId    = id;
+      if (name === 'SESSIONS') result.sessionsKvId = id;
+    }
+  } catch (e) {
+    console.warn('[provision] 바인딩 ID 자동 탐색 실패:', e.message);
+  }
+
+  return result;
+}
+
+// ── 메인 핸들러 ───────────────────────────────────────────────────────────────
 export const onRequestOptions = () => new Response(null, { status: 204, headers: CORS });
 
 export async function onRequestPost({ request, env, params }) {
@@ -511,32 +532,47 @@ export async function onRequestPost({ request, env, params }) {
   const siteId = params?.id;
   if (!siteId) return err('사이트 ID가 없습니다.', 400);
 
-  // ── 사이트 조회 ────────────────────────────────────────────────────────────
-  let site;
+  // ── [D1 #1] 사이트 + settings 동시 조회 (2 쿼리를 batch로) ─────────────────
+  let site, settings;
   try {
-    site = await env.DB.prepare(
-      'SELECT s.id, s.user_id, s.name, s.primary_domain, s.site_prefix,'
-      + ' s.status, s.provision_step, s.plan,'
-      + ' s.site_d1_id, s.site_kv_id,'
-      + ' u.cf_global_api_key, u.cf_account_email, u.cf_account_id'
-      + ' FROM sites s JOIN users u ON u.id = s.user_id'
-      + ' WHERE s.id=? AND s.user_id=?'
-    ).bind(siteId, user.id).first();
-  } catch (e) { return err('사이트 조회 오류: ' + e.message, 500); }
+    const [siteRow, settingsRows] = await env.DB.batch([
+      env.DB.prepare(
+        'SELECT s.id, s.user_id, s.name, s.primary_domain, s.site_prefix,'
+        + ' s.status, s.provision_step, s.plan,'
+        + ' s.site_d1_id, s.site_kv_id,'
+        + ' u.cf_global_api_key, u.cf_account_email, u.cf_account_id'
+        + ' FROM sites s JOIN users u ON u.id = s.user_id'
+        + ' WHERE s.id=? AND s.user_id=?'
+      ).bind(siteId, user.id),
+      env.DB.prepare('SELECT key, value FROM settings'),
+    ]);
+
+    site = siteRow.results?.[0] ?? null;
+
+    const rawSettings = settingsRows.results || [];
+    settings = {};
+    for (const r of rawSettings) settings[r.key] = r.value ?? '';
+
+  } catch (e) { return err('초기 데이터 조회 오류: ' + e.message, 500); }
 
   if (!site) return err('사이트를 찾을 수 없습니다.', 404);
   if (site.status === 'active') return ok({ message: '이미 완료된 사이트입니다.' });
 
-  await updateSite(env.DB, siteId, {
-    status: 'provisioning', provision_step: 'starting', error_message: null,
-  });
+  // ── [D1 #2] 프로비저닝 시작 표시 (즉시 1회 쓰기) ───────────────────────────
+  try {
+    await env.DB.prepare(
+      "UPDATE sites SET status='provisioning', provision_step='starting', error_message=NULL, updated_at=datetime('now') WHERE id=?"
+    ).bind(siteId).run();
+  } catch (e) { console.error('initial status update err:', e.message); }
+
+  // 이후 updateSite 대신 메모리 상태 추적
+  const siteState = makeSiteState();
 
   const encKey = env?.ENCRYPTION_KEY || 'cp_enc_default';
 
-  // ── CF 인증 키 결정 ────────────────────────────────────────────────────────
-  // 우선순위: 사용자 CF 키 > 어드민 CF 키
-  const adminCfToken   = await getSetting(env, 'cf_api_token');
-  const adminCfAccount = await getSetting(env, 'cf_account_id');
+  // ── CF 인증 키 결정 (설정은 메모리에서) ────────────────────────────────────
+  const adminCfToken   = settingVal(settings, 'cf_api_token');
+  const adminCfAccount = settingVal(settings, 'cf_account_id');
 
   let cfToken   = null;
   let cfAccount = null;
@@ -547,7 +583,6 @@ export async function onRequestPost({ request, env, params }) {
     cfAccount = site.cf_account_id;
   }
 
-  // 사용자 키 없으면 어드민 키 사용
   if (!cfToken || !cfAccount) {
     cfToken   = adminCfToken;
     cfAccount = adminCfAccount;
@@ -559,10 +594,10 @@ export async function onRequestPost({ request, env, params }) {
     return err(e, 400);
   }
 
-  // ── GitHub CMS 소스 설정 ──────────────────────────────────────────────────
-  const githubRepo   = await getSetting(env, 'cms_github_repo',   '');
-  const githubBranch = await getSetting(env, 'cms_github_branch', 'main');
-  const githubToken  = await getSetting(env, 'cms_github_token',  '');
+  // ── GitHub CMS 소스 설정 (메모리에서) ──────────────────────────────────────
+  const githubRepo   = settingVal(settings, 'cms_github_repo',   '');
+  const githubBranch = settingVal(settings, 'cms_github_branch', 'main');
+  const githubToken  = settingVal(settings, 'cms_github_token',  '');
 
   if (!githubRepo) {
     const e = 'CMS GitHub 레포가 설정되지 않았습니다. 어드민 설정에서 cms_github_repo를 입력해주세요.';
@@ -570,16 +605,16 @@ export async function onRequestPost({ request, env, params }) {
     return err(e, 400);
   }
 
-  const domain    = site.primary_domain;
-  const wwwDomain = 'www.' + domain;
-  const prefix    = site.site_prefix;
+  const domain     = site.primary_domain;
+  const wwwDomain  = 'www.' + domain;
+  const prefix     = site.site_prefix;
   const workerName = 'cloudpress-site-' + prefix;
 
-  // ── Step 1: GitHub에서 CMS 소스 fetch ────────────────────────────────────
-  await updateSite(env.DB, siteId, { provision_step: 'github_fetch' });
+  // ── Step 1: GitHub에서 CMS 소스 fetch (schema.sql 포함, 병렬) ──────────────
   console.log(`[provision] GitHub fetch 시작: ${githubRepo}@${githubBranch}`);
+  siteState.set({ provision_step: 'github_fetch' });
 
-  const cmsSourceMap = await fetchCMSSource(githubRepo, githubBranch, githubToken);
+  const { sourceMap: cmsSourceMap, schemaSql } = await fetchCMSSource(githubRepo, githubBranch, githubToken);
 
   if (cmsSourceMap.size === 0) {
     const e = `GitHub 레포(${githubRepo})에서 CMS 소스를 가져오지 못했습니다. 레포 주소와 토큰을 확인해주세요.`;
@@ -587,78 +622,105 @@ export async function onRequestPost({ request, env, params }) {
     return err(e, 500);
   }
 
-  // 필수 파일 확인
   if (!cmsSourceMap.has('index.js')) {
     const e = 'GitHub 레포에서 index.js를 찾을 수 없습니다. cms_github_repo 설정을 확인해주세요.';
     await failSite(env.DB, siteId, 'github_fetch', e);
     return err(e, 500);
   }
 
-  console.log(`[provision] GitHub fetch 완료: ${cmsSourceMap.size}개 파일`);
+  console.log(`[provision] GitHub fetch 완료: ${cmsSourceMap.size}개 파일, schema.sql: ${schemaSql ? '✓' : '내장 fallback'}`);
 
-  // ── Step 2: 사이트 전용 D1 생성 ──────────────────────────────────────────
-  await updateSite(env.DB, siteId, { provision_step: 'd1_create' });
+  // ── Step 2+3: D1 + KV 생성 (이미 있으면 skip, 없으면 병렬 생성) ─────────────
+  siteState.set({ provision_step: 'd1_kv_create' });
 
   let d1Id = site.site_d1_id || null;
-  if (!d1Id) {
-    const r = await createD1(cfToken, cfAccount, prefix);
-    if (!r.ok) {
-      await failSite(env.DB, siteId, 'd1_create', r.error);
-      return err(r.error, 500);
-    }
-    d1Id = r.id;
-    await updateSite(env.DB, siteId, { site_d1_id: d1Id, site_d1_name: r.name });
-    console.log(`[provision] D1 생성 완료: ${r.name} (${d1Id})`);
-  } else {
-    console.log(`[provision] D1 재사용: ${d1Id}`);
-  }
-
-  // ── Step 3: 사이트 전용 KV 생성 ──────────────────────────────────────────
-  await updateSite(env.DB, siteId, { provision_step: 'kv_create' });
-
   let kvId = site.site_kv_id || null;
-  if (!kvId) {
-    const r = await createKV(cfToken, cfAccount, prefix);
-    if (!r.ok) {
-      await failSite(env.DB, siteId, 'kv_create', r.error);
-      return err(r.error, 500);
+
+  if (!d1Id && !kvId) {
+    // 둘 다 없으면 병렬 생성
+    const [d1Res, kvRes] = await Promise.all([
+      createD1(cfToken, cfAccount, prefix),
+      createKV(cfToken, cfAccount, prefix),
+    ]);
+
+    if (!d1Res.ok) {
+      await failSite(env.DB, siteId, 'd1_create', d1Res.error);
+      return err(d1Res.error, 500);
     }
-    kvId = r.id;
-    await updateSite(env.DB, siteId, { site_kv_id: kvId, site_kv_title: r.title });
-    console.log(`[provision] KV 생성 완료: ${r.title} (${kvId})`);
+    if (!kvRes.ok) {
+      await failSite(env.DB, siteId, 'kv_create', kvRes.error);
+      return err(kvRes.error, 500);
+    }
+
+    d1Id = d1Res.id;
+    kvId = kvRes.id;
+    siteState.set({ site_d1_id: d1Id, site_d1_name: d1Res.name, site_kv_id: kvId, site_kv_title: kvRes.title });
+    console.log(`[provision] D1 생성: ${d1Res.name} (${d1Id}), KV 생성: ${kvRes.title} (${kvId})`);
+
+  } else if (!d1Id) {
+    const d1Res = await createD1(cfToken, cfAccount, prefix);
+    if (!d1Res.ok) {
+      await failSite(env.DB, siteId, 'd1_create', d1Res.error);
+      return err(d1Res.error, 500);
+    }
+    d1Id = d1Res.id;
+    siteState.set({ site_d1_id: d1Id, site_d1_name: d1Res.name });
+    console.log(`[provision] D1 생성: ${d1Res.name} (${d1Id}), KV 재사용: ${kvId}`);
+
+  } else if (!kvId) {
+    const kvRes = await createKV(cfToken, cfAccount, prefix);
+    if (!kvRes.ok) {
+      await failSite(env.DB, siteId, 'kv_create', kvRes.error);
+      return err(kvRes.error, 500);
+    }
+    kvId = kvRes.id;
+    siteState.set({ site_kv_id: kvId, site_kv_title: kvRes.title });
+    console.log(`[provision] D1 재사용: ${d1Id}, KV 생성: ${kvRes.title} (${kvId})`);
+
   } else {
-    console.log(`[provision] KV 재사용: ${kvId}`);
+    console.log(`[provision] D1 재사용: ${d1Id}, KV 재사용: ${kvId}`);
   }
 
-  // ── Step 4: 사이트 D1 스키마 초기화 ──────────────────────────────────────
-  await updateSite(env.DB, siteId, { provision_step: 'd1_schema' });
-  console.log('[provision] D1 스키마 초기화 중...');
+  // ── Step 4: D1 스키마 초기화 + 메인 바인딩 ID 확보 (병렬) ──────────────────
+  siteState.set({ provision_step: 'd1_schema' });
+  console.log('[provision] D1 스키마 초기화 + 바인딩 ID 확보 병렬 시작...');
 
-  const schemaRes = await initSiteD1Schema(
-    cfToken, cfAccount, d1Id, githubRepo, githubBranch, githubToken
-  );
+  let mainDbId     = settingVal(settings, 'main_db_id',     '');
+  let cacheKvId    = settingVal(settings, 'cache_kv_id',    '');
+  let sessionsKvId = settingVal(settings, 'sessions_kv_id', '');
+
+  const needsBindingResolve = !mainDbId || !cacheKvId || !sessionsKvId;
+
+  const [schemaRes, resolvedIds] = await Promise.all([
+    initSiteD1Schema(cfToken, cfAccount, d1Id, schemaSql),
+    needsBindingResolve ? resolveMainBindingIds(cfToken, cfAccount) : Promise.resolve(null),
+  ]);
+
   if (!schemaRes.ok) {
-    // 스키마 실패는 치명적이지 않음 — 계속 진행 (인스톨러에서 재실행 가능)
     console.warn('[provision] D1 스키마 초기화 부분 실패 (계속 진행)');
   } else {
     console.log('[provision] D1 스키마 초기화 완료');
   }
 
-  // ── Step 5: 메인 바인딩 ID 확보 ──────────────────────────────────────────
-  let mainDbId     = await getSetting(env, 'main_db_id',     '');
-  let cacheKvId    = await getSetting(env, 'cache_kv_id',    '');
-  let sessionsKvId = await getSetting(env, 'sessions_kv_id', '');
+  if (resolvedIds) {
+    if (!mainDbId)     mainDbId     = resolvedIds.mainDbId     || '';
+    if (!cacheKvId)    cacheKvId    = resolvedIds.cacheKvId    || '';
+    if (!sessionsKvId) sessionsKvId = resolvedIds.sessionsKvId || '';
 
-  // 설정에 없으면 Pages 프로젝트에서 자동 탐색
-  if (!mainDbId || !cacheKvId || !sessionsKvId) {
-    const ids = await resolveMainBindingIds(cfToken, cfAccount, env.DB);
-    if (!mainDbId)     mainDbId     = ids.mainDbId     || '';
-    if (!cacheKvId)    cacheKvId    = ids.cacheKvId    || '';
-    if (!sessionsKvId) sessionsKvId = ids.sessionsKvId || '';
+    // 탐색된 ID는 settings에 저장 (비동기 — 결과 기다리지 않음, 실패해도 무방)
+    if (resolvedIds.mainDbId || resolvedIds.cacheKvId || resolvedIds.sessionsKvId) {
+      const stmts = [];
+      const upsertSql = `INSERT INTO settings (key,value,updated_at) VALUES (?,?,datetime('now'))
+                         ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at`;
+      if (resolvedIds.mainDbId)     stmts.push(env.DB.prepare(upsertSql).bind('main_db_id',     resolvedIds.mainDbId));
+      if (resolvedIds.cacheKvId)    stmts.push(env.DB.prepare(upsertSql).bind('cache_kv_id',    resolvedIds.cacheKvId));
+      if (resolvedIds.sessionsKvId) stmts.push(env.DB.prepare(upsertSql).bind('sessions_kv_id', resolvedIds.sessionsKvId));
+      env.DB.batch(stmts).catch(e => console.warn('[provision] 바인딩 ID 저장 실패:', e.message));
+    }
   }
 
-  // ── Step 6: Workers Script Upload API — CMS 코드 업로드 ──────────────────
-  await updateSite(env.DB, siteId, { provision_step: 'worker_upload' });
+  // ── Step 5: Workers Script Upload ──────────────────────────────────────────
+  siteState.set({ provision_step: 'worker_upload' });
   console.log(`[provision] Worker 업로드 중: ${workerName}`);
 
   const upRes = await uploadWorkerWithCMSSource(
@@ -684,14 +746,15 @@ export async function onRequestPost({ request, env, params }) {
     await failSite(env.DB, siteId, 'worker_upload', upRes.error);
     return err('Worker 업로드 실패: ' + upRes.error, 500);
   }
+
   console.log(`[provision] Worker 업로드 완료: ${workerName}`);
-  await updateSite(env.DB, siteId, { worker_name: workerName });
+  siteState.set({ worker_name: workerName });
 
-  // workers.dev 활성화
-  await enableWorkersDev(cfToken, cfAccount, workerName);
+  // workers.dev 활성화 (결과 기다리되 실패해도 계속)
+  await enableWorkersDev(cfToken, cfAccount, workerName).catch(() => {});
 
-  // ── Step 7: CACHE KV 도메인 매핑 등록 ────────────────────────────────────
-  await updateSite(env.DB, siteId, { provision_step: 'kv_mapping' });
+  // ── Step 6: CACHE KV 도메인 매핑 등록 (bulk 1회) ───────────────────────────
+  siteState.set({ provision_step: 'kv_mapping' });
 
   const siteMapping = JSON.stringify({
     id:          siteId,
@@ -704,56 +767,63 @@ export async function onRequestPost({ request, env, params }) {
   });
 
   if (cacheKvId && cfToken && cfAccount) {
-    for (const key of [`site_domain:${domain}`, `site_domain:${wwwDomain}`, `site_prefix:${prefix}`]) {
-      try {
-        await fetch(
-          `${CF_API}/accounts/${cfAccount}/storage/kv/namespaces/${cacheKvId}/values/${encodeURIComponent(key)}`,
-          {
-            method:  'PUT',
-            headers: { 'Authorization': 'Bearer ' + cfToken, 'Content-Type': 'text/plain' },
-            body:    siteMapping,
-          }
-        );
-      } catch (e) { console.warn('[provision] CACHE KV put 실패:', key, e.message); }
-    }
+    await putCacheKVBulk(cfToken, cfAccount, cacheKvId, [
+      { key: `site_domain:${domain}`,    value: siteMapping },
+      { key: `site_domain:${wwwDomain}`, value: siteMapping },
+      { key: `site_prefix:${prefix}`,    value: siteMapping },
+    ]);
   }
 
-  // ── Step 8: DNS + Worker Route 등록 ──────────────────────────────────────
-  await updateSite(env.DB, siteId, { provision_step: 'dns_setup' });
+  // ── Step 7: DNS + Worker Route 등록 (병렬) ─────────────────────────────────
+  siteState.set({ provision_step: 'dns_setup' });
 
-  const cnameTarget = await getWorkerSubdomain(cfToken, cfAccount, workerName);
+  const [cnameTarget, zone] = await Promise.all([
+    getWorkerSubdomain(cfToken, cfAccount, workerName),
+    cfGetZone(cfToken, domain),
+  ]);
+
   let domainStatus   = 'manual_required';
   let cfZoneId       = null;
   let dnsRecordId    = null, dnsRecordWwwId = null;
+  let routeId = null, routeWwwId = null;
 
-  const zone = await cfGetZone(cfToken, domain);
   if (zone.ok) {
     cfZoneId = zone.zoneId;
-    const dr  = await cfUpsertDns(cfToken, cfZoneId, 'CNAME', domain,    cnameTarget, true);
-    const drw = await cfUpsertDns(cfToken, cfZoneId, 'CNAME', wwwDomain, cnameTarget, true);
+
+    // DNS 레코드 2건 병렬
+    const [dr, drw] = await Promise.all([
+      cfUpsertDns(cfToken, cfZoneId, 'CNAME', domain,    cnameTarget, true),
+      cfUpsertDns(cfToken, cfZoneId, 'CNAME', wwwDomain, cnameTarget, true),
+    ]);
     if (dr.ok)  dnsRecordId    = dr.recordId;
     if (drw.ok) dnsRecordWwwId = drw.recordId;
 
-    await updateSite(env.DB, siteId, { provision_step: 'worker_route' });
-    const rr = await cfUpsertRoute(cfToken, cfZoneId, domain + '/*',    workerName);
-    const rw = await cfUpsertRoute(cfToken, cfZoneId, wwwDomain + '/*', workerName);
+    siteState.set({ provision_step: 'worker_route' });
+
+    // Worker Route 2건 병렬
+    const [rr, rw] = await Promise.all([
+      cfUpsertRoute(cfToken, cfZoneId, domain + '/*',    workerName),
+      cfUpsertRoute(cfToken, cfZoneId, wwwDomain + '/*', workerName),
+    ]);
+    if (rr.ok) routeId    = rr.routeId;
+    if (rw.ok) routeWwwId = rw.routeId;
     if (rr.ok || rw.ok) domainStatus = 'dns_propagating';
 
-    await updateSite(env.DB, siteId, {
+    siteState.set({
       worker_route:        domain + '/*',
       worker_route_www:    wwwDomain + '/*',
-      worker_route_id:     rr.routeId || null,
-      worker_route_www_id: rw.routeId || null,
+      worker_route_id:     routeId || null,
+      worker_route_www_id: routeWwwId || null,
       cf_zone_id:          cfZoneId,
       dns_record_id:       dnsRecordId,
       dns_record_www_id:   dnsRecordWwwId,
     });
   }
 
-  // ── Step 9: 완료 ──────────────────────────────────────────────────────────
+  // ── Step 8: 완료 — 메모리에 쌓인 상태를 1회 flush ─────────────────────────
   const adminUrl = `https://${domain}/cp-admin/setup-config`;
 
-  await updateSite(env.DB, siteId, {
+  siteState.set({
     status:         'active',
     provision_step: 'completed',
     domain_status:  domainStatus,
@@ -763,6 +833,10 @@ export async function onRequestPost({ request, env, params }) {
       : null,
   });
 
+  // [D1 #3] 사이트 상태 일괄 업데이트 (1회)
+  await flushSiteState(env.DB, siteId, siteState.get());
+
+  // [D1 #4] 최종 사이트 조회 (1회)
   const finalSite = await env.DB.prepare(
     'SELECT status, provision_step, error_message, wp_admin_url, primary_domain,'
     + ' site_d1_id, site_kv_id, domain_status, worker_name, name FROM sites WHERE id=?'
@@ -785,57 +859,7 @@ export async function onRequestPost({ request, env, params }) {
   });
 }
 
-// ── 메인 바인딩 ID 자동 탐색 ────────────────────────────────────────────────
-// settings DB에 없을 경우 Workers 환경에서 바인딩 UUID를 직접 추출 시도
-
-async function resolveMainBindingIds(token, accountId, DB) {
-  const result = { mainDbId: '', cacheKvId: '', sessionsKvId: '' };
-
-  try {
-    // Pages 프로젝트 목록에서 cloudpress 관련 프로젝트 탐색
-    const pagesRes = await cfReq(token, `/accounts/${accountId}/pages/projects`);
-    if (!pagesRes.success) return result;
-
-    const project = (pagesRes.result || []).find(p =>
-      p.name?.toLowerCase().includes('cloudpress') ||
-      p.name?.toLowerCase().includes('cp-')
-    );
-    if (!project) return result;
-
-    const projRes = await cfReq(token, `/accounts/${accountId}/pages/projects/${project.name}`);
-    if (!projRes.success) return result;
-
-    const bindings = projRes.result?.deployment_configs?.production?.d1_databases || {};
-    const kvBindings = projRes.result?.deployment_configs?.production?.kv_namespaces || {};
-
-    // D1: DB 바인딩 탐색
-    for (const [name, val] of Object.entries(bindings)) {
-      const id = val?.id || val?.database_id || '';
-      if (!id) continue;
-      if (name === 'DB' || name === 'MAIN_DB') result.mainDbId = id;
-    }
-
-    // KV: CACHE / SESSIONS 바인딩 탐색
-    for (const [name, val] of Object.entries(kvBindings)) {
-      const id = val?.namespace_id || val?.id || '';
-      if (!id) continue;
-      if (name === 'CACHE') result.cacheKvId    = id;
-      if (name === 'SESSIONS') result.sessionsKvId = id;
-    }
-
-    // DB에도 저장
-    if (result.mainDbId)     await DB.prepare("INSERT OR REPLACE INTO settings (key,value,updated_at) VALUES ('main_db_id',?,datetime('now'))").bind(result.mainDbId).run().catch(()=>{});
-    if (result.cacheKvId)    await DB.prepare("INSERT OR REPLACE INTO settings (key,value,updated_at) VALUES ('cache_kv_id',?,datetime('now'))").bind(result.cacheKvId).run().catch(()=>{});
-    if (result.sessionsKvId) await DB.prepare("INSERT OR REPLACE INTO settings (key,value,updated_at) VALUES ('sessions_kv_id',?,datetime('now'))").bind(result.sessionsKvId).run().catch(()=>{});
-
-  } catch (e) {
-    console.warn('[provision] 바인딩 ID 자동 탐색 실패:', e.message);
-  }
-
-  return result;
-}
-
-// ── 최소 내장 스키마 (GitHub fetch 실패 시 fallback) ────────────────────────
+// ── 최소 내장 스키마 (GitHub fetch 실패 시 fallback) ──────────────────────────
 
 function getMinimalSchema() {
   return `
