@@ -37,6 +37,12 @@ CF_ACCOUNT_ID = ""      # wrangler secret put CF_ACCOUNT_ID
 CF_API_TOKEN  = ""      # wrangler secret put CF_API_TOKEN
                         # 필요 권한: D1 Read, KV Read/Write
 
+# ── Limits (서브리퀘스트 한도 상향) ──
+# provision.js의 외부 API 호출(CF API + GitHub fetch)이 많으므로
+# Unbound Workers 방식으로 subrequest 제한을 1000으로 올림
+[limits]
+cpu_ms = 30000
+
 # ── 개발 환경 ──
 [dev]
 port = 8788
