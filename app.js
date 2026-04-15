@@ -84,8 +84,17 @@ const CP = {
   async requireAdmin() {
     const user = await this.requireAuth();
     if (!user) return null;
-    if (user.role !== 'admin') { window.location.href = '/dashboard.html'; return null; }
+    if (user.role !== 'admin' && user.role !== 'manager') {
+      window.location.href = '/dashboard.html';
+      return null;
+    }
     return user;
+  },
+  isAdmin(user) {
+    return user?.role === 'admin';
+  },
+  isAdminOrMgr(user) {
+    return user?.role === 'admin' || user?.role === 'manager';
   },
 
   // Sites
@@ -139,11 +148,12 @@ const CP = {
     return Number(n || 0).toLocaleString('ko-KR') + '원';
   },
   planInfo(plan) {
+    // 모든 요금제 무료 — 플랜은 어드민이 사용자별로 설정
     const p = {
-      free:       { name: '무료',        price: 0,      color: '#6b7280', sites: 1 },
-      starter:    { name: '스타터',      price: 9900,   color: '#6366f1', sites: 3 },
-      pro:        { name: '프로',        price: 29900,  color: '#f97316', sites: 10 },
-      enterprise: { name: '엔터프라이즈', price: 99000,  color: '#ec4899', sites: -1 },
+      free:       { name: '무료', price: 0, color: '#6b7280', sites: 1  },
+      starter:    { name: '무료', price: 0, color: '#6366f1', sites: 3  },
+      pro:        { name: '무료', price: 0, color: '#f97316', sites: 10 },
+      enterprise: { name: '무료', price: 0, color: '#ec4899', sites: -1 },
     };
     return p[plan] || p.free;
   },
