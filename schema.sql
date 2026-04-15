@@ -1,8 +1,9 @@
--- CloudPress v12.7 — schema.sql (완전 수정판)
+-- CloudPress v16.0 — schema.sql (VP 방식 완전 제거, GitHub HTTP fetch 방식)
 -- D1 Console 또는: wrangler d1 execute cloudpress-db --file=schema.sql --remote
 --
 -- 이 파일 하나만 실행하면 모든 테이블·인덱스·기본값이 세팅됩니다.
--- 이미 존재하는 테이블은 IF NOT EXISTS로 보호, 컬럼 추가는 ALTER TABLE로 처리.
+-- 이미 존재하는 테이블은 IF NOT EXISTS로 보호.
+-- 기존 DB 마이그레이션은 파일 하단 ALTER TABLE 섹션 참고.
 
 -- ── users ──────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS users (
@@ -46,7 +47,7 @@ CREATE TABLE IF NOT EXISTS sites (
   -- 사이트 격리 ID
   site_prefix         TEXT UNIQUE,
 
-  -- 사이트 전용 Cloudflare 리소스
+  -- 사이트 전용 Cloudflare 리소스 (D1 + KV — 자동 생성)
   site_d1_id          TEXT,
   site_d1_name        TEXT,
   site_kv_id          TEXT,
@@ -62,10 +63,7 @@ CREATE TABLE IF NOT EXISTS sites (
   dns_record_id       TEXT,
   dns_record_www_id   TEXT,
 
-  -- WordPress 접속 정보
-  wp_username         TEXT,
-  wp_password         TEXT,
-  wp_admin_email      TEXT,
+  -- CMS 어드민 접속 URL (설치 후 /cp-admin/setup-config)
   wp_admin_url        TEXT,
 
   -- 상태
@@ -161,10 +159,56 @@ CREATE INDEX IF NOT EXISTS idx_sites_site_kv_id     ON sites(site_kv_id);
 CREATE INDEX IF NOT EXISTS idx_payments_user_id     ON payments(user_id);
 CREATE INDEX IF NOT EXISTS idx_payments_order_id    ON payments(order_id);
 CREATE INDEX IF NOT EXISTS idx_traffic_created_at   ON traffic_logs(created_at);
+CREATE INDEX IF NOT EXISTS idx_sessions_user_id     ON sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_expires     ON sessions(expires_at);
+
+-- ── settings 기본값 ────────────────────────────────────────────────
+INSERT OR IGNORE INTO settings (key, value) VALUES
+  -- 플랜별 사이트 수
+  ('plan_free_sites',        '1'),
+  ('plan_starter_sites',     '3'),
+  ('plan_pro_sites',         '10'),
+  ('plan_enterprise_sites',  '-1'),
+
+  -- 플랜 가격 (원)
+  ('plan_starter_price',     '9900'),
+  ('plan_pro_price',         '29900'),
+  ('plan_enterprise_price',  '99000'),
+
+  -- Cloudflare 설정
+  ('cf_api_token',           ''),
+  ('cf_account_id',          ''),
+  ('cf_worker_name',         ''),
+  ('worker_cname_target',    ''),
+  ('main_db_id',             ''),
+  ('cache_kv_id',            ''),
+  ('sessions_kv_id',         ''),
+  ('cloudflare_cdn_enabled', '1'),
+
+  -- GitHub CMS 소스 설정 (v16.0 — VP 방식 대체)
+  -- cms_github_repo: cloudflare-cms 소스가 있는 GitHub 레포 (owner/repo)
+  -- 예: myorg/cloudflare-cms
+  ('cms_github_repo',        ''),
+  ('cms_github_branch',      'main'),
+  ('cms_github_token',       ''),
+
+  -- CMS 버전 관리
+  ('cms_versions',           '[]'),
+
+  -- 결제
+  ('toss_client_key',        ''),
+  ('toss_secret_key',        ''),
+
+  -- 일반
+  ('maintenance_mode',       '0'),
+  ('site_name',              '클라우드프레스'),
+  ('site_domain',            'cloud-press.co.kr'),
+  ('auto_ssl',               '1'),
+  ('cloudflare_cdn_enabled', '1');
 
 -- ── 기존 DB 마이그레이션 (컬럼 없으면 추가, 있으면 무시) ──────────
--- 아래 ALTER TABLE 구문들은 D1 Console에서 개별 실행 또는 wrangler로 실행
--- (이미 컬럼이 있으면 "table already has column" 오류가 나지만 무시하면 됨)
+-- D1 Console에서 개별 실행 또는 wrangler로 실행
+-- 이미 컬럼이 있으면 "table already has column" 오류 → 무시
 
 -- users 컬럼 마이그레이션
 ALTER TABLE users ADD COLUMN cf_global_api_key TEXT;
@@ -178,7 +222,7 @@ ALTER TABLE users ADD COLUMN twofa_code_expires INTEGER;
 ALTER TABLE users ADD COLUMN plan_expires_at TEXT;
 ALTER TABLE users ADD COLUMN updated_at TEXT DEFAULT (datetime('now'));
 
--- sites 컬럼 마이그레이션
+-- sites 컬럼 마이그레이션 (v16.0)
 ALTER TABLE sites ADD COLUMN site_d1_id TEXT;
 ALTER TABLE sites ADD COLUMN site_d1_name TEXT;
 ALTER TABLE sites ADD COLUMN site_kv_id TEXT;
@@ -194,9 +238,6 @@ ALTER TABLE sites ADD COLUMN worker_route_www_id TEXT;
 ALTER TABLE sites ADD COLUMN cf_zone_id TEXT;
 ALTER TABLE sites ADD COLUMN dns_record_id TEXT;
 ALTER TABLE sites ADD COLUMN dns_record_www_id TEXT;
-ALTER TABLE sites ADD COLUMN wp_username TEXT;
-ALTER TABLE sites ADD COLUMN wp_password TEXT;
-ALTER TABLE sites ADD COLUMN wp_admin_email TEXT;
 ALTER TABLE sites ADD COLUMN wp_admin_url TEXT;
 ALTER TABLE sites ADD COLUMN provision_step TEXT DEFAULT 'init';
 ALTER TABLE sites ADD COLUMN suspension_reason TEXT;
@@ -204,61 +245,8 @@ ALTER TABLE sites ADD COLUMN disk_used INTEGER DEFAULT 0;
 ALTER TABLE sites ADD COLUMN bandwidth_used INTEGER DEFAULT 0;
 ALTER TABLE sites ADD COLUMN deleted_at TEXT;
 
--- ── settings 기본값 ────────────────────────────────────────────────
-INSERT OR IGNORE INTO settings (key, value) VALUES
-  ('plan_free_sites',        '1'),
-  ('plan_starter_sites',     '3'),
-  ('plan_pro_sites',         '10'),
-  ('plan_enterprise_sites',  '-1'),
-  ('plan_starter_price',     '9900'),
-  ('plan_pro_price',         '29900'),
-  ('plan_enterprise_price',  '99000'),
-  ('wp_origin_url',          ''),
-  ('wp_origin_secret',       ''),
-  ('wp_admin_base_url',      ''),
-  ('cf_api_token',           ''),
-  ('cf_account_id',          ''),
-  ('cf_worker_name',         ''),
-  ('worker_cname_target',    ''),
-  ('main_db_id',             ''),
-  ('cache_kv_id',            ''),
-  ('sessions_kv_id',         ''),
-  ('maintenance_mode',       '0'),
-  ('site_name',              '클라우드프레스'),
-  ('site_domain',            'cloud-press.co.kr'),
-  ('toss_client_key',        ''),
-  ('toss_secret_key',        ''),
-  ('auto_ssl',               '1'),
-  ('auto_breeze',            '1'),
-  ('cloudflare_cdn_enabled', '1');
-
--- ── vp_accounts (VP 패널 계정 — v15.0) ─────────────────────────────
-CREATE TABLE IF NOT EXISTS vp_accounts (
-  id                   TEXT PRIMARY KEY,
-  label                TEXT NOT NULL,
-  vp_username          TEXT NOT NULL,
-  vp_password          TEXT NOT NULL,
-  panel_url            TEXT NOT NULL,
-  server_domain        TEXT NOT NULL,
-  web_root             TEXT DEFAULT '/htdocs',
-  php_bin              TEXT DEFAULT 'php8.3',
-  mysql_host           TEXT DEFAULT 'localhost',
-  wp_download_url      TEXT,
-  phpsessid            TEXT,
-  phpsessid_updated_at TEXT,
-  max_sites            INTEGER DEFAULT 50,
-  current_sites        INTEGER DEFAULT 0,
-  is_active            INTEGER DEFAULT 1,
-  created_at           TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at           TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
--- ── vp_accounts 마이그레이션 ────────────────────────────────────────
-ALTER TABLE vp_accounts ADD COLUMN wp_download_url TEXT;
-ALTER TABLE vp_accounts ADD COLUMN phpsessid TEXT;
-ALTER TABLE vp_accounts ADD COLUMN phpsessid_updated_at TEXT;
-ALTER TABLE vp_accounts ADD COLUMN panel_type TEXT; -- v16: hestia|vesta|vistapanel|spanel|cyberpanel|aapanel|directadmin|plesk|null(자동감지)
-
--- ── sites 마이그레이션 (v15.0 추가 컬럼) ───────────────────────────
-ALTER TABLE sites ADD COLUMN vp_account_id TEXT;
-ALTER TABLE sites ADD COLUMN vp_origin_url TEXT;
+-- v16.0 신규 settings 추가 (기존 DB 마이그레이션용)
+INSERT OR IGNORE INTO settings (key, value) VALUES ('cms_github_repo',   '');
+INSERT OR IGNORE INTO settings (key, value) VALUES ('cms_github_branch', 'main');
+INSERT OR IGNORE INTO settings (key, value) VALUES ('cms_github_token',  '');
+INSERT OR IGNORE INTO settings (key, value) VALUES ('cms_versions',      '[]');
