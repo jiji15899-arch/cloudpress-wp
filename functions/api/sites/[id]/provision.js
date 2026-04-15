@@ -462,14 +462,22 @@ async function fetchCMSSource(githubRepo, githubBranch, githubToken) {
   try {
     const res = await fetch(tarUrl, { headers });
     if (!res.ok) {
-      console.error(`[provision] GitHub tarball fetch 실패: ${res.status} ${res.statusText}`);
-      return { sourceMap: new Map(), schemaSql: '' };
+      const hint = res.status === 404
+        ? '레포가 존재하지 않거나 private 레포에 접근 토큰이 필요합니다.'
+        : res.status === 401
+        ? 'GitHub 토큰이 없거나 유효하지 않습니다.'
+        : `HTTP ${res.status} ${res.statusText}`;
+      const msg = `GitHub tarball fetch 실패 (${githubRepo}@${branch}): ${hint}`;
+      console.error('[provision]', msg);
+      throw new Error(msg);
     }
     buffer = await res.arrayBuffer();
     console.log(`[provision] GitHub tarball 다운로드 완료: ${(buffer.byteLength / 1024).toFixed(0)} KB`);
   } catch (e) {
-    console.error('[provision] GitHub tarball fetch 오류:', e.message);
-    return { sourceMap: new Map(), schemaSql: '' };
+    if (e instanceof Error && e.message.includes('tarball fetch 실패')) throw e;
+    const msg = `GitHub tarball fetch 오류 (${githubRepo}@${branch}): ${e.message}`;
+    console.error('[provision]', msg);
+    throw new Error(msg);
   }
 
   // tar 파싱 (필요한 파일만 추출)
@@ -477,8 +485,9 @@ async function fetchCMSSource(githubRepo, githubBranch, githubToken) {
   try {
     allFiles = parseTar(buffer, CMS_FILES);
   } catch (e) {
-    console.error('[provision] tar 파싱 오류:', e.message);
-    return { sourceMap: new Map(), schemaSql: '' };
+    const msg = `tar 파싱 오류: ${e.message}`;
+    console.error('[provision]', msg);
+    throw new Error(msg);
   }
 
   const sourceMap = new Map();
@@ -783,7 +792,7 @@ export async function onRequestPost({ request, env, params }) {
   }
 
   if (cmsSourceMap.size === 0) {
-    const e = `GitHub 레포(${githubRepo})에서 CMS 소스를 가져오지 못했습니다. 레포 주소와 토큰을 확인해주세요.`;
+    const e = `GitHub 레포(${githubRepo}@${githubBranch || 'main'})에서 CMS 소스 파일을 찾지 못했습니다. 레포 내 index.js 등 CMS 파일이 존재하는지 확인해주세요.`;
     await failSite(env.DB, siteId, 'github_fetch', e);
     return err(e, 500);
   }
