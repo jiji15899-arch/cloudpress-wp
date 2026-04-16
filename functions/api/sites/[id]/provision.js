@@ -377,6 +377,7 @@ function normalisePath(rawName, prefix) {
 
 // ── 필요한 파일 경로 집합 ──────────────────────────────────────────────────────
 const CMS_FILES = new Set([
+  'worker.js',
   'index.js',
   'cp-router.js',
   'cp-blog-header.js',
@@ -601,8 +602,8 @@ function bundleCMSSources(sourceMap) {
     order.push(path);
   }
 
-  // index.js를 루트로 시작
-  visit('index.js');
+  // worker.js를 루트 엔트리로 시작
+  visit('worker.js');
   // 나머지 미방문 파일도 포함
   for (const path of sourceMap.keys()) visit(path);
 
@@ -619,14 +620,14 @@ function bundleCMSSources(sourceMap) {
     // import 구문 전부 제거 (이미 인라인 포함되었으므로)
     let code = src.replace(/^import\s+(?:\{[^}]*\}|\*\s+as\s+\w+|\w+)\s+from\s+['"][^'"]+['"]\s*;?\s*\n?/mg, '');
 
-    // 'export default' 는 index.js 외에는 제거
-    if (path !== 'index.js') {
+    // worker.js만 'export default' 유지 — 나머지는 모두 제거
+    if (path !== 'worker.js') {
       code = code.replace(/^export\s+default\s+/mg, '');
     }
 
-    // 'export { ... }' 블록 유지 (최상위 심볼 노출용) — index.js만
-    // 다른 파일의 named export는 export 키워드만 제거해 로컬 함수/변수로 전환
-    if (path !== 'index.js') {
+    // worker.js 외 모든 파일의 named export / export {} 블록 제거
+    // → export 키워드만 떼어내 로컬 함수/변수로 전환
+    if (path !== 'worker.js') {
       code = code.replace(/^export\s+((?:async\s+)?function|const|let|var|class)\s+/mg, '$1 ');
       code = code.replace(/^export\s+\{[^}]*\}\s*;?\s*\n?/mg, '');
     }
@@ -675,7 +676,7 @@ async function uploadWorkerWithCMSSource(auth, accountId, workerName, opts, cmsS
   // [수정] nodejs_compat 제거 — CMS 소스가 Web API만 사용하므로 불필요
   // nodejs_compat 플래그는 Worker 초기화 시 내부 오류([10021])를 유발할 수 있음
   const metadata = {
-    main_module:        'index.js',
+    main_module:        'worker.js',
     compatibility_date: '2024-09-23',
     bindings,
   };
@@ -706,8 +707,8 @@ async function uploadWorkerWithCMSSource(auth, accountId, workerName, opts, cmsS
 
   const scriptPart = enc.encode(
     `--${boundary}${CRLF}` +
-    `Content-Disposition: form-data; name="index.js"; filename="index.js"${CRLF}` +
-    `Content-Type: application/javascript${CRLF}${CRLF}` +
+    `Content-Disposition: form-data; name="worker.js"; filename="worker.js"${CRLF}` +
+    `Content-Type: application/javascript+module${CRLF}${CRLF}` +
     bundledSource + CRLF
   );
 
