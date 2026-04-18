@@ -1,19 +1,10 @@
 // functions/api/auth/[[action]].js
 // login / register / logout / me + 2FA 지원 + DB 자동 초기화
 
-/* ── inline utils ── */
-const CORS={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Methods':'GET,POST,PUT,DELETE,OPTIONS','Access-Control-Allow-Headers':'Content-Type,Authorization'};
-const _j=(d,s=200)=>new Response(JSON.stringify(d),{status:s,headers:{'Content-Type':'application/json',...CORS}});
-const ok=(d={})=>_j({ok:true,...d});
-const err=(msg,s=400)=>_j({ok:false,error:msg},s);
-const handleOptions=()=>new Response(null,{status:204,headers:CORS});
-function getToken(req){const a=req.headers.get('Authorization')||'';if(a.startsWith('Bearer '))return a.slice(7);const c=req.headers.get('Cookie')||'';const m=c.match(/cp_session=([^;]+)/);return m?m[1]:null;}
-async function hashPw(p){const buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(p+':cloudpress_salt_v3'));return[...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join('');}
-function genToken(){const a=new Uint8Array(32);crypto.getRandomValues(a);return[...a].map(b=>b.toString(16).padStart(2,'0')).join('');}
-function genId(){return Date.now().toString(36)+Math.random().toString(36).slice(2,9);}
-function gen6(){return String(Math.floor(100000+Math.random()*900000));}
-/* ── end utils ── */
+import { CORS, _j, ok, err, handleOptions, getToken, getUser, hashPw, genId } from '../_shared.js';
 
+/* ── inline utils ── */
+function genToken(){const a=new Uint8Array(32);crypto.getRandomValues(a);return[...a].map(b=>b.toString(16).padStart(2,'0')).join('');}
 /* 개인정보 패턴 탐지 (생년월일, 전화번호, 주민번호 등) */
 function detectPersonalInfo(str) {
   if (!str) return false;
