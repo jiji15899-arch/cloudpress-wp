@@ -1,14 +1,5 @@
 // functions/api/payments/confirm.js
-/* ── utils ── */
-const CORS={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Methods':'GET,POST,PUT,DELETE,OPTIONS','Access-Control-Allow-Headers':'Content-Type,Authorization'};
-const _j=(d,s=200)=>new Response(JSON.stringify(d),{status:s,headers:{'Content-Type':'application/json',...CORS}});
-const ok=(d={})=>_j({ok:true,...d});
-const err=(msg,s=400)=>_j({ok:false,error:msg},s);
-const handleOptions=()=>new Response(null,{status:204,headers:CORS});
-function getToken(req){const a=req.headers.get('Authorization')||'';if(a.startsWith('Bearer '))return a.slice(7);const c=req.headers.get('Cookie')||'';const m=c.match(/cp_session=([^;]+)/);return m?m[1]:null;}
-async function getUser(env,req){try{const t=getToken(req);if(!t)return null;const uid=await env.SESSIONS.get(`session:${t}`);if(!uid)return null;return await env.DB.prepare('SELECT id,name,email,role,plan FROM users WHERE id=?').bind(uid).first();}catch{return null;}}
-async function requireAuth(env,req){return await getUser(env,req);}
-/* ── end utils ── */
+import { CORS, _j, ok, err, handleOptions, getToken, getUser, requireAuth } from '../_shared.js';
 
 export const onRequestOptions = () => handleOptions();
 
