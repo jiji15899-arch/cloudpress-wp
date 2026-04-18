@@ -7,7 +7,7 @@
 //   DELETE /api/sites/:id/domains              → 도메인 삭제 (site.html removeDomain)
 //   PUT    /api/sites/:id/domains?action=set-primary → 주도메인 설정 (site.html setPrimaryDomain)
 
-import { CORS, _j, ok, err, getToken, getUser, genId } from '../_shared.js';
+import { CORS, _j, ok, err, getToken, getUser, genId } from '../../_shared.js';
 
 
 async function getSetting(env, key, fallback = '') {
