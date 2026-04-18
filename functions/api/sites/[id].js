@@ -34,7 +34,8 @@ export async function onRequest({ request, env, params }) {
         `SELECT id, user_id, name, primary_domain, domain_status,
                 site_prefix, worker_name, worker_route, worker_route_www,
                 worker_route_id, worker_route_www_id, cf_zone_id,
-                wp_username, wp_password, wp_admin_email, wp_admin_url,
+                site_d1_id, site_kv_id,
+                wp_admin_url,
                 status, provision_step, error_message,
                 suspended, suspension_reason, disk_used, bandwidth_used,
                 plan, created_at, updated_at
