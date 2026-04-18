@@ -211,7 +211,7 @@ async function loadSite() {
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" stroke="currentColor" stroke-width="1.5"/><polyline points="15 3 21 3 21 9" stroke="currentColor" stroke-width="1.5"/><line x1="10" y1="14" x2="21" y2="3" stroke="currentColor" stroke-width="1.5"/></svg>
           사이트 방문
         </a>
-        <a href="${esc(site.wp_admin_url || (site.wp_url ? site.wp_url + '/wp-admin/' : '#'))}" target="_blank" class="btn btn-primary">
+        <a href="${esc(site.wp_admin_url || (site.wp_url ? site.wp_url + '/cp-admin/' : '#'))}" target="_blank" class="btn btn-primary">
           ⚙️ WordPress 관리자
         </a>
       </div>` : ''}
