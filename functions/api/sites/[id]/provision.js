@@ -1199,25 +1199,13 @@ export async function onRequestPost({ request, env, params }) {
     if (zone.ok) {
       cfZoneId = zone.zoneId;
 
-      // CNAME + Route 동시 등록 (4개 병렬)
-      const [dr, drw, rr, rw] = await Promise.all([
-        cfUpsertDns(cfAuth, cfZoneId, 'CNAME', domain,    cnameTarget, true),
-        cfUpsertDns(cfAuth, cfZoneId, 'CNAME', wwwDomain, cnameTarget, true),
+      // ① Route를 먼저 등록 — CF가 proxied CNAME을 처리할 때 Route가 반드시 존재해야 522 방지
+      const [rr, rw] = await Promise.all([
         cfUpsertRoute(cfAuth, cfZoneId, domain + '/*',    workerName),
         cfUpsertRoute(cfAuth, cfZoneId, wwwDomain + '/*', workerName),
       ]);
-
-      if (dr.ok)  dnsRecordId    = dr.recordId;
-      if (drw.ok) dnsRecordWwwId = drw.recordId;
-      if (rr.ok)  routeId        = rr.routeId;
-      if (rw.ok)  routeWwwId     = rw.routeId;
-
-      // proxied CNAME + Route 둘 다 등록 성공 시 즉시 활성 (522 없음)
-      if ((dr.ok || drw.ok) && (rr.ok || rw.ok)) {
-        domainStatus = 'active';
-      } else if (rr.ok || rw.ok) {
-        domainStatus = 'dns_propagating';
-      }
+      if (rr.ok) routeId    = rr.routeId;
+      if (rw.ok) routeWwwId = rw.routeId;
 
       siteState.set({
         provision_step:      'worker_route',
@@ -1226,8 +1214,27 @@ export async function onRequestPost({ request, env, params }) {
         worker_route_id:     routeId    || null,
         worker_route_www_id: routeWwwId || null,
         cf_zone_id:          cfZoneId,
-        dns_record_id:       dnsRecordId,
-        dns_record_www_id:   dnsRecordWwwId,
+      });
+
+      // ② Route 등록 후 CNAME 등록 (proxied=true → CF가 Route로 연결)
+      const [dr, drw] = await Promise.all([
+        cfUpsertDns(cfAuth, cfZoneId, 'CNAME', domain,    cnameTarget, true),
+        cfUpsertDns(cfAuth, cfZoneId, 'CNAME', wwwDomain, cnameTarget, true),
+      ]);
+      if (dr.ok)  dnsRecordId    = dr.recordId;
+      if (drw.ok) dnsRecordWwwId = drw.recordId;
+
+      // Route + proxied CNAME 모두 성공 → 즉시 active (522 없음)
+      // Route만 성공 → DNS 전파 대기
+      if ((rr.ok || rw.ok) && (dr.ok || drw.ok)) {
+        domainStatus = 'active';
+      } else if (rr.ok || rw.ok) {
+        domainStatus = 'dns_propagating';
+      }
+
+      siteState.set({
+        dns_record_id:     dnsRecordId    || null,
+        dns_record_www_id: dnsRecordWwwId || null,
       });
     }
   }
