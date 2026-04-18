@@ -9,7 +9,6 @@
 
 import { CORS, _j, ok, err, getToken, getUser, genId } from '../_shared.js';
 
-}
 
 async function getSetting(env, key, fallback = '') {
   try {
