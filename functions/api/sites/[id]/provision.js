@@ -550,28 +550,50 @@ function bundleCMSSources(sourceMap) {
   if (sourceMap.has('worker.js')) {
     let src = sourceMap.get('worker.js');
 
-    // esbuild 번들의 'export {\n  X as default\n};' 패턴을 'export default X;' 로 변환
-    // 패턴 예시:
-    //   export {\n  worker_default as default\n};
-    //   export { worker_default as default };
-    src = src.replace(
-      /export\s*\{\s*(\w+)\s+as\s+default\s*\}\s*;?/g,
-      'export default $1;'
-    );
+    // esbuild 번들의 'export {\n  X as default\n};' 패턴 처리
+    // 정규식 대신 줄 단위 파싱으로 완전하게 처리
+    const lines = src.split('\n');
+    const out = [];
+    let i = 0;
+    while (i < lines.length) {
+      const line = lines[i];
+      const trimmed = line.trim();
 
-    // 혹시 남은 non-default export { } 구문 제거 (esbuild가 가끔 생성)
-    // export { foo, bar } — named exports (default 제외)
-    src = src.replace(
-      /export\s*\{[^}]*\}\s*;?\s*\n?/g,
-      (match) => {
-        // 'as default'가 포함된 건 위에서 이미 처리됨; 여기선 남은 것만
-        if (/as\s+default/.test(match)) return match; // 이미 처리됐어야 하지만 방어
-        return '';
+      // 'export {' 로 시작하는 블록 감지
+      if (trimmed === 'export {') {
+        // 닫는 '};' 까지 수집
+        const block = [line];
+        i++;
+        while (i < lines.length) {
+          block.push(lines[i]);
+          if (lines[i].trim() === '};' || lines[i].trim() === '}') { i++; break; }
+          i++;
+        }
+        const blockStr = block.join('\n');
+        // 'X as default' 패턴이면 → export default X;
+        const m = blockStr.match(/(\w+)\s+as\s+default/);
+        if (m) {
+          out.push(`export default ${m[1]};`);
+        }
+        // default 없는 named export {} 는 제거 (번들에 불필요)
+        continue;
       }
-    );
 
-    console.log(`[bundle] worker.js 단독 번들 사용: ${(src.length / 1024).toFixed(1)} KB`);
-    return src;
+      // 한 줄짜리 export { X as default }; 처리
+      const inlineM = trimmed.match(/^export\s*\{\s*(\w+)\s+as\s+default\s*\}\s*;?$/);
+      if (inlineM) {
+        out.push(`export default ${inlineM[1]};`);
+        i++;
+        continue;
+      }
+
+      out.push(line);
+      i++;
+    }
+
+    const result = out.join('\n');
+    console.log(`[bundle] worker.js 단독 번들: ${(result.length / 1024).toFixed(1)} KB`);
+    return result;
   }
 
   // ── worker.js 없는 경우: 소스 파일들을 합쳐 번들 생성 ──────────────────────
@@ -784,7 +806,7 @@ async function uploadWorkerWithCMSSource(auth, accountId, workerName, opts, cmsS
   const scriptPart = enc.encode(
     `--${boundary}${CRLF}` +
     `Content-Disposition: form-data; name="worker.js"; filename="worker.js"${CRLF}` +
-    `Content-Type: application/javascript${CRLF}${CRLF}` +
+    `Content-Type: application/javascript+module${CRLF}${CRLF}` +
     bundledSource + CRLF
   );
 
