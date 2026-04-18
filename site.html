@@ -115,11 +115,6 @@
 
 <script src="app.js"></script>
 <script>
-const PROVIDER_NAMES = {
-  infinityfree: 'InfinityFree', byethost: 'ByetHost', hyperphp: 'HyperPHP',
-  freehosting: 'FreeHosting', profreehost: 'ProFreeHost', aeonfree: 'AeonFree',
-};
-
 const STATUS_LABELS = {
   pending: '대기 중', provisioning: '호스팅 생성 중', installing_wp: 'WordPress 설치 중',
   active: '활성', failed: '실패', deleted: '삭제됨',
@@ -189,9 +184,10 @@ async function loadSite() {
       </div>
     </div>` : '';
 
+  const workerDevUrl = site.worker_name ? `https://${site.worker_name}.workers.dev` : '';
   const siteUrl = site.primary_domain
     ? `https://${site.primary_domain}`
-    : (site.wp_url || '');
+    : workerDevUrl;
 
   document.getElementById('content').innerHTML = `
     ${suspendedHtml}
@@ -207,11 +203,11 @@ async function loadSite() {
 
       ${isActive ? `
       <div class="wp-actions">
-        <a href="${esc(siteUrl || site.wp_url || '#')}" target="_blank" class="btn btn-ghost">
+        <a href="${esc(siteUrl || '#')}" target="_blank" class="btn btn-ghost">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" stroke="currentColor" stroke-width="1.5"/><polyline points="15 3 21 3 21 9" stroke="currentColor" stroke-width="1.5"/><line x1="10" y1="14" x2="21" y2="3" stroke="currentColor" stroke-width="1.5"/></svg>
           사이트 방문
         </a>
-        <a href="${esc(site.wp_admin_url || (site.wp_url ? site.wp_url + '/cp-admin/' : '#'))}" target="_blank" class="btn btn-primary">
+        <a href="${esc(site.wp_admin_url || (siteUrl ? siteUrl + '/cp-admin/' : '#'))}" target="_blank" class="btn btn-primary">
           ⚙️ WordPress 관리자
         </a>
       </div>` : ''}
@@ -220,13 +216,13 @@ async function loadSite() {
       <div class="info-row">
         <div class="info-label">현재 주소 (URL)</div>
         <div class="info-val">
-          <a href="${esc(siteUrl || site.wp_url || '#')}" target="_blank" style="color:var(--accent)">${esc(siteUrl || site.wp_url || '생성 중...')}</a>
-          ${site.primary_domain && site.primary_domain !== site.hosting_domain ? '<span class="domain-tag tag-primary" style="margin-left:6px">주도메인</span>' : '<span class="domain-tag tag-sub" style="margin-left:6px">서브도메인</span>'}
+          <a href="${esc(siteUrl || '#')}" target="_blank" style="color:var(--accent)">${esc(siteUrl || '생성 중...')}</a>
+          ${site.primary_domain ? '<span class="domain-tag tag-primary" style="margin-left:6px">주도메인</span>' : '<span class="domain-tag tag-sub" style="margin-left:6px">서브도메인</span>'}
         </div>
       </div>
       <div class="info-row"><div class="info-label">관리자 URL</div><div class="info-val"><a href="${esc(site.wp_admin_url || '#')}" target="_blank" style="color:var(--accent)">${esc(site.wp_admin_url || '생성 중...')}</a></div></div>
-      <div class="info-row"><div class="info-label">호스팅 업체</div><div class="info-val">${PROVIDER_NAMES[site.hosting_provider] || site.hosting_provider || '—'}</div></div>
-      <div class="info-row"><div class="info-label">기본 서브도메인</div><div class="info-val">${esc(site.hosting_domain || site.wp_url || '—')}</div></div>
+      <div class="info-row"><div class="info-label">호스팅</div><div class="info-val">CloudPress (Cloudflare Workers)</div></div>
+      <div class="info-row"><div class="info-label">기본 서브도메인</div><div class="info-val">${esc(workerDevUrl || '생성 중...')}</div></div>
       <div class="info-row"><div class="info-label">PHP 버전</div><div class="info-val">${esc(site.php_version || 'PHP 8.3 (최신)')} ✅</div></div>
       <div class="info-row"><div class="info-label">WordPress 버전</div><div class="info-val">${esc(site.wp_version || '최신 (한국어)')} ✅</div></div>
       <div class="info-row"><div class="info-label">PHP 시간대</div><div class="info-val">Asia/Seoul (KST, UTC+9) ✅</div></div>
@@ -241,21 +237,21 @@ async function loadSite() {
 
     <!-- 로그인 정보 -->
     <div class="info-card">
-      <div class="info-title">🔐 WordPress 로그인 정보</div>
-      <div class="info-row"><div class="info-label">관리자 아이디</div><div class="info-val">${esc(site.wp_username || '—')}</div></div>
+      <div class="info-title">🔐 CMS 로그인 정보</div>
+      ${site.wp_admin_url ? `
       <div class="info-row">
-        <div class="info-label">관리자 비밀번호</div>
+        <div class="info-label">초기 설정 URL</div>
         <div class="info-val">
-          <div class="pw-field">
-            <input type="password" value="${esc(site.wp_password || '')}" readonly id="wpPw"/>
-            <button onclick="togglePw()" class="btn btn-ghost btn-sm">보기</button>
-            <button onclick="navigator.clipboard.writeText(document.getElementById('wpPw').value)" class="btn btn-ghost btn-sm">복사</button>
-          </div>
+          <a href="${esc(site.wp_admin_url)}" target="_blank" style="color:var(--accent)">${esc(site.wp_admin_url)}</a>
         </div>
       </div>
-      <div style="background:rgba(234,179,8,.06);border:1px solid rgba(234,179,8,.15);border-radius:8px;padding:12px;font-size:.8rem;color:var(--muted);margin-top:12px">
-        ⚠️ 위 비밀번호를 안전한 곳에 반드시 보관하세요.
-      </div>
+      <div style="background:rgba(34,113,177,.07);border:1px solid rgba(34,113,177,.18);border-radius:8px;padding:14px;font-size:.82rem;color:var(--muted);margin-top:12px;line-height:1.6">
+        ℹ️ 위 <strong>초기 설정 URL</strong>에 접속하면 관리자 계정(아이디·비밀번호)을 직접 생성할 수 있습니다.<br>
+        초기 설정 완료 후 <code style="background:var(--bg);padding:1px 5px;border-radius:4px">/cp-admin/</code> 으로 로그인하세요.
+      </div>` : `
+      <div style="color:var(--muted);font-size:.85rem;padding:12px 0">
+        ⏳ 프로비저닝 완료 후 초기 설정 URL이 표시됩니다.
+      </div>`}
     </div>
 
     <!-- 도메인 관리 (활성 사이트만) -->
@@ -267,7 +263,7 @@ async function loadSite() {
       </div>
 
       <div style="font-size:.83rem;color:var(--muted);margin-bottom:16px">
-        현재 호스팅사의 서브도메인(<code style="background:var(--bg);padding:1px 5px;border-radius:4px">${esc(site.hosting_domain || site.wp_url || '')}</code>)이 기본 주소입니다.
+        현재 기본 서브도메인(<code style="background:var(--bg);padding:1px 5px;border-radius:4px">${esc(workerDevUrl || '')}</code>)이 기본 주소입니다.
         나만의 도메인을 추가하고, CNAME 인증 후 주도메인으로 설정할 수 있습니다.
       </div>
 
@@ -338,7 +334,7 @@ function renderDomainList(siteId, domains, subdomain, primaryDomain, cnameTarget
 
   // 기본 서브도메인 (항상 표시)
   const subUrl = subdomain || '';
-  const isSubPrimary = !primaryDomain || primaryDomain === (currentSite.hosting_domain || '') || primaryDomain === subUrl.replace(/^https?:\/\//, '');
+  const isSubPrimary = !primaryDomain || primaryDomain === subUrl.replace(/^https?:\/\//, '');
   html += `
     <div class="domain-item">
       <div style="flex:1">
@@ -565,11 +561,6 @@ function showDomainResult(msg, success) {
 
 function copyVal(val) {
   navigator.clipboard.writeText(val).catch(() => {});
-}
-
-function togglePw() {
-  const inp = document.getElementById('wpPw');
-  inp.type = inp.type === 'password' ? 'text' : 'password';
 }
 
 async function deleteSite(id, name) {
