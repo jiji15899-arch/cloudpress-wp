@@ -1,0 +1,27 @@
+# CloudPress — wrangler.verify.toml
+# 도메인 인증 전용 Worker 배포 설정
+# 사용: wrangler deploy --config wrangler.verify.toml
+
+name = "cloudpress-verify"
+main = "worker-domain-verify.js"
+compatibility_date = "2024-09-23"
+
+# ── 메인 D1 (도메인 인증 이력 조회) ──
+[[d1_databases]]
+binding       = "DB"
+database_name = "cloudpress-db"
+database_id   = "02d86436-b49f-4efa-a93b-baa90f3ee095"
+
+# ── 전역 CACHE KV (인증 토큰 캐시) ──
+[[kv_namespaces]]
+binding = "CACHE"
+id      = "e1acf814c1244a59bbc24865723e479d"
+
+# ── 환경 변수 ──
+[vars]
+# 이 Worker는 인증 전용이므로 민감한 값 없음
+
+# ── 개발 환경 ──
+[dev]
+port = 8790
+local_protocol = "http"

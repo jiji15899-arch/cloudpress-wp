@@ -1,0 +1,39 @@
+# CloudPress v18.0 — wrangler.worker.toml
+# Proxy Worker 단독 배포 설정
+# 사용: wrangler deploy --config wrangler.worker.toml
+#
+# [v18.0 수정 사항]
+# - compatibility_date 업데이트 (2024-09-23 → 2025-01-01)
+#   이전 날짜는 일부 Web API 동작 차이로 Error 1101 유발 가능
+# - nodejs_compat 플래그 제거 (CMS 코드가 Web API만 사용)
+#   nodejs_compat은 Worker 초기화 시 내부 오류 유발 가능
+# - limits.cpu_ms 추가 (CMS 렌더링 시 CPU 시간 초과 방지)
+
+name = "cloudpress-proxy"
+main = "worker.js"
+compatibility_date = "2025-01-01"
+
+# nodejs_compat 제거 — 아래 플래그가 있으면 삭제하세요
+# compatibility_flags = ["nodejs_compat"]  ← 이 줄 있으면 제거
+
+# ── 메인 D1 (도메인→사이트 fallback 조회) ──
+[[d1_databases]]
+binding       = "DB"
+database_name = "cloudpress-db"
+database_id   = "02d86436-b49f-4efa-a93b-baa90f3ee095"
+
+# ── 전역 CACHE KV (도메인 매핑 캐시 + 인증 토큰) ──
+[[kv_namespaces]]
+binding = "CACHE"
+id      = "e1acf814c1244a59bbc24865723e479d"
+
+# ── 환경 변수 ──
+[vars]
+WP_ORIGIN_URL    = "https://admin-1775040937976.webcustom-hosting.com/"
+WP_ORIGIN_SECRET = "Swsh120327!"
+CF_ACCOUNT_ID    = ""   # wrangler secret put CF_ACCOUNT_ID    --config wrangler.worker.toml
+CF_API_TOKEN     = ""   # wrangler secret put CF_API_TOKEN     --config wrangler.worker.toml
+
+# ── CPU 시간 제한 상향 (CMS 렌더링 처리) ──
+[limits]
+cpu_ms = 50

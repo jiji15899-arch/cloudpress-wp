@@ -1,45 +1,41 @@
-# CloudPress v12.5 — wrangler.toml (fixed)
+# CloudPress v18.0 — wrangler.toml
 # Pages Functions + 단일 Worker 배포 설정
 #
-# 수정:
-#   - pages_build_output_dir 제거 (Cloudflare Pages 직접 배포 시 불필요, 오히려 라우팅 오작동 원인)
-#   - CF_ACCOUNT_ID / CF_API_TOKEN은 wrangler secret put으로 설정 (빈값으로 두지 말 것)
+# [v18.0 수정 사항]
+# - compatibility_date 업데이트 (2024-09-23 → 2025-01-01)
+# - nodejs_compat 제거 (Error 1101 원인 중 하나)
+# - CF_ACCOUNT_ID / CF_API_TOKEN은 wrangler secret put으로 설정
 
 name = "cloudpress-wp"
-compatibility_date = "2024-09-23"
+compatibility_date = "2025-01-01"
 
-# ── 메인 D1 Database (사용자/사이트 메타 저장) ──
+# nodejs_compat 제거 — 있으면 삭제
+# compatibility_flags = ["nodejs_compat"]  ← 삭제
+
+# ── 메인 D1 Database ──
 [[d1_databases]]
 binding       = "DB"
 database_name = "cloudpress-db"
-database_id   = "02d86436-b49f-4efa-a93b-baa90f3ee095"  # deploy.sh 가 자동 주입
+database_id   = "02d86436-b49f-4efa-a93b-baa90f3ee095"
 
 # ── KV: 세션 ──
 [[kv_namespaces]]
 binding = "SESSIONS"
-id      = "7486ca3c985b41ee8e2d24589ab2be6d"  # deploy.sh 가 자동 주입
+id      = "7486ca3c985b41ee8e2d24589ab2be6d"
 
-# ── KV: 도메인→사이트 매핑 캐시 (전역) ──
+# ── KV: 도메인→사이트 매핑 캐시 ──
 [[kv_namespaces]]
 binding = "CACHE"
-id      = "e1acf814c1244a59bbc24865723e479d"  # deploy.sh 가 자동 주입
+id      = "e1acf814c1244a59bbc24865723e479d"
 
 # ── 환경 변수 ──
-# 민감한 값은 반드시 wrangler secret put 으로 설정
 [vars]
-# WP origin 프록시 타겟 (origin에 부하 없이 Worker만 프록시)
-WP_ORIGIN_URL    = "https://cloud-press-host-sub.x10.mx/"   # wrangler secret put WP_ORIGIN_URL
-WP_ORIGIN_SECRET = "Swsh120327!"   # wrangler secret put WP_ORIGIN_SECRET
+WP_ORIGIN_URL    = "https://cloud-press-host-sub.x10.mx/"
+WP_ORIGIN_SECRET = "Swsh120327!"
+CF_ACCOUNT_ID    = ""
+CF_API_TOKEN     = ""
 
-# Cloudflare 계정 정보 (사이트 전용 D1/KV REST API 접근용)
-# Worker에서 사이트별 KV 페이지 캐시 읽기/쓰기에 사용
-CF_ACCOUNT_ID = ""      # wrangler secret put CF_ACCOUNT_ID
-CF_API_TOKEN  = ""      # wrangler secret put CF_API_TOKEN
-                        # 필요 권한: D1 Read, KV Read/Write
-
-# ── Limits (서브리퀘스트 한도 상향) ──
-# provision.js의 외부 API 호출(CF API + GitHub fetch)이 많으므로
-# Unbound Workers 방식으로 subrequest 제한을 1000으로 올림
+# ── Limits ──
 [limits]
 cpu_ms = 30000
 
