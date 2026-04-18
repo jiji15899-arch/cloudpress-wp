@@ -835,13 +835,32 @@ async function getWorkerSubdomain(auth, accountId, workerName) {
 }
 
 async function enableWorkersDev(auth, accountId, workerName) {
+  // workers.dev 서브도메인 활성화 + 최대 3회 재시도
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const res = await cfReq(
+      auth,
+      `/accounts/${accountId}/workers/scripts/${workerName}/subdomain`,
+      'POST',
+      { enabled: true }
+    );
+    if (res.success) return true;
+    if (attempt < 2) await new Promise(r => setTimeout(r, 1000));
+  }
+  return false;
+}
+
+/**
+ * CF Workers Custom Domain 등록 (신규 API — Route 방식보다 안정적)
+ * Route 방식 대신 Custom Domain으로 바인딩하면 CNAME 불필요
+ */
+async function addWorkerCustomDomain(auth, accountId, workerName, hostname) {
   const res = await cfReq(
     auth,
-    `/accounts/${accountId}/workers/scripts/${workerName}/subdomain`,
-    'POST',
-    { enabled: true }
+    `/accounts/${accountId}/workers/domains`,
+    'PUT',
+    { hostname, service: workerName, environment: 'production' }
   );
-  return res.success;
+  return res.success ? { ok: true, id: res.result?.id } : { ok: false, error: cfErrMsg(res) };
 }
 
 // ── 메인 바인딩 ID 자동 탐색 ─────────────────────────────────────────────────
@@ -1117,7 +1136,9 @@ export async function onRequestPost({ request, env, params }) {
   console.log(`[provision] Worker 업로드 완료: ${workerName}`);
   siteState.set({ worker_name: workerName });
 
-  await enableWorkersDev(cfAuth, cfAccount, workerName).catch(() => {});
+  // workers.dev 활성화 — DNS 등록 전 완료해야 522 방지 (최대 3회 재시도)
+  const workerDevEnabled = await enableWorkersDev(cfAuth, cfAccount, workerName);
+  console.log(`[provision] workers.dev 활성화: ${workerDevEnabled ? '성공' : '실패(계속 진행)'}`);
 
   // ── Step 6: CACHE KV 도메인 매핑 (bulk 1회) ───────────────────────────────
   siteState.set({ provision_step: 'kv_mapping' });
@@ -1140,52 +1161,82 @@ export async function onRequestPost({ request, env, params }) {
     ]);
   }
 
-  // ── Step 7: DNS + Worker Route 등록 (병렬) ────────────────────────────────
+  // ── Step 7: 도메인 연결 ────────────────────────────────────────────────────
+  // 전략 1 (최우선): Custom Domain API — CNAME/Route 불필요, 즉시 활성화, 522 없음
+  // 전략 2 (폴백): zone이 CF에 있으면 Route + proxied CNAME
+  // 전략 3: 외부 DNS — 수동 CNAME 안내
   siteState.set({ provision_step: 'dns_setup' });
-
-  const [cnameTarget, zone] = await Promise.all([
-    getWorkerSubdomain(cfAuth, cfAccount, workerName),
-    cfGetZone(cfAuth, domain),
-  ]);
 
   let domainStatus   = 'manual_required';
   let cfZoneId       = null;
   let dnsRecordId    = null, dnsRecordWwwId = null;
-  let routeId = null, routeWwwId = null;
+  let routeId        = null, routeWwwId     = null;
+  let cnameTarget    = '';
 
-  if (zone.ok) {
-    cfZoneId = zone.zoneId;
+  // 전략 1: Custom Domain API
+  const [cdRoot, cdWww] = await Promise.all([
+    addWorkerCustomDomain(cfAuth, cfAccount, workerName, domain),
+    addWorkerCustomDomain(cfAuth, cfAccount, workerName, wwwDomain),
+  ]);
 
-    const [dr, drw] = await Promise.all([
-      cfUpsertDns(cfAuth, cfZoneId, 'CNAME', domain,    cnameTarget, true),
-      cfUpsertDns(cfAuth, cfZoneId, 'CNAME', wwwDomain, cnameTarget, true),
-    ]);
-    if (dr.ok)  dnsRecordId    = dr.recordId;
-    if (drw.ok) dnsRecordWwwId = drw.recordId;
-
-    siteState.set({ provision_step: 'worker_route' });
-
-    const [rr, rw] = await Promise.all([
-      cfUpsertRoute(cfAuth, cfZoneId, domain + '/*',    workerName),
-      cfUpsertRoute(cfAuth, cfZoneId, wwwDomain + '/*', workerName),
-    ]);
-    if (rr.ok) routeId    = rr.routeId;
-    if (rw.ok) routeWwwId = rw.routeId;
-    if (rr.ok || rw.ok) domainStatus = 'dns_propagating';
-
+  if (cdRoot.ok || cdWww.ok) {
+    domainStatus = 'active';
+    console.log(`[provision] Custom Domain 등록 성공: ${domain}`);
     siteState.set({
-      worker_route:        domain + '/*',
-      worker_route_www:    wwwDomain + '/*',
-      worker_route_id:     routeId || null,
-      worker_route_www_id: routeWwwId || null,
-      cf_zone_id:          cfZoneId,
-      dns_record_id:       dnsRecordId,
-      dns_record_www_id:   dnsRecordWwwId,
+      worker_route:     domain + '/*',
+      worker_route_www: wwwDomain + '/*',
     });
+  } else {
+    // 전략 2: zone Route + proxied CNAME 폴백
+    console.log(`[provision] Custom Domain 실패(${cdRoot.error}), Route 폴백 시도`);
+
+    const [workerSubdomain, zone] = await Promise.all([
+      getWorkerSubdomain(cfAuth, cfAccount, workerName),
+      cfGetZone(cfAuth, domain),
+    ]);
+    cnameTarget = workerSubdomain;
+
+    if (zone.ok) {
+      cfZoneId = zone.zoneId;
+
+      // CNAME + Route 동시 등록 (4개 병렬)
+      const [dr, drw, rr, rw] = await Promise.all([
+        cfUpsertDns(cfAuth, cfZoneId, 'CNAME', domain,    cnameTarget, true),
+        cfUpsertDns(cfAuth, cfZoneId, 'CNAME', wwwDomain, cnameTarget, true),
+        cfUpsertRoute(cfAuth, cfZoneId, domain + '/*',    workerName),
+        cfUpsertRoute(cfAuth, cfZoneId, wwwDomain + '/*', workerName),
+      ]);
+
+      if (dr.ok)  dnsRecordId    = dr.recordId;
+      if (drw.ok) dnsRecordWwwId = drw.recordId;
+      if (rr.ok)  routeId        = rr.routeId;
+      if (rw.ok)  routeWwwId     = rw.routeId;
+
+      // proxied CNAME + Route 둘 다 등록 성공 시 즉시 활성 (522 없음)
+      if ((dr.ok || drw.ok) && (rr.ok || rw.ok)) {
+        domainStatus = 'active';
+      } else if (rr.ok || rw.ok) {
+        domainStatus = 'dns_propagating';
+      }
+
+      siteState.set({
+        provision_step:      'worker_route',
+        worker_route:        domain + '/*',
+        worker_route_www:    wwwDomain + '/*',
+        worker_route_id:     routeId    || null,
+        worker_route_www_id: routeWwwId || null,
+        cf_zone_id:          cfZoneId,
+        dns_record_id:       dnsRecordId,
+        dns_record_www_id:   dnsRecordWwwId,
+      });
+    }
   }
 
   // ── Step 8: 완료 — 메모리 상태 1회 flush ──────────────────────────────────
   const adminUrl = `https://${domain}/cp-admin/setup-config`;
+
+  // cnameTarget이 없으면(Custom Domain 성공 시) workers.dev URL 안내용으로만 사용
+  const workerDevUrl = cnameTarget || `${workerName}.workers.dev`;
 
   siteState.set({
     status:         'active',
@@ -1193,7 +1244,7 @@ export async function onRequestPost({ request, env, params }) {
     domain_status:  domainStatus,
     wp_admin_url:   adminUrl,
     error_message:  domainStatus === 'manual_required'
-      ? `외부 DNS 설정 필요 — CNAME: ${cnameTarget}`
+      ? `외부 DNS 설정 필요 — CNAME ${domain} → ${workerDevUrl} (CF 프록시 켜기)`
       : null,
   });
 
@@ -1216,8 +1267,8 @@ export async function onRequestPost({ request, env, params }) {
     setup_url:    adminUrl,
     cname_instructions: domainStatus === 'manual_required' ? {
       type: 'CNAME',
-      root: { host: '@',   value: cnameTarget },
-      www:  { host: 'www', value: cnameTarget },
+      root: { host: '@',   value: workerDevUrl },
+      www:  { host: 'www', value: workerDevUrl },
       note: `DNS 전파 후 ${adminUrl} 에서 CMS 설정을 완료하세요.`,
     } : null,
   });
