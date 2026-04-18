@@ -29,7 +29,7 @@
  * @package CloudPress
  */
 
-var __worker = {
+export default {
   async fetch(request, env, ctx) {
     try {
       return await handleRequest(request, env, ctx);
@@ -643,10 +643,3 @@ async function handleNaverVerify(env, pathname) {
   }
   return new Response('Not Found', { status: 404 });
 }
-
-// ── Service Worker Entry Point ─────────────────────────────────────────────
-addEventListener('fetch', function(event) {
-  event.respondWith(
-    __worker.fetch(event.request, globalThis, event)
-  );
-});
