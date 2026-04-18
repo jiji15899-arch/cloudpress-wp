@@ -7,36 +7,8 @@
 //   DELETE /api/sites/:id/domains              → 도메인 삭제 (site.html removeDomain)
 //   PUT    /api/sites/:id/domains?action=set-primary → 주도메인 설정 (site.html setPrimaryDomain)
 
-const CORS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type,Authorization',
-};
-const _j = (d, s = 200) => new Response(JSON.stringify(d), {
-  status: s,
-  headers: { 'Content-Type': 'application/json', ...CORS },
-});
-const ok  = (d = {}) => _j({ ok: true, ...d });
-const err = (msg, s = 400) => _j({ ok: false, error: msg }, s);
+import { CORS, _j, ok, err, getToken, getUser, genId } from '../_shared.js';
 
-function getToken(req) {
-  const a = req.headers.get('Authorization') || '';
-  if (a.startsWith('Bearer ')) return a.slice(7);
-  const c = req.headers.get('Cookie') || '';
-  const m = c.match(/cp_session=([^;]+)/);
-  return m ? m[1] : null;
-}
-
-async function getUser(env, req) {
-  try {
-    const t = getToken(req);
-    if (!t) return null;
-    const uid = await env.SESSIONS.get(`session:${t}`);
-    if (!uid) return null;
-    return await env.DB.prepare(
-      'SELECT id,name,email,role,plan FROM users WHERE id=?'
-    ).bind(uid).first();
-  } catch { return null; }
 }
 
 async function getSetting(env, key, fallback = '') {
@@ -44,10 +16,6 @@ async function getSetting(env, key, fallback = '') {
     const r = await env.DB.prepare('SELECT value FROM settings WHERE key=?').bind(key).first();
     return r?.value ?? fallback;
   } catch { return fallback; }
-}
-
-function genId() {
-  return 'dv_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 }
 
 /* DNS-over-HTTPS로 CNAME 검증 */
@@ -94,7 +62,7 @@ export async function onRequest({ request, env, params }) {
 
   // schema.sql 기준 컬럼만 SELECT
   const site = await env.DB.prepare(
-    `SELECT id, user_id, name, primary_domain, domain_status, site_prefix, status, suspended
+    `SELECT id, user_id, name, primary_domain, domain_status, status
      FROM sites WHERE id=? AND user_id=? AND deleted_at IS NULL`
   ).bind(siteId, user.id).first();
 
@@ -210,7 +178,7 @@ export async function onRequest({ request, env, params }) {
 
       // KV 캐시 갱신
       try {
-        const siteData = JSON.stringify({ id: siteId, name: site.name, site_prefix: site.site_prefix || siteId, status: 'active', suspended: 0 });
+        const siteData = JSON.stringify({ id: siteId, name: site.name, status: 'active', suspended: 0 });
         await env.CACHE.put(`site_domain:${domain}`, siteData, { expirationTtl: 86400 });
         await env.CACHE.put(`site_domain:www.${domain}`, siteData, { expirationTtl: 86400 });
       } catch (_) {}
