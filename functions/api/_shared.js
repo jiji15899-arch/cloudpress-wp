@@ -95,7 +95,10 @@ export async function hashPw(p) {
 
 // ── ID 생성 ──────────────────────────────────────────────────────────────────
 export function genId() {
-  return Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
+  const ts  = Date.now().toString(36);
+  const arr = crypto.getRandomValues(new Uint8Array(8));
+  const rnd = Array.from(arr).map(b => b.toString(36).padStart(2, '0')).join('').slice(0, 10);
+  return ts + rnd;
 }
 
 export function gen6() {
