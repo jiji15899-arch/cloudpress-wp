@@ -2,32 +2,7 @@
 // [수정사항]
 // - 매니저(manager)도 사이트 목록 조회/정지/해제/삭제 허용
 
-const CORS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type,Authorization',
-};
-const _j = (d, s = 200) => new Response(JSON.stringify(d), {
-  status: s, headers: { 'Content-Type': 'application/json', ...CORS },
-});
-const ok = (d = {}) => _j({ ok: true, ...d });
-const err = (msg, s = 400) => _j({ ok: false, error: msg }, s);
-
-async function requireAdminOrMgr(env, req) {
-  try {
-    const a = req.headers.get('Authorization') || '';
-    const token = a.startsWith('Bearer ') ? a.slice(7) : (()=>{
-      const c = req.headers.get('Cookie') || '';
-      const m = c.match(/cp_session=([^;]+)/);
-      return m ? m[1] : null;
-    })();
-    if (!token) return null;
-    const uid = await env.SESSIONS.get(`session:${token}`);
-    if (!uid) return null;
-    const user = await env.DB.prepare('SELECT id,role FROM users WHERE id=?').bind(uid).first();
-    return (user?.role === 'admin' || user?.role === 'manager') ? user : null;
-  } catch { return null; }
-}
+import { CORS, _j, ok, err, requireAdminOrMgr } from '../_shared.js';
 
 export const onRequestOptions = () => new Response(null, { status: 204, headers: CORS });
 
