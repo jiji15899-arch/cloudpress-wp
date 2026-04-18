@@ -3,4 +3,3 @@
 
 import { CORS, _j, ok, err, handleOptions, getToken, getUserFull as getUser, hashPw } from './_shared.js';
 
-}
