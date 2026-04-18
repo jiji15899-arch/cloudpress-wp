@@ -6,15 +6,11 @@
 // - cms_github_repo / cms_github_branch / cms_github_token 추가 (GitHub HTTP fetch)
 // - cms_versions 관리 (add / delete / set_latest)
 
-const CORS = {
-  'Access-Control-Allow-Origin':  '*',
-  'Access-Control-Allow-Methods': 'GET,POST,PUT,OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type,Authorization',
-};
-
 // ── tar 파싱 헬퍼 (verify_github 전용) ───────────────────────────────────────
 // provision.js의 parseTar()와 동일한 ustar/pax 파싱 로직.
 // wantSet에 있는 파일만 찾고, 모두 찾으면 조기 종료.
+import { CORS, _j, ok, err, requireAdmin } from '../_shared.js';
+
 const _TAR_DEC = new TextDecoder('utf-8', { fatal: false });
 
 function _tarOctal(buf, offset, len) {
@@ -108,24 +104,6 @@ function _normalise(name, prefix) {
   if (prefix && p.startsWith(prefix + '/')) p = p.slice(prefix.length + 1);
   return (!p || p.endsWith('/')) ? null : p;
 }
-const _j  = (d, s = 200) => new Response(JSON.stringify(d), {
-  status: s, headers: { 'Content-Type': 'application/json', ...CORS },
-});
-const ok  = (d = {}) => _j({ ok: true,  ...d });
-const err = (msg, s = 400) => _j({ ok: false, error: msg }, s);
-
-async function requireAdmin(env, req) {
-  try {
-    const a = req.headers.get('Authorization') || '';
-    const t = a.startsWith('Bearer ') ? a.slice(7) : null;
-    if (!t) return null;
-    const uid = await env.SESSIONS.get(`session:${t}`);
-    if (!uid) return null;
-    const user = await env.DB.prepare('SELECT id,role FROM users WHERE id=?').bind(uid).first();
-    return user?.role === 'admin' ? user : null;
-  } catch { return null; }
-}
-
 // 저장 가능한 모든 키 목록
 const ALLOWED_KEYS = [
   // Cloudflare
