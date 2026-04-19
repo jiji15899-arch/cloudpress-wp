@@ -48,10 +48,10 @@
     .verify-ok{background:rgba(34,197,94,.07);border:1px solid rgba(34,197,94,.2);color:#15803d}
     .verify-fail{background:rgba(249,115,22,.07);border:1px solid rgba(249,115,22,.2);color:var(--accent)}
     .spec-pill{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;font-size:.74rem;font-weight:700;margin:2px}
-    .spec-pill.php{background:rgba(139,92,246,.1);color:#7c3aed}
+    .spec-pill.edge{background:rgba(139,92,246,.1);color:#7c3aed}
     .spec-pill.tz{background:rgba(16,185,129,.1);color:#059669}
-    .spec-pill.wp{background:rgba(59,130,246,.1);color:#2563eb}
-    .spec-pill.mysql{background:rgba(245,158,11,.1);color:#d97706}
+    .spec-pill.cms{background:rgba(59,130,246,.1);color:#2563eb}
+    .spec-pill.d1{background:rgba(245,158,11,.1);color:#d97706}
 
     /* ── 반응형 (site.html) ── */
     @media (max-width:600px){
@@ -169,10 +169,10 @@ async function loadSite() {
   // PHP/WP/TZ 정보 알약
   const specPills = isActive ? `
     <div style="margin-bottom:12px">
-      ${site.php_version ? `<span class="spec-pill php">⚡ PHP ${site.php_version}</span>` : '<span class="spec-pill php">⚡ PHP 8.3</span>'}
-      ${site.wp_version ? `<span class="spec-pill wp">📦 WP ${site.wp_version}</span>` : '<span class="spec-pill wp">📦 WP 최신</span>'}
+      <span class="spec-pill edge">⚡ Edge Runtime</span>
+      <span class="spec-pill cms">📦 CloudPress CMS</span>
       <span class="spec-pill tz">🕐 KST (Asia/Seoul)</span>
-      <span class="spec-pill mysql">🗄️ MySQL +9:00</span>
+      <span class="spec-pill d1">🗄️ D1 Database</span>
     </div>` : '';
 
   const suspendedHtml = site.suspended ? `
@@ -195,7 +195,7 @@ async function loadSite() {
     <!-- 사이트 정보 -->
     <div class="info-card">
       <div class="info-title">
-        🌐 WordPress 사이트 정보
+        🌐 CloudPress 사이트 정보
         <span class="status-badge ${statusCls}">${site.suspended ? '일시 정지' : statusLabel}</span>
       </div>
 
@@ -208,8 +208,11 @@ async function loadSite() {
           사이트 방문
         </a>
         <a href="${esc(site.wp_admin_url || (siteUrl ? siteUrl + '/cp-admin/' : '#'))}" target="_blank" class="btn btn-primary">
-          ⚙️ WordPress 관리자
+          ⚙️ CMS 관리자
         </a>
+        <button class="btn btn-ghost" onclick="openFileManager('${site.id}')">
+          📁 파일 관리자
+        </button>
       </div>` : ''}
 
       <div class="info-row"><div class="info-label">사이트 이름</div><div class="info-val">${esc(site.name)}</div></div>
@@ -223,10 +226,10 @@ async function loadSite() {
       <div class="info-row"><div class="info-label">관리자 URL</div><div class="info-val"><a href="${esc(site.wp_admin_url || '#')}" target="_blank" style="color:var(--accent)">${esc(site.wp_admin_url || '생성 중...')}</a></div></div>
       <div class="info-row"><div class="info-label">호스팅</div><div class="info-val">CloudPress (Cloudflare Workers)</div></div>
       <div class="info-row"><div class="info-label">기본 서브도메인</div><div class="info-val">${esc(workerDevUrl || '생성 중...')}</div></div>
-      <div class="info-row"><div class="info-label">PHP 버전</div><div class="info-val">${esc(site.php_version || 'PHP 8.3 (최신)')} ✅</div></div>
-      <div class="info-row"><div class="info-label">WordPress 버전</div><div class="info-val">${esc(site.wp_version || '최신 (한국어)')} ✅</div></div>
-      <div class="info-row"><div class="info-label">PHP 시간대</div><div class="info-val">Asia/Seoul (KST, UTC+9) ✅</div></div>
-      <div class="info-row"><div class="info-label">MySQL 시간대</div><div class="info-val">+9:00 (KST) ✅</div></div>
+      <div class="info-row"><div class="info-label">런타임</div><div class="info-val">Cloudflare Edge Runtime (V8) ✅</div></div>
+      <div class="info-row"><div class="info-label">CMS 버전</div><div class="info-val">CloudPress ${esc(site.cms_version || '최신')} ✅</div></div>
+      <div class="info-row"><div class="info-label">시간대</div><div class="info-val">Asia/Seoul (KST, UTC+9) ✅</div></div>
+      <div class="info-row"><div class="info-label">데이터베이스</div><div class="info-val">Cloudflare D1 (SQLite) ✅</div></div>
       <div class="info-row"><div class="info-label">SSL 인증서</div><div class="info-val">${site.ssl_active ? '✅ 활성화됨' : '⏳ 준비 중'}</div></div>
       <div class="info-row"><div class="info-label">Breeze 캐시</div><div class="info-val">${site.breeze_installed ? '✅ 설치됨' : '—'}</div></div>
       <div class="info-row"><div class="info-label">Cron Job</div><div class="info-val">${site.cron_enabled ? '✅ 활성화됨' : '—'}</div></div>
@@ -247,12 +250,23 @@ async function loadSite() {
       </div>
       <div style="background:rgba(34,113,177,.07);border:1px solid rgba(34,113,177,.18);border-radius:8px;padding:14px;font-size:.82rem;color:var(--muted);margin-top:12px;line-height:1.6">
         ℹ️ 위 <strong>초기 설정 URL</strong>에 접속하면 관리자 계정(아이디·비밀번호)을 직접 생성할 수 있습니다.<br>
-        초기 설정 완료 후 <code style="background:var(--bg);padding:1px 5px;border-radius:4px">/cp-admin/</code> 으로 로그인하세요.
+        초기 설정 완료 후 안내된 <strong>보안 관리자 URL</strong>로 로그인하세요.
       </div>` : `
       <div style="color:var(--muted);font-size:.85rem;padding:12px 0">
         ⏳ 프로비저닝 완료 후 초기 설정 URL이 표시됩니다.
       </div>`}
     </div>
+
+    <!-- 파일 관리자 (활성 사이트만) -->
+    ${isActive ? `
+    <div class="info-card" id="fileManagerSection">
+      <div class="info-title">📁 파일 관리자</div>
+      <div id="fm-content">
+        <p style="color:var(--muted);font-size:.85rem;margin:0 0 12px">KV 스토리지 및 D1 미디어 파일을 관리합니다.</p>
+        <button class="btn btn-primary btn-sm" onclick="loadFileManager('${site.id}')">📂 파일 열기</button>
+      </div>
+      <div id="fm-tree" style="display:none;margin-top:16px"></div>
+    </div>` : ''}
 
     <!-- 도메인 관리 (활성 사이트만) -->
     ${isActive ? `
@@ -579,6 +593,64 @@ async function deleteSite(id, name) {
   }
   if (delData.ok) location.href = '/dashboard.html';
   else alert('삭제 실패: ' + (delData.error || ''));
+}
+
+
+// ── 파일 관리자 ───────────────────────────────────────────────
+function openFileManager(siteId) {
+  document.getElementById('fileManagerSection')?.scrollIntoView({ behavior: 'smooth' });
+  loadFileManager(siteId);
+}
+
+async function loadFileManager(siteId) {
+  const tree = document.getElementById('fm-tree');
+  const btn  = document.getElementById('fm-content');
+  if (!tree) return;
+  tree.style.display = 'block';
+  if (btn) btn.style.display = 'none';
+  tree.innerHTML = '<div style="color:var(--muted);font-size:.83rem;padding:10px 0">📂 파일 목록 불러오는 중…</div>';
+
+  try {
+    const res  = await CP.apiFetch(`/api/sites/${siteId}/files`);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.error) {
+      tree.innerHTML = renderFmEmpty();
+      return;
+    }
+    tree.innerHTML = renderFmTree(data.files || [], siteId);
+  } catch (_) {
+    tree.innerHTML = renderFmEmpty();
+  }
+}
+
+function renderFmEmpty() {
+  return `<div style="text-align:center;padding:24px;color:var(--muted)">
+    <div style="font-size:2rem;margin-bottom:8px">📭</div>
+    <div style="font-size:.85rem">파일이 없거나 파일 관리자 API가 아직 준비되지 않았습니다.</div>
+    <div style="font-size:.78rem;margin-top:6px">사이트 관리자 패널 → 미디어에서 업로드하세요.</div>
+  </div>`;
+}
+
+function renderFmTree(files, siteId) {
+  if (!files.length) return renderFmEmpty();
+  const rows = files.map(f => `
+    <div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)">
+      <span style="font-size:1rem">${f.type === 'dir' ? '📁' : '📄'}</span>
+      <span style="flex:1;font-size:.85rem;font-weight:600;word-break:break-all">${esc(f.name)}</span>
+      <span style="font-size:.75rem;color:var(--muted)">${f.size ? formatBytes(f.size) : ''}</span>
+      ${f.type !== 'dir' ? `<a href="${esc(f.url || '#')}" target="_blank" class="copy-btn">열기</a>` : ''}
+    </div>`).join('');
+  return `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <span style="font-size:.8rem;color:var(--muted)">${files.length}개 파일</span>
+    </div>
+    ${rows}`;
+}
+
+function formatBytes(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1024 * 1024) return (b / 1024).toFixed(1) + ' KB';
+  return (b / 1024 / 1024).toFixed(1) + ' MB';
 }
 
 (async () => {
