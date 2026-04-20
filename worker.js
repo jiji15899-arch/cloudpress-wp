@@ -283,7 +283,7 @@ async function handleRequest(request, env, ctx) {
       headers: { "Content-Type": "text/plain" }
     });
   }
-  if (hostname.endsWith(".pages.dev") || hostname.endsWith(".workers.dev") || hostname === "cloud-press.co.kr" || hostname === "www.cloud-press.co.kr") {
+  if (hostname.endsWith(".pages.dev") || hostname.endsWith(".workers.dev") || hostname === "cloudpress.site" || hostname === "www.cloudpress.site") {
     return fetch(request);
   }
   let siteInfo = null;
