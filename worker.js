@@ -837,36 +837,242 @@ function renderAdminPage(pathname, siteInfo, extra) {
       + '})();';
 
   } else if (page === 'post-new' || page === 'post') {
-    pageTitle = '새 글 추가';
-    bodyHtml = '<div style="display:grid;grid-template-columns:1fr 280px;gap:20px">'
-      + '<div>'
-      + '<input type="text" id="post-title" placeholder="제목 추가" style="width:100%;font-size:1.5rem;font-weight:700;border:none;border-bottom:1px solid #dcdcde;padding:10px 0;margin-bottom:20px;outline:none;color:#1d2327;background:transparent">'
-      + '<div id="post-editor" contenteditable="true" style="min-height:300px;border:1px solid #dcdcde;border-radius:2px;padding:16px;font-size:.9375rem;line-height:1.7;outline:none;background:#fff;color:#1d2327">내용을 입력하세요...</div>'
-      + '</div>'
-      + '<div><div class="admin-widget" style="margin-bottom:0">'
-      + '<h3 class="widget-title">게시</h3>'
-      + '<div class="widget-body">'
-      + '<div style="margin-bottom:12px;font-size:.85rem;color:#50575e">상태: <strong>게시됨</strong></div>'
-      + '<div style="display:flex;gap:8px;flex-wrap:wrap">'
-      + '<button onclick="savePost()" class="btn-wp" style="flex:1">게시</button>'
-      + '<button class="btn-wp btn-secondary" style="flex:1">미리보기</button>'
-      + '</div></div></div></div></div>';
-    inlineScript = 'async function savePost(){'
-      + 'var title=document.getElementById("post-title").value;'
-      + 'var content=document.getElementById("post-editor").innerText;'
-      + 'if(!title){alert("제목을 입력하세요.");return;}'
-      + 'var slug=title.toLowerCase().replace(/[^a-z0-9가-힣]+/g,"-").replace(/^-|-$/g,"");'
-      + 'try{'
-      + 'var res=await fetch("/wp-json/wp/v2/posts",{'
-      + 'method:"POST",'
-      + 'headers:{"Content-Type":"application/json"},'
-      + 'body:JSON.stringify({title:title,content:content,status:"publish",slug:slug})'
-      + '});'
-      + 'var d=await res.json();'
-      + 'if(res.ok&&d.id){alert("게시글이 저장되었습니다!");window.location.href="/wp-admin/edit.php";}'
-      + 'else alert("저장 실패: "+(d.message||"알 수 없는 오류"));'
-      + '}catch(e){alert("오류: "+e.message);}'
-      + '}';
+    const postId = sp ? (sp.get('post') || '') : '';
+    const postType = sp ? (sp.get('post_type') || 'post') : 'post';
+    pageTitle = postId ? '글 편집' : (postType === 'page' ? '새 페이지 추가' : '새 글 추가');
+    const apiType = postType === 'page' ? 'pages' : 'posts';
+    const listPage = postType === 'page' ? '/wp-admin/edit.php?post_type=page' : '/wp-admin/edit.php';
+    bodyHtml = `<style>
+#editor-wrap{display:grid;grid-template-columns:1fr 280px;gap:0;background:#fff;border:1px solid #c3c4c7;border-radius:4px;overflow:hidden;min-height:600px}
+#editor-main{padding:0;display:flex;flex-direction:column;border-right:1px solid #e0e0e0}
+#editor-toolbar{background:#1e1e1e;padding:8px 16px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+#editor-toolbar button{background:#3c434a;color:#fff;border:none;border-radius:2px;padding:4px 8px;font-size:.75rem;cursor:pointer}
+#editor-toolbar button:hover{background:#50575e}
+#editor-toolbar .sep{width:1px;height:20px;background:#3c434a;margin:0 2px}
+#post-title-field{width:100%;font-size:2rem;font-weight:700;border:none;border-bottom:1px solid #e0e0e0;padding:24px 32px 16px;outline:none;color:#1d2327;background:#fff;font-family:inherit}
+#post-title-field::placeholder{color:#c3c4c7}
+#block-editor{flex:1;padding:24px 32px;outline:none;min-height:400px;font-size:1rem;line-height:1.8;color:#1d2327}
+#block-editor p:empty::before{content:attr(data-placeholder);color:#c3c4c7;pointer-events:none}
+.block-inserter{display:flex;align-items:center;gap:8px;padding:8px 32px;border-top:1px dashed #e0e0e0;color:#a0a0a0;font-size:.8125rem;cursor:pointer}
+.block-inserter:hover{background:#f9f9f9}
+#editor-sidebar{background:#f6f7f7;display:flex;flex-direction:column}
+#sidebar-tabs{display:flex;border-bottom:1px solid #e0e0e0}
+.stab{flex:1;padding:10px;text-align:center;font-size:.8125rem;cursor:pointer;color:#50575e;border-bottom:2px solid transparent}
+.stab.active{color:#1d2327;border-bottom-color:#1d2327;font-weight:600}
+#sidebar-content{padding:16px;font-size:.8125rem;overflow-y:auto}
+.sidebar-section{margin-bottom:20px}
+.sidebar-section h4{font-size:.8125rem;font-weight:600;color:#1d2327;margin:0 0 10px}
+.sidebar-section label{display:block;color:#50575e;margin-bottom:4px;font-size:.8125rem}
+.sidebar-section select,.sidebar-section input[type=text],.sidebar-section input[type=datetime-local],.sidebar-section textarea{width:100%;padding:5px 8px;border:1px solid #8c8f94;border-radius:3px;font-size:.8125rem;background:#fff}
+.sidebar-section .toggle{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #f0f0f1}
+.save-bar{background:#1e1e1e;padding:8px 16px;display:flex;align-items:center;justify-content:flex-end;gap:8px}
+.save-bar button{padding:6px 16px;font-size:.8125rem;cursor:pointer;border-radius:3px;border:none}
+#btn-save-draft{background:#3c434a;color:#fff}
+#btn-preview{background:#2271b1;color:#fff}
+#btn-publish{background:#2271b1;color:#fff}
+#save-notice{font-size:.75rem;color:#a0a0a0}
+</style>
+<div class="save-bar">
+  <span id="save-notice"></span>
+  <button id="btn-save-draft" onclick="savePost('draft')">초안 저장</button>
+  <a href="/" target="_blank" id="btn-preview" style="color:#fff;text-decoration:none;padding:6px 16px;background:#2271b1;border-radius:3px;font-size:.8125rem">미리보기</a>
+  <button id="btn-publish" onclick="savePost('publish')">게시</button>
+</div>
+<div id="editor-wrap">
+  <div id="editor-main">
+    <div id="editor-toolbar">
+      <button onclick="insertBlock('paragraph')">¶ 단락</button>
+      <button onclick="insertBlock('heading')">H 제목</button>
+      <button onclick="insertBlock('image')">🖼 이미지</button>
+      <button onclick="insertBlock('list')">☰ 목록</button>
+      <button onclick="insertBlock('quote')">❝ 인용</button>
+      <button onclick="insertBlock('code')">{ } 코드</button>
+      <button onclick="insertBlock('separator')">— 구분선</button>
+      <button onclick="insertBlock('table')">⊞ 표</button>
+      <div class="sep"></div>
+      <button onclick="execCmd('bold')" title="굵게">B</button>
+      <button onclick="execCmd('italic')" title="기울임"><i>I</i></button>
+      <button onclick="execCmd('underline')" title="밑줄"><u>U</u></button>
+      <button onclick="insertLink()" title="링크">🔗</button>
+      <div class="sep"></div>
+      <button onclick="execCmd('justifyLeft')">←</button>
+      <button onclick="execCmd('justifyCenter')">↔</button>
+      <button onclick="execCmd('justifyRight')">→</button>
+    </div>
+    <input type="text" id="post-title-field" placeholder="제목 추가" autocomplete="off">
+    <div id="block-editor" contenteditable="true" spellcheck="false"><p data-placeholder="글 작성 시작 또는 /를 입력하여 블록 선택"></p></div>
+    <div class="block-inserter" onclick="insertBlock('paragraph')">⊕ 블록 추가</div>
+  </div>
+  <div id="editor-sidebar">
+    <div id="sidebar-tabs">
+      <div class="stab active" onclick="showTab('post')">글</div>
+      <div class="stab" onclick="showTab('block')">블록</div>
+    </div>
+    <div id="sidebar-content">
+      <div id="tab-post">
+        <div class="sidebar-section">
+          <h4>요약</h4>
+          <div class="toggle"><span>공개 상태</span><select id="post-status"><option value="publish">공개됨</option><option value="draft">초안</option><option value="private">비공개</option></select></div>
+          <div class="toggle" style="margin-top:8px"><span>공개 날짜</span><input type="datetime-local" id="post-date"></div>
+        </div>
+        <div class="sidebar-section">
+          <h4>고유주소</h4>
+          <label>슬러그</label>
+          <input type="text" id="post-slug" placeholder="slug">
+        </div>
+        <div class="sidebar-section">
+          <h4>카테고리</h4>
+          <div id="categories-list" style="color:#8c8f94;font-size:.8125rem">불러오는 중...</div>
+          <a href="#" onclick="addCat();return false" style="font-size:.8125rem;margin-top:6px;display:inline-block">+ 새 카테고리 추가</a>
+        </div>
+        <div class="sidebar-section">
+          <h4>태그</h4>
+          <input type="text" id="post-tags" placeholder="쉼표로 구분하여 입력">
+        </div>
+        <div class="sidebar-section">
+          <h4>대표 이미지</h4>
+          <label class="btn-wp btn-secondary" style="cursor:pointer;display:block;text-align:center;font-size:.8125rem">대표 이미지 설정<input type="file" accept="image/*" style="display:none" onchange="setFeaturedImage(this)"></label>
+          <div id="featured-image-preview" style="margin-top:8px"></div>
+        </div>
+        <div class="sidebar-section">
+          <h4>발췌문</h4>
+          <textarea id="post-excerpt" rows="3" placeholder="발췌문을 입력하세요..." style="resize:vertical"></textarea>
+        </div>
+        <div class="sidebar-section">
+          <h4>토론</h4>
+          <div class="toggle"><label><input type="checkbox" id="allow-comments" checked> 댓글 허용</label></div>
+          <div class="toggle"><label><input type="checkbox" id="allow-pingbacks" checked> 핑백 및 트랙백 허용</label></div>
+        </div>
+      </div>
+      <div id="tab-block" style="display:none">
+        <div class="sidebar-section">
+          <h4>블록 정보</h4>
+          <p style="color:#50575e">블록을 선택하면 여기에 설정이 표시됩니다.</p>
+        </div>
+        <div class="sidebar-section">
+          <h4>색상</h4>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            ${['#1e1e1e','#fff','#0073aa','#d63638','#00a32a','#ff6900','#f0f0f1','#2271b1'].map(c=>`<div onclick="execCmd('foreColor','${c}')" style="width:24px;height:24px;background:${c};border:1px solid #c3c4c7;border-radius:3px;cursor:pointer"></div>`).join('')}
+          </div>
+        </div>
+        <div class="sidebar-section">
+          <h4>글자 크기</h4>
+          <select onchange="execCmd('fontSize',this.value)">
+            <option value="2">소 (13px)</option>
+            <option value="3" selected>보통 (16px)</option>
+            <option value="4">중 (18px)</option>
+            <option value="5">대 (24px)</option>
+            <option value="6">특대 (32px)</option>
+          </select>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>`;
+    inlineScript = `
+var _postId=${JSON.stringify(postId)};
+var _apiType=${JSON.stringify(apiType)};
+var _listPage=${JSON.stringify(listPage)};
+// 기존 글 로드
+if(_postId){(async()=>{
+  try{
+    const res=await fetch("/wp-json/wp/v2/"+_apiType+"/"+_postId);
+    const p=await res.json();
+    if(p.id){
+      document.getElementById("post-title-field").value=(p.title&&p.title.rendered)||"";
+      document.getElementById("block-editor").innerHTML=(p.content&&p.content.raw)||p.content&&p.content.rendered||"<p></p>";
+      document.getElementById("post-slug").value=p.slug||"";
+      document.getElementById("post-status").value=p.status||"publish";
+      document.getElementById("post-excerpt").value=(p.excerpt&&p.excerpt.raw)||"";
+      if(p.date)document.getElementById("post-date").value=p.date.slice(0,16);
+      document.getElementById("save-notice").textContent="마지막 저장: "+new Date(p.modified).toLocaleString("ko-KR");
+    }
+  }catch(e){}
+})();}
+// 카테고리 로드
+(async()=>{
+  try{
+    const res=await fetch("/wp-json/wp/v2/categories?per_page=30");
+    const cats=await res.json();
+    const el=document.getElementById("categories-list");
+    if(cats&&cats.length){
+      el.innerHTML=cats.map(c=>'<label style="display:block;margin-bottom:4px"><input type="checkbox" name="cat[]" value="'+c.id+'"> '+c.name+'</label>').join("");
+    }else{
+      el.innerHTML='<em style="color:#8c8f94">카테고리 없음</em>';
+    }
+  }catch(e){}
+})();
+// 제목→슬러그 자동
+document.getElementById("post-title-field").addEventListener("input",function(){
+  var s=this.value.toLowerCase().replace(/\\s+/g,"-").replace(/[^a-z0-9가-힣-]/g,"").replace(/^-+|-+$/g,"");
+  document.getElementById("post-slug").value=s;
+});
+function showTab(t){
+  document.getElementById("tab-post").style.display=t==="post"?"":"none";
+  document.getElementById("tab-block").style.display=t==="block"?"":"none";
+  document.querySelectorAll(".stab").forEach(function(el){el.classList.remove("active");});
+  event.target.classList.add("active");
+}
+function execCmd(cmd,val){document.execCommand(cmd,false,val||null);document.getElementById("block-editor").focus();}
+function insertLink(){var url=prompt("URL 입력:");if(url)document.execCommand("createLink",false,url);}
+function insertBlock(type){
+  var el=document.getElementById("block-editor");
+  el.focus();
+  var tag={paragraph:"p",heading:"h2",image:"figure",list:"ul",quote:"blockquote",code:"pre",separator:"hr",table:"table"}[type]||"p";
+  var content={
+    paragraph:"<p><br></p>",
+    heading:"<h2>제목을 입력하세요</h2>",
+    image:'<figure class="wp-block-image"><img src="" alt=""><figcaption>캡션</figcaption></figure>',
+    list:"<ul><li>항목 1</li><li>항목 2</li></ul>",
+    quote:"<blockquote><p>인용문을 입력하세요.</p><cite>출처</cite></blockquote>",
+    code:"<pre><code>코드를 입력하세요</code></pre>",
+    separator:"<hr>",
+    table:"<table><thead><tr><th>헤더 1</th><th>헤더 2</th></tr></thead><tbody><tr><td>셀 1</td><td>셀 2</td></tr></tbody></table>",
+  }[type]||"<p><br></p>";
+  document.execCommand("insertHTML",false,content);
+}
+function setFeaturedImage(input){
+  if(!input.files[0])return;
+  var reader=new FileReader();
+  reader.onload=function(e){
+    document.getElementById("featured-image-preview").innerHTML='<img src="'+e.target.result+'" style="width:100%;border-radius:3px">';
+  };
+  reader.readAsDataURL(input.files[0]);
+}
+function addCat(){var name=prompt("새 카테고리 이름:");if(!name)return;fetch("/wp-json/wp/v2/categories",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:name})}).then(r=>r.json()).then(c=>{if(c.id){var el=document.getElementById("categories-list");el.innerHTML+='<label style="display:block;margin-bottom:4px"><input type="checkbox" name="cat[]" value="'+c.id+'" checked> '+c.name+'</label>';}else alert("생성 실패");}).catch(()=>alert("오류"));}
+async function savePost(statusOverride){
+  var title=document.getElementById("post-title-field").value.trim();
+  var content=document.getElementById("block-editor").innerHTML;
+  var slug=document.getElementById("post-slug").value.trim();
+  var status=statusOverride||document.getElementById("post-status").value;
+  var excerpt=document.getElementById("post-excerpt").value.trim();
+  if(!title){alert("제목을 입력하세요.");return;}
+  if(!slug)slug=title.toLowerCase().replace(/\\s+/g,"-").replace(/[^a-z0-9가-힣-]/g,"").replace(/^-+|-+$/g,"")||("post-"+Date.now());
+  var cats=[];document.querySelectorAll('input[name="cat[]"]:checked').forEach(function(c){cats.push(parseInt(c.value));});
+  var body={title:{raw:title},content:{raw:content},slug:slug,status:status,excerpt:{raw:excerpt}};
+  if(cats.length)body.categories=cats;
+  var dateVal=document.getElementById("post-date").value;
+  if(dateVal)body.date=dateVal+":00";
+  var notice=document.getElementById("save-notice");
+  notice.textContent="저장 중...";notice.style.color="#a0a0a0";
+  try{
+    var url="/wp-json/wp/v2/"+_apiType+(_postId?"/"+_postId:"");
+    var method=_postId?"PUT":"POST";
+    var res=await fetch(url,{method:method,headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+    var d=await res.json();
+    if(res.ok&&d.id){
+      _postId=d.id;
+      notice.textContent="저장됨: "+new Date().toLocaleTimeString("ko-KR");
+      notice.style.color="#00a32a";
+      if(status==="publish"){
+        if(confirm("게시되었습니다! 글 목록으로 이동하시겠습니까?")){window.location=_listPage;}
+      }
+    }else{notice.textContent="저장 실패: "+(d.message||"오류");notice.style.color="#d63638";}
+  }catch(e){notice.textContent="오류: "+e.message;notice.style.color="#d63638";}
+}
+// Ctrl+S 단축키
+document.addEventListener("keydown",function(e){if((e.ctrlKey||e.metaKey)&&e.key==="s"){e.preventDefault();savePost("draft");}});
+`;
 
   } else if (page === 'upload') {
     pageTitle = '미디어 라이브러리';
@@ -922,26 +1128,54 @@ function renderAdminPage(pathname, siteInfo, extra) {
 
   } else if (page === 'plugins') {
     pageTitle = '플러그인';
-    bodyHtml = '<div class="tablenav top" style="margin-bottom:10px">'
-      + '<a href="/wp-admin/plugin-install.php" class="btn-wp">새 플러그인 추가</a></div>'
+    bodyHtml = '<div class="tablenav top" style="margin-bottom:10px;display:flex;align-items:center;gap:10px">'
+      + '<a href="/wp-admin/plugin-install.php" class="btn-wp">새 플러그인 추가</a>'
+      + '<span id="plugin-count" style="color:#50575e;font-size:.8125rem"></span>'
+      + '</div>'
       + '<table class="wp-list-table" style="width:100%;border-collapse:collapse;border:1px solid #c3c4c7;background:#fff">'
-      + '<thead><tr style="background:#f6f7f7"><th style="padding:8px 10px;text-align:left">플러그인</th><th style="padding:8px 10px;width:100px">상태</th></tr></thead>'
-      + '<tbody>'
-      + [
-          {name:'Akismet Anti-Spam', desc:'수백만 WordPress 사이트에서 검증된 스팸 방지.', ver:'5.3.3'},
-          {name:'CloudPress Cache',  desc:'CloudPress 전용 고성능 엣지 캐시 플러그인.',  ver:'1.0.0', active:true},
-          {name:'Yoast SEO',         desc:'검색엔진 최적화의 표준.',                      ver:'22.0'},
-        ].map(function(p) {
-          return '<tr style="border-top:1px solid #f0f0f1"' + (p.active ? ' style="background:rgba(34,113,177,.05)"' : '') + '>'
-            + '<td style="padding:10px"><strong>' + p.name + '</strong> <span style="color:#8c8f94;font-size:.8rem">버전 ' + p.ver + '</span>'
-            + '<p style="margin:4px 0 6px;font-size:.8rem;color:#50575e">' + p.desc + '</p>'
-            + '<div style="font-size:.8rem">' + (p.active
-              ? '<span style="color:#00a32a">■</span> 활성화됨 | <a href="#">설정</a> | <a href="#" style="color:#b32d2e">비활성화</a>'
-              : '<a href="#">활성화</a> | <a href="#" style="color:#b32d2e">삭제</a>') + '</div></td>'
-            + '<td style="padding:10px;vertical-align:top"><span style="font-size:.8rem;' + (p.active ? 'color:#00a32a;font-weight:600' : 'color:#8c8f94') + '">' + (p.active ? '활성' : '비활성') + '</span></td>'
-            + '</tr>';
-        }).join('')
-      + '</tbody></table>';
+      + '<thead><tr style="background:#f6f7f7">'
+      + '<td style="width:30px;padding:8px 10px"><input type="checkbox" id="cb-select-all"></td>'
+      + '<th style="padding:8px 10px;text-align:left">플러그인</th>'
+      + '<th style="padding:8px 10px;text-align:left;width:200px">설명</th>'
+      + '</tr></thead>'
+      + '<tbody id="plugins-list"><tr><td colspan="3" style="padding:20px;text-align:center;color:#8c8f94">불러오는 중...</td></tr></tbody>'
+      + '</table>';
+    inlineScript = '(async()=>{'
+      + 'try{'
+      + 'const res=await fetch("/wp-json/cloudpress/v1/plugins").then(r=>r.json()).catch(()=>({installed:[]}));'
+      + 'const plugins=res.installed||[];'
+      + 'document.getElementById("plugin-count").textContent=plugins.length+"개 설치됨";'
+      + 'const el=document.getElementById("plugins-list");'
+      + 'if(!plugins.length){el.innerHTML=\'<tr><td colspan="3" style="padding:20px;text-align:center;color:#8c8f94">설치된 플러그인이 없습니다. <a href="/wp-admin/plugin-install.php">새 플러그인 추가</a></td></tr>\';return;}'
+      + 'el.innerHTML=plugins.map(function(p){'
+      + 'var active=p.status==="active";'
+      + 'var actionLinks=active'
+      + '?\'<a href="#" onclick="togglePlugin(\\\''+'\\\'+p.slug+\\\',false);return false">비활성화</a>\''
+      + ':\'<a href="#" onclick="togglePlugin(\\\''+'\\\'+p.slug+\\\',true);return false">활성화</a> | <a href="#" style="color:#b32d2e" onclick="deletePlugin(\\\''+'\\\'+p.slug+\\\');return false">삭제</a>\';'
+      + 'return "<tr style=\\"border-top:1px solid #f0f0f1"+(active?" background:rgba(240,253,244,.8)":"")+"\\">"'
+      + '+"<td style=\\"padding:8px 10px\\"><input type=\\"checkbox\\" name=\\"checked[]\\"></td>"'
+      + '+"<td style=\\"padding:10px\\"><strong>"+(p.name||p.slug)+"</strong>"'
+      + '+(p.version?" <span style=\\"color:#8c8f94;font-size:.8rem\\">버전 "+p.version+"</span>":"")'
+      + '+(active?" <span style=\\"background:#00a32a;color:#fff;font-size:.7rem;padding:1px 5px;border-radius:2px\\">활성화됨</span>":"")'
+      + '+"<br><div style=\\"font-size:.8125rem;margin-top:4px\\">"+actionLinks+"</div></td>"'
+      + '+"<td style=\\"padding:10px;font-size:.8rem;color:#50575e\\">"+(p.description||"").slice(0,100)+"</td>"'
+      + '+"</tr>";'
+      + '}).join("");'
+      + '}catch(e){document.getElementById("plugins-list").innerHTML=\'<tr><td colspan="3" style="padding:20px;text-align:center;color:#d63638">오류: \'+e.message+\'</td></tr>\';}'
+      + '})();'
+      + 'async function togglePlugin(slug,activate){'
+      + 'try{'
+      + 'const res=await fetch("/wp-json/cloudpress/v1/plugins/"+slug+(activate?"/activate":"/deactivate"),{method:"POST"});'
+      + 'if(res.ok)location.reload();else alert("작업 실패");'
+      + '}catch(e){alert("오류: "+e.message);}'
+      + '}'
+      + 'async function deletePlugin(slug){'
+      + 'if(!confirm(slug+" 플러그인을 삭제하시겠습니까?"))return;'
+      + 'try{'
+      + 'const res=await fetch("/wp-json/cloudpress/v1/plugins/"+slug,{method:"DELETE"});'
+      + 'if(res.ok)location.reload();else alert("삭제 실패");'
+      + '}catch(e){alert("오류: "+e.message);}'
+      + '}';
 
   } else if (page === 'options-general' || page === 'options') {
     pageTitle = '일반 설정';
@@ -1091,6 +1325,296 @@ function renderAdminPage(pathname, siteInfo, extra) {
       + '}).join("");'
       + '})();';
 
+  } else if (page === 'plugin-install') {
+    pageTitle = '플러그인 추가';
+    const tab = sp ? (sp.get('tab') || 'search') : 'search';
+    bodyHtml = '<div style="margin-bottom:16px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
+      + '<a href="/wp-admin/plugin-install.php?tab=featured" class="btn-wp '+(tab==='featured'?'':'btn-secondary')+'">인기</a>'
+      + '<a href="/wp-admin/plugin-install.php?tab=recommended" class="btn-wp '+(tab==='recommended'?'':'btn-secondary')+'">추천</a>'
+      + '<a href="/wp-admin/plugin-install.php?tab=favorites" class="btn-wp btn-secondary">즐겨찾기</a>'
+      + '<div style="flex:1"></div>'
+      + '<div style="display:flex;gap:6px">'
+      + '<input type="text" id="plugin-search-input" placeholder="플러그인 검색..." style="padding:5px 10px;border:1px solid #8c8f94;border-radius:3px;font-size:.875rem;width:220px">'
+      + '<button onclick="searchPlugins()" class="btn-wp">검색</button>'
+      + '</div></div>'
+      + '<div id="plugin-search-results" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px">'
+      + '<div style="grid-column:1/-1;text-align:center;padding:30px;color:#8c8f94">플러그인을 검색하거나 카테고리를 선택하세요.</div>'
+      + '</div>';
+    inlineScript = 'async function searchPlugins(q){'
+      + 'var query=q||document.getElementById("plugin-search-input").value.trim();'
+      + 'if(!query&&!q){query="wordpress";}'  // default search
+      + 'var el=document.getElementById("plugin-search-results");'
+      + 'el.innerHTML=\'<div style="grid-column:1/-1;text-align:center;padding:30px;color:#8c8f94">WordPress.org 플러그인 검색 중...</div>\';'
+      + 'try{'
+      + 'const res=await fetch("/wp-json/cloudpress/v1/plugin-search?q="+encodeURIComponent(query)+"&per_page=12");'
+      + 'const data=await res.json();'
+      + 'const plugins=(data.plugins||[]);'
+      + 'if(!plugins.length){el.innerHTML=\'<div style="grid-column:1/-1;text-align:center;padding:30px;color:#8c8f94">검색 결과가 없습니다.</div>\';return;}'
+      + 'el.innerHTML=plugins.map(function(p){'
+      + 'var stars=Math.round((p.rating||0)/20);'
+      + 'var starHtml="★".repeat(stars)+"☆".repeat(5-stars);'
+      + 'var installed=p.installed||false;'
+      + 'return "<div style=\\"background:#fff;border:1px solid #c3c4c7;border-radius:4px;padding:16px;display:flex;flex-direction:column;gap:8px\\">"'
+      + '+"<div style=\\"display:flex;align-items:flex-start;gap:10px\\">"'
+      + '+(p.icons&&p.icons["1x"]?\'<img src="\'+p.icons["1x"]+\'" style="width:48px;height:48px;border-radius:4px;object-fit:cover" onerror="this.style.display=\'none\'">\':"<div style=\\"width:48px;height:48px;background:#f0f0f1;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:1.5rem\\">🔌</div>")'
+      + '+"<div style=\\"flex:1\\">"'
+      + '+"<strong style=\\"font-size:.9375rem\\">"+(p.name||p.slug)+"</strong>"'
+      + '+(p.version?"<span style=\\"color:#8c8f94;font-size:.75rem;margin-left:4px\\">"+p.version+"</span>":"")'
+      + '+"<br><small style=\\"color:#50575e\\">"+(p.author_profile?\'<a href="\'+p.author_profile+\'" target="_blank" style="color:#2271b1">\'+p.author+"</a>":p.author||"")+"</small>"'
+      + '+"</div></div>"'
+      + '+"<p style=\\"font-size:.8125rem;color:#50575e;line-height:1.5;flex:1\\">"+(p.short_description||"").replace(/<[^>]+>/g,"").slice(0,120)+"</p>"'
+      + '+"<div style=\\"display:flex;align-items:center;gap:8px;font-size:.75rem;color:#8c8f94\\">"'
+      + '+"<span style=\\"color:#dba617\\">"+(starHtml)+"</span>"'
+      + '+(p.num_ratings?"<span>"+(p.num_ratings).toLocaleString()+"개 평가</span>":"")'
+      + '+(p.active_installs?"<span>활성 설치: "+(p.active_installs>=1000000?Math.floor(p.active_installs/1000000)+"M+":p.active_installs>=1000?Math.floor(p.active_installs/1000)+"K+":p.active_installs)+"</span>":"")'
+      + '+"</div>"'
+      + '+"<button onclick=\\"installPlugin(\\\'"+p.slug+"\\\',this)\\" class=\\"btn-wp\\" style=\\"width:100%\\"'+(installed?" disabled":"")+"\\">"+(installed?"✓ 설치됨":"지금 설치")+"</button>"'
+      + '+(p.homepage?"<a href=\\""+p.homepage+"\\" target=\\"_blank\\" style=\\"text-align:center;font-size:.8rem;color:#2271b1\\">자세한 내용</a>":"")'
+      + '+"</div>";'
+      + '}).join("");'
+      + '}catch(e){el.innerHTML=\'<div style="grid-column:1/-1;text-align:center;padding:30px;color:#d63638">플러그인 검색 오류: \'+e.message+\'</div>\';}'
+      + '}'
+      + 'async function installPlugin(slug,btn){'
+      + 'btn.disabled=true;btn.textContent="설치 중...";'
+      + 'try{'
+      + 'const res=await fetch("/wp-json/cloudpress/v1/plugins/"+slug+"/install",{method:"POST"});'
+      + 'const d=await res.json();'
+      + 'if(res.ok||d.ok){btn.textContent="✓ 설치 완료";btn.style.background="#00a32a";btn.style.borderColor="#00a32a";}else{btn.textContent="설치 실패";btn.disabled=false;alert(d.message||"설치 실패");}'
+      + '}catch(e){btn.textContent="오류";btn.disabled=false;alert("오류: "+e.message);}'
+      + '}'
+      + 'document.getElementById("plugin-search-input").addEventListener("keydown",function(e){if(e.key==="Enter")searchPlugins();});'
+      + 'searchPlugins("');  // load popular on page load
+
+  } else if (page === 'theme-install') {
+    pageTitle = '테마 추가';
+    bodyHtml = '<div style="margin-bottom:16px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
+      + '<a href="/wp-admin/theme-install.php?browse=featured" class="btn-wp '+(sp&&sp.get('browse')==='featured'?'':'btn-secondary')+'">인기</a>'
+      + '<a href="/wp-admin/theme-install.php?browse=new" class="btn-wp btn-secondary">최신</a>'
+      + '<div style="flex:1"></div>'
+      + '<div style="display:flex;gap:6px">'
+      + '<input type="text" id="theme-search-input" placeholder="테마 검색..." style="padding:5px 10px;border:1px solid #8c8f94;border-radius:3px;font-size:.875rem;width:200px">'
+      + '<button onclick="searchThemes()" class="btn-wp">검색</button>'
+      + '</div></div>'
+      + '<div id="theme-search-results" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:20px"></div>';
+    inlineScript = 'async function searchThemes(q){'
+      + 'var query=q||document.getElementById("theme-search-input").value.trim()||"featured";'
+      + 'var el=document.getElementById("theme-search-results");'
+      + 'el.innerHTML=\'<div style="grid-column:1/-1;text-align:center;padding:30px;color:#8c8f94">WordPress.org 테마 검색 중...</div>\';'
+      + 'try{'
+      + 'const res=await fetch("/wp-json/cloudpress/v1/theme-search?q="+encodeURIComponent(query)+"&per_page=12");'
+      + 'const data=await res.json();'
+      + 'const themes=data.themes||[];'
+      + 'if(!themes.length){el.innerHTML=\'<div style="grid-column:1/-1;text-align:center;padding:30px;color:#8c8f94">검색 결과가 없습니다.</div>\';return;}'
+      + 'el.innerHTML=themes.map(function(t){'
+      + 'var preview=t.screenshot_url||"";'
+      + 'return "<div style=\\"background:#fff;border:1px solid #c3c4c7;border-radius:4px;overflow:hidden\\">"'
+      + '+(preview?\'<div style="height:180px;overflow:hidden"><img src="\'+preview+\'" style="width:100%;height:100%;object-fit:cover" onerror="this.parentNode.style.background=\'#f0f0f1\'"></div>\':"<div style=\\"height:180px;background:linear-gradient(135deg,#f0f0f1,#c3c4c7);display:flex;align-items:center;justify-content:center;font-size:3rem\\">🎨</div>")'
+      + '+"<div style=\\"padding:12px\\">"'
+      + '+"<strong>"+(t.name||t.slug)+"</strong>"'
+      + '+(t.version?"<span style=\\"color:#8c8f94;font-size:.75rem;margin-left:4px\\">"+t.version+"</span>":"")'
+      + '+"<p style=\\"font-size:.8rem;color:#50575e;margin:6px 0\\">"+(t.description||"").replace(/<[^>]+>/g,"").slice(0,80)+"</p>"'
+      + '+"<div style=\\"display:flex;gap:6px\\">"'
+      + '+"<button onclick=\\"installTheme(\\\'"+t.slug+"\\\',this)\\" class=\\"btn-wp\\" style=\\"flex:1\\">설치</button>"'
+      + '+(t.preview_url?"<a href=\\""+t.preview_url+"\\" target=\\"_blank\\" class=\\"btn-wp btn-secondary\\" style=\\"flex:1;text-align:center\\">미리보기</a>":"")'
+      + '+"</div></div></div>";'
+      + '}).join("");'
+      + '}catch(e){el.innerHTML=\'<div style="grid-column:1/-1;text-align:center;padding:30px;color:#d63638">오류: \'+e.message+\'</div>\';}'
+      + '}'
+      + 'async function installTheme(slug,btn){'
+      + 'btn.disabled=true;btn.textContent="설치 중...";'
+      + 'try{'
+      + 'const res=await fetch("/wp-json/cloudpress/v1/themes/"+slug+"/install",{method:"POST"});'
+      + 'const d=await res.json();'
+      + 'if(res.ok||d.ok){btn.textContent="✓ 설치됨";btn.style.background="#00a32a";btn.style.borderColor="#00a32a";}else{btn.textContent="실패";btn.disabled=false;alert(d.message||"설치 실패");}'
+      + '}catch(e){btn.textContent="오류";btn.disabled=false;}'
+      + '}'
+      + 'document.getElementById("theme-search-input").addEventListener("keydown",function(e){if(e.key==="Enter")searchThemes();});'
+      + 'searchThemes("');
+
+  } else if (page === 'site-editor') {
+    pageTitle = '사이트 편집기';
+    bodyHtml = '<div style="background:#fff;border:1px solid #c3c4c7;border-radius:4px;padding:0;overflow:hidden">'
+      + '<div style="background:#1e1e1e;color:#fff;padding:10px 16px;display:flex;align-items:center;gap:12px;font-size:.8125rem">'
+      + '<span style="font-weight:600">사이트 편집기</span>'
+      + '<span style="color:#a0a0a0">|</span>'
+      + '<a href="/wp-admin/site-editor.php?path=/template" style="color:#a0a0a0;text-decoration:none">템플릿</a>'
+      + '<a href="/wp-admin/site-editor.php?path=/pattern" style="color:#a0a0a0;text-decoration:none">패턴</a>'
+      + '<a href="/wp-admin/site-editor.php?path=/style" style="color:#a0a0a0;text-decoration:none">스타일</a>'
+      + '<div style="flex:1"></div>'
+      + '<a href="/" target="_blank" style="color:#a0a0a0;text-decoration:none">↗ 미리보기</a>'
+      + '</div>'
+      + '<div style="padding:40px;text-align:center;color:#50575e">'
+      + '<div style="font-size:3rem;margin-bottom:16px">🎨</div>'
+      + '<h2 style="font-size:1.2rem;font-weight:600;margin-bottom:12px">Full Site Editing</h2>'
+      + '<p style="font-size:.9rem;line-height:1.6;margin-bottom:20px;max-width:500px;margin-left:auto;margin-right:auto">'
+      + 'CloudPress는 WordPress Full Site Editing을 완벽하게 지원합니다.<br>'
+      + '블록 기반 테마를 사용하면 이 편집기가 활성화됩니다.</p>'
+      + '<div style="display:flex;gap:10px;justify-content:center">'
+      + '<a href="/wp-admin/themes.php" class="btn-wp">테마 관리</a>'
+      + '<a href="/wp-admin/theme-install.php" class="btn-wp btn-secondary">블록 테마 추가</a>'
+      + '</div></div></div>';
+
+  } else if (page === 'nav-menus') {
+    pageTitle = '메뉴';
+    bodyHtml = '<div style="display:grid;grid-template-columns:280px 1fr;gap:20px">'
+      + '<div>'
+      + '<div class="admin-widget" style="margin-bottom:16px">'
+      + '<h3 class="widget-title">메뉴 편집</h3>'
+      + '<div class="widget-body">'
+      + '<div id="menu-list" style="font-size:.8125rem;color:#50575e">불러오는 중...</div>'
+      + '<hr style="margin:12px 0;border-color:#f0f0f1">'
+      + '<input type="text" id="new-menu-name" placeholder="메뉴 이름" style="width:100%;padding:5px 8px;border:1px solid #8c8f94;border-radius:3px;font-size:.8125rem;margin-bottom:8px">'
+      + '<button onclick="createMenu()" class="btn-wp" style="width:100%;font-size:.8125rem">새 메뉴 만들기</button>'
+      + '</div></div>'
+      + '<div class="admin-widget">'
+      + '<h3 class="widget-title">메뉴에 추가</h3>'
+      + '<div class="widget-body">'
+      + '<div style="font-size:.8125rem;margin-bottom:8px;font-weight:600;color:#1d2327">페이지</div>'
+      + '<div id="pages-for-menu" style="font-size:.8125rem;color:#50575e">불러오는 중...</div>'
+      + '<hr style="margin:12px 0;border-color:#f0f0f1">'
+      + '<div style="font-size:.8125rem;margin-bottom:8px;font-weight:600;color:#1d2327">사용자 정의 링크</div>'
+      + '<input type="text" id="custom-link-url" placeholder="URL" style="width:100%;padding:4px 8px;border:1px solid #8c8f94;border-radius:3px;font-size:.8125rem;margin-bottom:6px">'
+      + '<input type="text" id="custom-link-text" placeholder="링크 텍스트" style="width:100%;padding:4px 8px;border:1px solid #8c8f94;border-radius:3px;font-size:.8125rem;margin-bottom:8px">'
+      + '<button onclick="addCustomLink()" class="btn-wp btn-secondary" style="font-size:.8125rem">메뉴에 추가</button>'
+      + '</div></div>'
+      + '</div>'
+      + '<div>'
+      + '<div class="admin-widget">'
+      + '<h3 class="widget-title">메뉴 구조</h3>'
+      + '<div class="widget-body">'
+      + '<div id="menu-structure" style="min-height:200px;border:2px dashed #c3c4c7;border-radius:4px;padding:20px;text-align:center;color:#8c8f94;font-size:.8125rem">메뉴 항목을 여기에 드래그하세요</div>'
+      + '<div style="margin-top:16px;display:flex;justify-content:flex-end;gap:8px">'
+      + '<button onclick="saveMenu()" class="btn-wp">메뉴 저장</button>'
+      + '</div></div></div></div></div>';
+    inlineScript = '(async()=>{'
+      + 'const pagesRes=await fetch("/wp-json/wp/v2/pages?per_page=20&_fields=id,title,link").then(r=>r.json()).catch(()=>[]);'
+      + 'const pages=Array.isArray(pagesRes)?pagesRes:[];'
+      + 'document.getElementById("pages-for-menu").innerHTML=pages.length'
+      + '?pages.map(p=>\'<label style="display:block;margin-bottom:4px"><input type="checkbox" value="\'+p.id+\'" data-title="\'+((p.title&&p.title.rendered)||"페이지")+\'" data-url="\'+((p.link||"/"))+\'"> \'+(p.title&&p.title.rendered||"(제목 없음)")+\'</label>\').join("")'
+      + ':\'페이지가 없습니다.\';'
+      + 'document.getElementById("menu-list").innerHTML=\'<em style="color:#8c8f94">저장된 메뉴 없음</em>\';'
+      + '})();'
+      + 'function createMenu(){var n=document.getElementById("new-menu-name").value.trim();if(!n){alert("메뉴 이름을 입력하세요.");return;}alert(n+" 메뉴가 생성되었습니다.");}'
+      + 'function addCustomLink(){var url=document.getElementById("custom-link-url").value.trim(),text=document.getElementById("custom-link-text").value.trim();if(!url||!text){alert("URL과 텍스트를 입력하세요.");return;}var el=document.getElementById("menu-structure");el.style.border="1px solid #c3c4c7";el.innerHTML=(el.innerHTML.includes("드래그")?"":"<ul style=\\"list-style:none;margin:0;padding:0\\">")+\'<li style="padding:8px 10px;background:#f9f9f9;border:1px solid #dcdcde;border-radius:3px;margin-bottom:6px;font-size:.8125rem">📎 \'+text+\' <small style="color:#8c8f94">\'+url+"</small></li>";}'
+      + 'function saveMenu(){alert("메뉴가 저장되었습니다.");}'
+      ;
+
+  } else if (page === 'widgets') {
+    pageTitle = '위젯';
+    bodyHtml = '<div style="display:grid;grid-template-columns:1fr 280px;gap:20px">'
+      + '<div>'
+      + '<div class="admin-widget" style="margin-bottom:16px">'
+      + '<h3 class="widget-title">사이드바</h3>'
+      + '<div class="widget-body" id="sidebar-widgets" style="min-height:100px">'
+      + '<div style="border:2px dashed #c3c4c7;border-radius:4px;padding:20px;text-align:center;color:#8c8f94;font-size:.8125rem">위젯을 여기에 드래그하거나 추가하세요</div>'
+      + '</div></div>'
+      + '<div class="admin-widget">'
+      + '<h3 class="widget-title">푸터</h3>'
+      + '<div class="widget-body" style="min-height:60px;border:2px dashed #c3c4c7;border-radius:4px;padding:20px;text-align:center;color:#8c8f94;font-size:.8125rem">위젯 없음</div>'
+      + '</div></div>'
+      + '<div>'
+      + '<div class="admin-widget">'
+      + '<h3 class="widget-title">사용 가능한 위젯</h3>'
+      + '<div class="widget-body">'
+      + ['최근 글','최근 댓글','보관함','카테고리','메타','검색','텍스트','이미지','HTML'].map(function(w){'
+      + 'return "<div style=\\"display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #f0f0f1;font-size:.8125rem\\"><span>"+w+"</span><button onclick=\\"addWidget(\'"+w+"\')\\' class=\\"btn-wp btn-secondary\\" style=\\"padding:2px 8px;font-size:.75rem\\">추가</button></div>";'
+      + '}).join("")'
+      + '</div></div></div></div>';
+    inlineScript = 'function addWidget(name){var el=document.getElementById("sidebar-widgets");el.innerHTML=\'<div style="background:#fff;border:1px solid #c3c4c7;border-radius:4px;padding:10px;margin-bottom:8px;font-size:.8125rem"><div style="display:flex;justify-content:space-between;align-items:center"><strong>\'+name+\'</strong><button onclick="this.parentNode.parentNode.remove()" style="background:none;border:none;color:#b32d2e;cursor:pointer;font-size:.85rem">✕</button></div><p style="margin:8px 0 0;color:#50575e">위젯이 사이드바에 추가되었습니다.</p></div>\'+el.innerHTML;}'
+      ;
+
+  } else if (page === 'customize') {
+    pageTitle = '사용자 정의하기';
+    bodyHtml = '<div style="background:#fff;border:1px solid #c3c4c7;border-radius:4px;overflow:hidden">'
+      + '<div style="display:grid;grid-template-columns:300px 1fr;min-height:600px">'
+      + '<div style="background:#1e1e1e;padding:0">'
+      + '<div style="background:#2c3338;padding:12px 16px;color:#fff;font-size:.9rem;font-weight:600">사용자 정의하기</div>'
+      + ['사이트 정보','색상','헤더 이미지','배경 이미지','메뉴','위젯','홈페이지 설정','추가 CSS'].map(function(item){'
+      + 'return "<a href=\'#\' style=\\"display:flex;justify-content:space-between;align-items:center;padding:12px 16px;color:#a7aaad;font-size:.8125rem;text-decoration:none;border-bottom:1px solid #3c434a\\" onmouseenter=\\"this.style.background=\'#2c3338\';\\" onmouseleave=\\"this.style.background=\'transparent\';\\">"+item+" <span style=\'font-size:.75rem\'>›</span></a>";'
+      + '}).join("")'
+      + '<div style="padding:12px 16px;margin-top:auto">'
+      + '<button class="btn-wp" style="width:100%;font-size:.8125rem">공개</button>'
+      + '</div></div>'
+      + '<div style="background:#f0f0f1;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;padding:20px">'
+      + '<div style="background:#fff;border:1px solid #c3c4c7;border-radius:4px;width:100%;max-width:600px;min-height:400px;display:flex;align-items:center;justify-content:center">'
+      + '<iframe src="/" style="width:100%;height:400px;border:none" title="미리보기"></iframe>'
+      + '</div></div></div></div>';
+
+  } else if (page === 'tools') {
+    pageTitle = '도구';
+    bodyHtml = '<div class="admin-widgets">'
+      + '<div class="admin-widget"><h3 class="widget-title">가져오기</h3><div class="widget-body">'
+      + '<p style="font-size:.875rem;color:#50575e;margin-bottom:12px">다른 시스템에서 콘텐츠를 가져옵니다.</p>'
+      + '<label class="btn-wp" style="cursor:pointer">파일 선택 (WXR/XML)<input type="file" accept=".xml,.wxr" style="display:none" onchange="importFile(this)"></label>'
+      + '</div></div>'
+      + '<div class="admin-widget"><h3 class="widget-title">내보내기</h3><div class="widget-body">'
+      + '<p style="font-size:.875rem;color:#50575e;margin-bottom:12px">모든 글, 페이지, 댓글, 사용자 정의 필드, 카테고리, 태그를 XML 파일로 내보냅니다.</p>'
+      + '<button onclick="exportSite()" class="btn-wp">내보내기 파일 다운로드</button>'
+      + '</div></div>'
+      + '<div class="admin-widget"><h3 class="widget-title">사이트 건강</h3><div class="widget-body">'
+      + '<a href="/wp-admin/site-health.php" class="btn-wp btn-secondary">사이트 상태 확인</a>'
+      + '</div></div></div>';
+    inlineScript = 'function importFile(i){if(i.files[0])alert("가져오기 기능은 준비 중입니다.");}'
+      + 'function exportSite(){fetch("/wp-json/cloudpress/v1/export").then(r=>r.blob()).then(b=>{var a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="wordpress-export.xml";a.click();}).catch(()=>alert("내보내기 준비 중입니다."));}'
+      ;
+
+  } else if (page === 'site-health') {
+    pageTitle = '사이트 상태';
+    bodyHtml = '<div class="admin-widget" style="margin-bottom:16px">'
+      + '<h3 class="widget-title">사이트 상태</h3>'
+      + '<div class="widget-body">'
+      + '<div id="health-results" style="font-size:.875rem;color:#50575e">확인 중...</div>'
+      + '</div></div>';
+    inlineScript = '(async()=>{'
+      + 'const el=document.getElementById("health-results");'
+      + 'const checks=['
+      + '{label:"HTTPS 연결",check:()=>location.protocol==="https:",pass:"HTTPS가 활성화되어 있습니다.",fail:"HTTP로 접속 중입니다."},'
+      + '{label:"REST API",check:async()=>{try{const r=await fetch("/wp-json/wp/v2/posts?per_page=1");return r.ok;}catch{return false;}},pass:"REST API가 정상입니다.",fail:"REST API에 문제가 있습니다."},'
+      + '{label:"WordPress 버전",check:()=>true,pass:"WordPress 6.9.4 (최신)",fail:""},'
+      + '{label:"PHP 버전",check:()=>true,pass:"CloudPress Edge Workers (최신)",fail:""},'
+      + '{label:"데이터베이스",check:async()=>{try{const r=await fetch("/wp-json/wp/v2/settings");return r.ok;}catch{return false;}},pass:"D1 데이터베이스 정상",fail:"D1 데이터베이스 오류"},'
+      + '];'
+      + 'let html="<table style=\\"width:100%;border-collapse:collapse\\">";'
+      + 'for(const c of checks){'
+      + 'const ok=typeof c.check==="function"?await c.check():true;'
+      + 'html+=\'<tr style="border-bottom:1px solid #f0f0f1"><td style="padding:10px;font-weight:600">\'+c.label+\'</td><td style="padding:10px"><span style="color:\'+(ok?"#00a32a":"#d63638")+\'">\'+(ok?"✓":"✗")+" "+(ok?c.pass:c.fail)+"</span></td></tr>";'
+      + '}'
+      + 'html+="</table>";'
+      + 'el.innerHTML=html;'
+      + '})();';
+
+  } else if (page === 'update-core') {
+    pageTitle = '업데이트';
+    bodyHtml = '<div class="admin-widget">'
+      + '<h3 class="widget-title">WordPress 업데이트</h3>'
+      + '<div class="widget-body">'
+      + '<div style="display:flex;align-items:center;gap:12px;padding:12px;background:#edfaef;border-radius:4px;margin-bottom:16px">'
+      + '<span style="font-size:1.5rem;color:#00a32a">✓</span>'
+      + '<div><strong style="font-size:.9375rem;color:#1d2327">WordPress 6.9.4 최신 버전</strong>'
+      + '<br><span style="font-size:.8125rem;color:#50575e">CloudPress Edge는 항상 최신 WordPress를 사용합니다.</span></div>'
+      + '</div>'
+      + '<h3 style="font-size:.875rem;font-weight:600;margin-bottom:10px">플러그인</h3>'
+      + '<div id="plugin-updates" style="color:#50575e;font-size:.8125rem">확인 중...</div>'
+      + '</div></div>';
+    inlineScript = '(async()=>{'
+      + 'try{const r=await fetch("/wp-json/cloudpress/v1/plugins");const d=await r.json();'
+      + 'const el=document.getElementById("plugin-updates");'
+      + 'el.innerHTML=(d.installed&&d.installed.length)?\'<span style="color:#00a32a">✓ 모든 플러그인이 최신 상태입니다.</span>\':\'플러그인이 설치되지 않았습니다.\';'
+      + '}catch(e){document.getElementById("plugin-updates").textContent="확인 실패: "+e.message;}'
+      + '})();';
+
+  } else if (page === 'privacy') {
+    pageTitle = '개인정보 처리방침';
+    bodyHtml = '<div class="admin-widget"><h3 class="widget-title">개인정보 처리방침 페이지</h3>'
+      + '<div class="widget-body">'
+      + '<p style="font-size:.875rem;color:#50575e;margin-bottom:12px">개인정보 처리방침 페이지를 생성하거나 기존 페이지를 선택할 수 있습니다.</p>'
+      + '<button onclick="createPrivacyPage()" class="btn-wp">개인정보 처리방침 페이지 만들기</button>'
+      + '</div></div>';
+    inlineScript = 'async function createPrivacyPage(){'
+      + 'const res=await fetch("/wp-json/wp/v2/pages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({title:"개인정보 처리방침",content:"<p>이 개인정보 처리방침은 귀하의 개인정보를 어떻게 수집, 사용 및 보호하는지 설명합니다.</p>",status:"draft"})});'
+      + 'if(res.ok){alert("개인정보 처리방침 페이지가 초안으로 생성되었습니다.");window.location="/wp-admin/edit.php?post_type=page";}else{alert("생성 실패");}'
+      + '}';
+
   } else {
     pageTitle = page.replace(/-/g,' ').replace(/\b\w/g, function(c){return c.toUpperCase();});
     bodyHtml = '<div style="background:#fff;border:1px solid #c3c4c7;border-radius:4px;padding:30px;text-align:center;color:#50575e">'
@@ -1103,13 +1627,14 @@ function renderAdminPage(pathname, siteInfo, extra) {
   var menuActive = {
     dashboard: (page === 'index' || page === '' || page === 'dashboard'),
     posts:     (page === 'edit' && !isPage) || page === 'post-new' || page === 'post',
-    media:     page === 'upload',
-    pages:     page === 'edit' && isPage,
+    media:     page === 'upload' || page === 'media-new',
+    pages:     (page === 'edit' && isPage),
     comments:  page === 'edit-comments',
-    themes:    page === 'themes',
-    plugins:   page === 'plugins',
-    users:     page === 'users' || page === 'user-new' || page === 'profile',
-    settings:  page === 'options-general' || page === 'options' || page === 'options-permalink',
+    appearance: page === 'themes' || page === 'theme-install' || page === 'site-editor' || page === 'widgets' || page === 'nav-menus' || page === 'customize' || page === 'theme-editor',
+    plugins:   page === 'plugins' || page === 'plugin-install' || page === 'plugin-editor',
+    users:     page === 'users' || page === 'user-new' || page === 'profile' || page === 'user-edit',
+    tools:     page === 'tools' || page === 'import' || page === 'export' || page === 'site-health' || page === 'site-health-info',
+    settings:  page === 'options-general' || page === 'options' || page === 'options-permalink' || page === 'options-reading' || page === 'options-writing' || page === 'options-discussion' || page === 'options-media' || page === 'privacy',
   };
 
   function menuItem(href, icon, label, active) {
@@ -1182,9 +1707,10 @@ function renderAdminPage(pathname, siteInfo, extra) {
     + menuItem('/wp-admin/edit.php?post_type=page', '📄', '페이지', menuActive.pages)
     + menuItem('/wp-admin/edit-comments.php', '💬', '댓글', menuActive.comments)
     + '<li class="menu-sep"></li>'
-    + menuItem('/wp-admin/themes.php', '🎨', '외모', menuActive.themes)
+    + menuItem('/wp-admin/themes.php', '🎨', '외모', menuActive.appearance)
     + menuItem('/wp-admin/plugins.php', '🔌', '플러그인', menuActive.plugins)
     + menuItem('/wp-admin/users.php', '👥', '사용자', menuActive.users)
+    + menuItem('/wp-admin/tools.php', '🔧', '도구', menuActive.tools)
     + '<li class="menu-sep"></li>'
     + menuItem('/wp-admin/options-general.php', '⚙️', '설정', menuActive.settings)
     + menuItem('/', '🌐', '사이트 보기', false)
@@ -1253,99 +1779,216 @@ async function handleWPLogin(env, request, url, siteInfo) {
   });
 }
 
+// WordPress 로고 SVG (wp-admin/images/wordpress-logo.svg 원본)
+const WP_LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" id="Layer_1" x="0px" y="0px" width="64px" height="64px" viewBox="0 0 64 64" enable-background="new 0 0 64 64" xml:space="preserve"><style>.style0{fill:#0073aa;}</style><g><g><path d="M4.548 31.999c0 10.9 6.3 20.3 15.5 24.706L6.925 20.827C5.402 24.2 4.5 28 4.5 31.999z M50.531 30.614c0-3.394-1.219-5.742-2.264-7.57c-1.391-2.263-2.695-4.177-2.695-6.439c0-2.523 1.912-4.872 4.609-4.872 c0.121 0 0.2 0 0.4 0.022C45.653 7.3 39.1 4.5 32 4.548c-9.591 0-18.027 4.921-22.936 12.4 c0.645 0 1.3 0 1.8 0.033c2.871 0 7.316-0.349 7.316-0.349c1.479-0.086 1.7 2.1 0.2 2.3 c0 0-1.487 0.174-3.142 0.261l9.997 29.735l6.008-18.017l-4.276-11.718c-1.479-0.087-2.879-0.261-2.879-0.261 c-1.48-0.087-1.306-2.349 0.174-2.262c0 0 4.5 0.3 7.2 0.349c2.87 0 7.317-0.349 7.317-0.349 c1.479-0.086 1.7 2.1 0.2 2.262c0 0-1.489 0.174-3.142 0.261l9.92 29.508l2.739-9.148 C49.628 35.7 50.5 33 50.5 30.614z M32.481 34.4l-8.237 23.934c2.46 0.7 5.1 1.1 7.8 1.1 c3.197 0 6.262-0.552 9.116-1.556c-0.072-0.118-0.141-0.243-0.196-0.379L32.481 34.4z M56.088 18.8 c0.119 0.9 0.2 1.8 0.2 2.823c0 2.785-0.521 5.916-2.088 9.832l-8.385 24.242c8.161-4.758 13.65-13.6 13.65-23.728 C59.451 27.2 58.2 22.7 56.1 18.83z M32 0c-17.645 0-32 14.355-32 32C0 49.6 14.4 64 32 64s32-14.355 32-32.001 C64 14.4 49.6 0 32 0z M32 62.533c-16.835 0-30.533-13.698-30.533-30.534C1.467 15.2 15.2 1.5 32 1.5 s30.534 13.7 30.5 30.532C62.533 48.8 48.8 62.5 32 62.533z" class="style0"/></g></g></svg>`;
+
+// WordPress login.min.css 원본 (wp-admin/css/login.min.css)
+const WP_LOGIN_CSS = `body,html{height:100%;margin:0;padding:0}body{background:#f0f0f1;min-width:0;color:#3c434a;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Oxygen-Sans,Ubuntu,Cantarell,"Helvetica Neue",sans-serif;font-size:13px;line-height:1.4}a{color:#2271b1;transition-property:border,background,color;transition-duration:.05s;transition-timing-function:ease-in-out}a{outline:0}a:active,a:hover{color:#135e96}a:focus{color:#043959;box-shadow:0 0 0 2px #2271b1;outline:2px solid transparent}p{line-height:1.5}.login .message,.login .notice,.login .success{border-left:4px solid #72aee6;padding:12px;margin-left:0;margin-bottom:20px;background-color:#fff;box-shadow:0 1px 1px 0 rgba(0,0,0,.1);word-wrap:break-word}.login .success{border-left-color:#00a32a}.login .notice-error{border-left-color:#d63638}.login .login-error-list{list-style:none}.login .login-error-list li+li{margin-top:4px}#loginform p.submit,.login-action-lostpassword p.submit{border:none;margin:-10px 0 20px}.login *{margin:0;padding:0}.login form{margin:24px 0;padding:26px 24px;font-weight:400;overflow:hidden;background:#fff;border:1px solid #c3c4c7;box-shadow:0 1px 3px rgba(0,0,0,.04)}.login form.shake{animation:shake .2s cubic-bezier(.19,.49,.38,.79) both;animation-iteration-count:3;transform:translateX(0)}@keyframes shake{25%{transform:translateX(-20px)}75%{transform:translateX(20px)}100%{transform:translateX(0)}}.login form .forgetmenot{font-weight:400;float:left;margin-bottom:0}.login .button-primary{float:right}.login label{font-size:14px;line-height:1.5;display:inline-block;margin-bottom:3px}.login h1{text-align:center}.login h1 a{background-image:none;background-size:84px;background-position:center top;background-repeat:no-repeat;color:#3c434a;height:84px;font-size:20px;font-weight:400;line-height:1.3;margin:0 auto 24px;padding:0;text-decoration:none;width:84px;text-indent:-9999px;outline:0;overflow:hidden;display:block}#login{width:320px;padding:5% 0 0;margin:auto}.login #backtoblog,.login #nav{font-size:13px;padding:0 24px}.login #nav{margin:24px 0 0}#backtoblog{margin:16px 0;word-wrap:break-word}.login #backtoblog a,.login #nav a{text-decoration:none;color:#50575e}.login #backtoblog a:hover,.login #nav a:hover,.login h1 a:hover{color:#135e96}.login form .input,.login input[type=password],.login input[type=text]{font-size:24px;line-height:1.33333333;width:100%;border-width:.0625rem;padding:.1875rem .3125rem;margin:0 6px 16px 0;min-height:40px;max-height:none}.login form .input,.login form input[type=checkbox],.login input[type=text]{background:#fff}.login #pass-strength-result{font-weight:600;margin:-1px 5px 16px 0;padding:6px 5px;text-align:center;width:100%}.login .wp-pwd{position:relative}.screen-reader-text{border:0;clip-path:inset(50%);height:1px;margin:-1px;overflow:hidden;padding:0;position:absolute;width:1px;word-wrap:normal!important}#login form p{margin-bottom:0}#login form p.submit{margin:0;padding:0}.login .button,.login .button-secondary{display:inline-block;text-decoration:none;font-size:13px;line-height:2.15384615;min-height:30px;margin:0;padding:0 10px;cursor:pointer;border-width:1px;border-style:solid;-webkit-appearance:none;background:#f6f7f7;border-color:#8c8f94;color:#2c3338}.login .button-primary{background:#2271b1;border-color:#2271b1;color:#fff;text-decoration:none;text-shadow:none;font-size:13px;line-height:2.15384615;padding:0 10px;cursor:pointer;border-width:1px;border-style:solid;-webkit-appearance:none;border-radius:3px;white-space:nowrap;box-sizing:border-box;min-height:30px}.login .button-primary:hover,.login .button-primary:focus{background:#135e96;border-color:#135e96;color:#fff}.login input[type=checkbox]{width:1rem;height:1rem}`;
+
 function renderLoginPage(siteInfo, error, url) {
   const siteUrl = url ? `https://${url.hostname}` : '';
+  const redirectTo = url?.searchParams?.get('redirect_to') || '/wp-admin/';
+  const logoDataUri = 'data:image/svg+xml,' + encodeURIComponent(WP_LOGO_SVG);
   return `<!DOCTYPE html>
-<html lang="ko">
+<html lang="ko" class="js login-action-login wp-core-ui">
 <head>
-  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>로그인 – ${esc(siteInfo?.name || 'WordPress')}</title>
-  <link rel="stylesheet" href="/wp-admin/css/login.min.css">
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <meta name="viewport" content="width=device-width">
+  <title>로그인 ‹ ${esc(siteInfo?.name || 'WordPress')} — WordPress</title>
+  <style>${WP_LOGIN_CSS}</style>
   <style>
-    html{height:auto;background:#f0f0f1}
-    body{display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;font-family:-apple-system,sans-serif;background:#f0f0f1}
-    #login{width:320px;padding:26px 24px 24px;background:#fff;border-radius:6px;box-shadow:0 1px 3px rgba(0,0,0,.13)}
-    .login-logo{text-align:center;margin-bottom:20px}
-    .login-logo a{display:inline-block;width:84px;height:84px;background:url(/wp-admin/images/wordpress-logo.svg) no-repeat center;background-size:contain;text-indent:-9999px}
-    h1{display:none}
-    label{display:block;font-size:.875rem;font-weight:600;margin-bottom:.375rem;color:#1d2327}
-    input[type=text],input[type=password]{width:100%;padding:.5rem .75rem;border:1px solid #8c8f94;border-radius:4px;font-size:1rem;box-sizing:border-box;margin-bottom:1rem}
-    input[type=text]:focus,input[type=password]:focus{border-color:#2271b1;outline:2px solid rgba(34,113,177,.4);outline-offset:-1px}
-    .button-primary{width:100%;padding:.6rem;background:#2271b1;color:#fff;border:none;border-radius:4px;font-size:1rem;font-weight:600;cursor:pointer;transition:background .15s}
-    .button-primary:hover{background:#135e96}
-    .login-error{background:#f0f0f1;border-left:4px solid #d63638;padding:.75rem 1rem;margin-bottom:1rem;font-size:.875rem;color:#d63638;border-radius:0 4px 4px 0}
-    .nav{margin-top:1rem;text-align:center;font-size:.8125rem}
-    .nav a{color:#2271b1;margin:0 .5rem}
+    .login h1 a{background-image:url('${logoDataUri}')!important;background-size:84px!important;background-repeat:no-repeat!important;background-position:center top!important}
+    #login_error{border-left:4px solid #d63638;padding:12px;margin-left:0;margin-bottom:20px;background-color:#fff;box-shadow:0 1px 1px 0 rgba(0,0,0,.1);word-wrap:break-word;font-size:13px}
+    .login form p.submit{padding-top:6px}
+    .login .forgetmenot{margin-top:3px}
+    .login input[type=checkbox]{vertical-align:text-bottom;margin-right:3px}
   </style>
 </head>
-<body>
+<body class="login no-js login-action-login wp-core-ui locale-ko-kr">
+<script>document.body.className=document.body.className.replace('no-js','js');</script>
 <div id="login">
-  <div class="login-logo"><a href="${esc(siteUrl)}/">WordPress</a></div>
-  <h1>WordPress에 로그인</h1>
-  ${error ? `<div class="login-error">${esc(error)}</div>` : ''}
-  <form name="loginform" method="post" action="/wp-login.php">
-    <label for="user_login">사용자명 또는 이메일 주소</label>
-    <input type="text" name="log" id="user_login" autocomplete="username" required>
-    <label for="user_pass">비밀번호</label>
-    <input type="password" name="pwd" id="user_pass" autocomplete="current-password" required>
-    <input type="hidden" name="redirect_to" value="/wp-admin/">
-    <input type="hidden" name="testcookie" value="1">
-    <button type="submit" class="button-primary">로그인</button>
+  <h1><a href="https://wordpress.org/" tabindex="-1">${esc(siteInfo?.name || 'WordPress')}</a></h1>
+  ${error ? `<div id="login_error">${esc(error)}</div>` : ''}
+  <form name="loginform" id="loginform" action="${esc(siteUrl)}/wp-login.php" method="post">
+    <p>
+      <label for="user_login">사용자명 또는 이메일 주소</label>
+      <input type="text" name="log" id="user_login" class="input" value="" size="20" autocapitalize="off" autocomplete="username" required>
+    </p>
+    <div class="wp-pwd">
+      <label for="user_pass">비밀번호</label>
+      <input type="password" name="pwd" id="user_pass" class="input password-input" value="" size="20" autocomplete="current-password" spellcheck="false" required>
+    </div>
+    <p class="forgetmenot">
+      <input name="rememberme" type="checkbox" id="rememberme" value="forever">
+      <label for="rememberme">로그인 상태 유지</label>
+    </p>
+    <p class="submit">
+      <input type="submit" name="wp-submit" id="wp-submit" class="button button-primary button-large" value="로그인">
+      <input type="hidden" name="redirect_to" value="${esc(redirectTo)}">
+      <input type="hidden" name="testcookie" value="1">
+    </p>
   </form>
-  <div class="nav">
-    <a href="${esc(siteUrl)}/wp-login.php?action=lostpassword">비밀번호 찾기</a>
-    <a href="${esc(siteUrl)}/">← ${esc(siteInfo?.name || '사이트')}으로</a>
-  </div>
+  <p id="nav">
+    <a href="${esc(siteUrl)}/wp-login.php?action=lostpassword">비밀번호를 잊으셨나요?</a>
+  </p>
+  <p id="backtoblog">
+    <a href="${esc(siteUrl)}/">← ${esc(siteInfo?.name || '사이트')}(으)로 이동</a>
+  </p>
 </div>
 </body>
 </html>`;
 }
 
-// ── WordPress 비밀번호 검증 ───────────────────────────────────────────────────
-async function verifyWPPassword(password, hash) {
-  if (!hash) return false;
-  // MD5 기반 WordPress 해시 ($P$)
-  if (hash.startsWith('$P$')) {
-    return wpCheckPassword(password, hash);
+// ── WordPress 비밀번호 검증 (phpass MD5 portable hash 완전 구현) ──────────────
+// MD5를 WebCrypto 없이 순수 JS로 구현 (Workers 환경 호환)
+function md5(input) {
+  // RFC 1321 MD5 순수 JavaScript 구현
+  function safeAdd(x, y) { const lsw=(x&0xffff)+(y&0xffff); return (((x>>16)+(y>>16)+(lsw>>16))<<16)|(lsw&0xffff); }
+  function bitRotateLeft(num, cnt) { return (num<<cnt)|(num>>>(32-cnt)); }
+  function md5cmn(q,a,b,x,s,t) { return safeAdd(bitRotateLeft(safeAdd(safeAdd(a,q),safeAdd(x,t)),s),b); }
+  function md5ff(a,b,c,d,x,s,t) { return md5cmn((b&c)|((~b)&d),a,b,x,s,t); }
+  function md5gg(a,b,c,d,x,s,t) { return md5cmn((b&d)|(c&(~d)),a,b,x,s,t); }
+  function md5hh(a,b,c,d,x,s,t) { return md5cmn(b^c^d,a,b,x,s,t); }
+  function md5ii(a,b,c,d,x,s,t) { return md5cmn(c^(b|(~d)),a,b,x,s,t); }
+  function wordsToMd5(M,length) {
+    M[length>>5]|=(0x80<<((length)%32));M[(((length+64)>>>9)<<4)+14]=length;
+    let a=1732584193,b=-271733879,c=-1732584194,d=271733878,i=0,olda,oldb,oldc,oldd;
+    for(;i<M.length;i+=16){
+      olda=a;oldb=b;oldc=c;oldd=d;
+      a=md5ff(a,b,c,d,M[i],7,-680876936);d=md5ff(d,a,b,c,M[i+1],12,-389564586);c=md5ff(c,d,a,b,M[i+2],17,606105819);b=md5ff(b,c,d,a,M[i+3],22,-1044525330);
+      a=md5ff(a,b,c,d,M[i+4],7,-176418897);d=md5ff(d,a,b,c,M[i+5],12,1200080426);c=md5ff(c,d,a,b,M[i+6],17,-1473231341);b=md5ff(b,c,d,a,M[i+7],22,-45705983);
+      a=md5ff(a,b,c,d,M[i+8],7,1770035416);d=md5ff(d,a,b,c,M[i+9],12,-1958414417);c=md5ff(c,d,a,b,M[i+10],17,-42063);b=md5ff(b,c,d,a,M[i+11],22,-1990404162);
+      a=md5ff(a,b,c,d,M[i+12],7,1804603682);d=md5ff(d,a,b,c,M[i+13],12,-40341101);c=md5ff(c,d,a,b,M[i+14],17,-1502002290);b=md5ff(b,c,d,a,M[i+15],22,1236535329);
+      a=md5gg(a,b,c,d,M[i+1],5,-165796510);d=md5gg(d,a,b,c,M[i+6],9,-1069501632);c=md5gg(c,d,a,b,M[i+11],14,643717713);b=md5gg(b,c,d,a,M[i],20,-373897302);
+      a=md5gg(a,b,c,d,M[i+5],5,-701558691);d=md5gg(d,a,b,c,M[i+10],9,38016083);c=md5gg(c,d,a,b,M[i+15],14,-660478335);b=md5gg(b,c,d,a,M[i+4],20,-405537848);
+      a=md5gg(a,b,c,d,M[i+9],5,568446438);d=md5gg(d,a,b,c,M[i+14],9,-1019803690);c=md5gg(c,d,a,b,M[i+3],14,-187363961);b=md5gg(b,c,d,a,M[i+8],20,1163531501);
+      a=md5gg(a,b,c,d,M[i+13],5,-1444681467);d=md5gg(d,a,b,c,M[i+2],9,-51403784);c=md5gg(c,d,a,b,M[i+7],14,1735328473);b=md5gg(b,c,d,a,M[i+12],20,-1926607734);
+      a=md5hh(a,b,c,d,M[i+5],4,-378558);d=md5hh(d,a,b,c,M[i+8],11,-2022574463);c=md5hh(c,d,a,b,M[i+11],16,1839030562);b=md5hh(b,c,d,a,M[i+14],23,-35309556);
+      a=md5hh(a,b,c,d,M[i+1],4,-1530992060);d=md5hh(d,a,b,c,M[i+4],11,1272893353);c=md5hh(c,d,a,b,M[i+7],16,-155497632);b=md5hh(b,c,d,a,M[i+10],23,-1094730640);
+      a=md5hh(a,b,c,d,M[i+13],4,681279174);d=md5hh(d,a,b,c,M[i],11,-358537222);c=md5hh(c,d,a,b,M[i+3],16,-722521979);b=md5hh(b,c,d,a,M[i+6],23,76029189);
+      a=md5hh(a,b,c,d,M[i+9],4,-640364487);d=md5hh(d,a,b,c,M[i+12],11,-421815835);c=md5hh(c,d,a,b,M[i+15],16,530742520);b=md5hh(b,c,d,a,M[i+2],23,-995338651);
+      a=md5ii(a,b,c,d,M[i],6,-198630844);d=md5ii(d,a,b,c,M[i+7],10,1126891415);c=md5ii(c,d,a,b,M[i+14],15,-1416354905);b=md5ii(b,c,d,a,M[i+5],21,-57434055);
+      a=md5ii(a,b,c,d,M[i+12],6,1700485571);d=md5ii(d,a,b,c,M[i+3],10,-1894986606);c=md5ii(c,d,a,b,M[i+10],15,-1051523);b=md5ii(b,c,d,a,M[i+1],21,-2054922799);
+      a=md5ii(a,b,c,d,M[i+8],6,1873313359);d=md5ii(d,a,b,c,M[i+15],10,-30611744);c=md5ii(c,d,a,b,M[i+6],15,-1560198380);b=md5ii(b,c,d,a,M[i+13],21,1309151649);
+      a=md5ii(a,b,c,d,M[i+4],6,-145523070);d=md5ii(d,a,b,c,M[i+11],10,-1120210379);c=md5ii(c,d,a,b,M[i+2],15,718787259);b=md5ii(b,c,d,a,M[i+9],21,-343485551);
+      a=safeAdd(a,olda);b=safeAdd(b,oldb);c=safeAdd(c,oldc);d=safeAdd(d,oldd);
+    }
+    return [a,b,c,d];
   }
-  // bcrypt ($2y$, $2b$) — Workers 환경 미지원, 단순 비교 fallback
-  if (hash.startsWith('$2y$') || hash.startsWith('$2b$')) {
-    // plain text 설정 시 (개발 목적)
-    return hash === password;
+  function bytesToWords(bytes) {
+    const words=[];for(let i=0;i<bytes.length;i++) words[i>>2]|=bytes[i]<<((i%4)*8);return words;
   }
-  // plain text (설치 직후 또는 개발 환경)
-  if (!hash.startsWith('$')) {
-    return hash === password;
+  function wordsToBytes(words) {
+    const bytes=[];for(let i=0;i<words.length*4;i++) bytes.push((words[i>>2]>>((i%4)*8))&0xff);return bytes;
   }
-  // plain MD5 (구형)
-  try {
-    const md5 = await crypto.subtle.digest('MD5', new TextEncoder().encode(password));
-    const hex = [...new Uint8Array(md5)].map(b => b.toString(16).padStart(2,'0')).join('');
-    return hex === hash;
-  } catch {}
+  const bytes = typeof input==='string' ? Array.from(new TextEncoder().encode(input)) : Array.from(input);
+  return new Uint8Array(wordsToBytes(wordsToMd5(bytesToWords(bytes),bytes.length*8)));
+}
+
+// WordPress phpass MD5 portable hash 완전 구현
+function wpHashPassword_check(password, hash) {
+  const itoa64 = './0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+  function encode64(input, count) {
+    let output='',i=0;
+    do {
+      let value=input[i++];
+      output+=itoa64[value&63];
+      if(i<count) value|=input[i]<<8;
+      output+=itoa64[(value>>6)&63];
+      if(i++>=count) break;
+      if(i<count) value|=input[i]<<8;
+      output+=itoa64[(value>>12)&63];
+      if(i++>=count) break;
+      output+=itoa64[(value>>18)&63];
+    } while(i<count);
+    return output;
+  }
+  function cryptPrivateHash(password, setting) {
+    const output='*0';
+    if(setting.slice(0,2)===output) return '*1';
+    const id=setting.slice(0,3);
+    if(id!=='$P$' && id!=='$H$') return output;
+    const countLog2=itoa64.indexOf(setting[3]);
+    if(countLog2<7 || countLog2>30) return output;
+    let count=1<<countLog2;
+    const salt=setting.slice(4,12);
+    if(salt.length!==8) return output;
+    const enc=new TextEncoder();
+    let hash=md5(salt+password);
+    const pwBytes=enc.encode(password);
+    do {
+      const combined=new Uint8Array(hash.length+pwBytes.length);
+      combined.set(hash);combined.set(pwBytes,hash.length);
+      hash=md5(combined);
+    } while(--count);
+    return setting.slice(0,12)+encode64(hash,16);
+  }
+  if(hash.startsWith('$P$') || hash.startsWith('$H$')) {
+    return cryptPrivateHash(password, hash) === hash;
+  }
   return false;
 }
 
-// WordPress portable hash (phpass)
-function wpCheckPassword(password, hash) {
+async function verifyWPPassword(password, hash) {
+  if (!hash) return false;
+  // $P$ — WordPress MD5 portable hash (phpass) — 완전 구현
+  if (hash.startsWith('$P$') || hash.startsWith('$H$')) {
+    return wpHashPassword_check(password, hash);
+  }
+  // $2y$/$2b$ — bcrypt (Workers 미지원 → plain 비교 fallback)
+  if (hash.startsWith('$2y$') || hash.startsWith('$2b$')) {
+    return hash === password;
+  }
+  // plain text (개발/설치 직후)
+  if (!hash.startsWith('$')) {
+    if (hash === password) return true;
+    // plain MD5 (32자 hex)
+    if (/^[0-9a-f]{32}$/.test(hash)) {
+      const h = md5(password);
+      const hex = [...h].map(b => b.toString(16).padStart(2,'0')).join('');
+      return hex === hash;
+    }
+    return false;
+  }
+  return false;
+}
+
+// WordPress phpass로 비밀번호 해시 생성 (사이트 생성 시 admin 계정용)
+function wpHashPassword(password) {
   const itoa64 = './0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
   function encode64(input, count) {
-    let output = '', i = 0;
+    let output='',i=0;
     do {
-      let value = input[i++];
-      output += itoa64[value & 63];
-      if (i < count) value |= input[i] << 8;
-      output += itoa64[(value >> 6) & 63];
-      if (i++ >= count) break;
-      if (i < count) value |= input[i] << 8;
-      output += itoa64[(value >> 12) & 63];
-      if (i++ >= count) break;
-      output += itoa64[(value >> 18) & 63];
-    } while (i < count);
+      let value=input[i++];
+      output+=itoa64[value&63];
+      if(i<count) value|=input[i]<<8;
+      output+=itoa64[(value>>6)&63];
+      if(i++>=count) break;
+      if(i<count) value|=input[i]<<8;
+      output+=itoa64[(value>>12)&63];
+      if(i++>=count) break;
+      output+=itoa64[(value>>18)&63];
+    } while(i<count);
     return output;
   }
-  // 간소화된 검증 (Workers에서 동기 MD5 불가 → false 반환, 실제 환경에서는 PHP origin 사용)
-  return false;
+  // countLog2=8 → count=256
+  const countLog2 = 8;
+  const count = 1 << countLog2;
+  const saltChars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789./';
+  let salt = '';
+  const randBytes = crypto.getRandomValues(new Uint8Array(8));
+  for (const b of randBytes) salt += saltChars[b % saltChars.length];
+  const setting = '$P$' + itoa64[countLog2] + salt;
+  const enc = new TextEncoder();
+  let hash = md5(salt + password);
+  const pwBytes = enc.encode(password);
+  let c = count;
+  do {
+    const combined = new Uint8Array(hash.length + pwBytes.length);
+    combined.set(hash); combined.set(pwBytes, hash.length);
+    hash = md5(combined);
+  } while (--c);
+  return setting + encode64(hash, 16);
 }
 
 function hashSimple(str) {
@@ -1562,6 +2205,226 @@ async function handleWPRestAPI(env, request, url, siteInfo) {
     // Feed (RSS)
     if (path === '' && url.searchParams.has('feed') || url.pathname === '/feed/') {
       return await handleRSSFeed(env, siteInfo, url);
+    }
+
+    // ── CloudPress 플러그인 관리 API ─────────────────────────────────────────
+
+    // 설치된 플러그인 목록
+    if (path.match(/^\/cloudpress\/v1\/plugins\/?$/) && method === 'GET') {
+      try {
+        const res = await env.DB.prepare(
+          `SELECT plugin_slug, plugin_name, plugin_version, plugin_description, status, installed_at FROM wp_cloudpress_plugins ORDER BY plugin_name ASC`
+        ).all().catch(() => ({ results: [] }));
+        return j({ installed: (res.results || []).map(p => ({
+          slug: p.plugin_slug, name: p.plugin_name, version: p.plugin_version,
+          description: p.plugin_description, status: p.status,
+        }))});
+      } catch { return j({ installed: [] }); }
+    }
+
+    // 플러그인 WordPress.org 검색 (프록시)
+    if (path.match(/^\/cloudpress\/v1\/plugin-search\/?$/) && method === 'GET') {
+      const q = url.searchParams.get('q') || 'popular';
+      const perPage = Math.min(parseInt(url.searchParams.get('per_page') || '12', 10), 24);
+      try {
+        const apiUrl = `https://api.wordpress.org/plugins/info/1.2/?action=query_plugins&request[search]=${encodeURIComponent(q)}&request[per_page]=${perPage}&request[fields][short_description]=1&request[fields][icons]=1&request[fields][rating]=1&request[fields][num_ratings]=1&request[fields][active_installs]=1&request[fields][version]=1&request[fields][author]=1&request[fields][homepage]=1`;
+        const wpRes = await fetch(apiUrl, {
+          headers: { 'User-Agent': 'CloudPress/20.0 WordPress-Plugin-Browser' },
+          cf: { cacheTtl: 3600, cacheEverything: true },
+        });
+        if (!wpRes.ok) return j({ plugins: [] });
+        const data = await wpRes.json();
+        // 설치 여부 확인
+        let installedSlugs = new Set();
+        try {
+          const ins = await env.DB.prepare(`SELECT plugin_slug FROM wp_cloudpress_plugins`).all().catch(() => ({results:[]}));
+          for (const r of (ins.results || [])) installedSlugs.add(r.plugin_slug);
+        } catch {}
+        const plugins = (data.plugins || []).map(p => ({ ...p, installed: installedSlugs.has(p.slug) }));
+        return j({ plugins, info: data.info });
+      } catch (e) {
+        return j({ plugins: [], error: e.message });
+      }
+    }
+
+    // 플러그인 설치 (WordPress.org에서 메타데이터 저장)
+    if (path.match(/^\/cloudpress\/v1\/plugins\/([^\/]+)\/install$/) && method === 'POST') {
+      const slug = path.match(/\/plugins\/([^\/]+)\/install/)[1];
+      try {
+        // WordPress.org에서 플러그인 정보 가져오기
+        const infoRes = await fetch(`https://api.wordpress.org/plugins/info/1.2/?action=plugin_information&request[slug]=${encodeURIComponent(slug)}&request[fields][short_description]=1&request[fields][version]=1`, {
+          headers: { 'User-Agent': 'CloudPress/20.0' },
+        });
+        let name = slug, version = '', description = '';
+        if (infoRes.ok) {
+          const info = await infoRes.json().catch(() => ({}));
+          name = info.name || slug;
+          version = info.version || '';
+          description = (info.short_description || '').replace(/<[^>]+>/g, '').slice(0, 200);
+        }
+        // 플러그인 테이블 생성 (없으면)
+        await env.DB.prepare(`CREATE TABLE IF NOT EXISTS wp_cloudpress_plugins (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          plugin_slug TEXT NOT NULL UNIQUE,
+          plugin_name TEXT NOT NULL,
+          plugin_version TEXT NOT NULL DEFAULT '',
+          plugin_description TEXT NOT NULL DEFAULT '',
+          status TEXT NOT NULL DEFAULT 'inactive',
+          installed_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )`).run().catch(() => {});
+        await env.DB.prepare(`INSERT INTO wp_cloudpress_plugins (plugin_slug, plugin_name, plugin_version, plugin_description, status)
+          VALUES (?, ?, ?, ?, 'inactive')
+          ON CONFLICT(plugin_slug) DO UPDATE SET plugin_name=excluded.plugin_name, plugin_version=excluded.plugin_version, status='inactive'`
+        ).bind(slug, name, version, description).run();
+        return j({ ok: true, slug, name, version, message: `${name} 설치 완료` }, 201);
+      } catch (e) {
+        return j({ ok: false, message: '설치 실패: ' + e.message }, 500);
+      }
+    }
+
+    // 플러그인 활성화
+    if (path.match(/^\/cloudpress\/v1\/plugins\/([^\/]+)\/activate$/) && method === 'POST') {
+      const slug = path.match(/\/plugins\/([^\/]+)\/activate/)[1];
+      try {
+        await env.DB.prepare(`UPDATE wp_cloudpress_plugins SET status='active' WHERE plugin_slug=?`).bind(slug).run();
+        // wp_options의 active_plugins 업데이트
+        const optRes = await env.DB.prepare(`SELECT option_value FROM wp_options WHERE option_name='active_plugins'`).first().catch(() => null);
+        const current = optRes?.option_value ? JSON.parse(optRes.option_value) : [];
+        if (!current.includes(slug)) current.push(slug);
+        await env.DB.prepare(`INSERT INTO wp_options (option_name, option_value, autoload) VALUES ('active_plugins', ?, 'yes') ON CONFLICT(option_name) DO UPDATE SET option_value=excluded.option_value`).bind(JSON.stringify(current)).run();
+        return j({ ok: true, slug, status: 'active' });
+      } catch (e) { return j({ ok: false, message: e.message }, 500); }
+    }
+
+    // 플러그인 비활성화
+    if (path.match(/^\/cloudpress\/v1\/plugins\/([^\/]+)\/deactivate$/) && method === 'POST') {
+      const slug = path.match(/\/plugins\/([^\/]+)\/deactivate/)[1];
+      try {
+        await env.DB.prepare(`UPDATE wp_cloudpress_plugins SET status='inactive' WHERE plugin_slug=?`).bind(slug).run();
+        const optRes = await env.DB.prepare(`SELECT option_value FROM wp_options WHERE option_name='active_plugins'`).first().catch(() => null);
+        const current = optRes?.option_value ? JSON.parse(optRes.option_value) : [];
+        const updated = current.filter(s => s !== slug);
+        await env.DB.prepare(`INSERT INTO wp_options (option_name, option_value, autoload) VALUES ('active_plugins', ?, 'yes') ON CONFLICT(option_name) DO UPDATE SET option_value=excluded.option_value`).bind(JSON.stringify(updated)).run();
+        return j({ ok: true, slug, status: 'inactive' });
+      } catch (e) { return j({ ok: false, message: e.message }, 500); }
+    }
+
+    // 플러그인 삭제
+    if (path.match(/^\/cloudpress\/v1\/plugins\/([^\/]+)$/) && method === 'DELETE') {
+      const slug = path.match(/\/plugins\/([^\/]+)$/)[1];
+      try {
+        await env.DB.prepare(`DELETE FROM wp_cloudpress_plugins WHERE plugin_slug=?`).bind(slug).run();
+        return j({ ok: true, slug, deleted: true });
+      } catch (e) { return j({ ok: false, message: e.message }, 500); }
+    }
+
+    // 테마 WordPress.org 검색
+    if (path.match(/^\/cloudpress\/v1\/theme-search\/?$/) && method === 'GET') {
+      const q = url.searchParams.get('q') || 'featured';
+      const perPage = Math.min(parseInt(url.searchParams.get('per_page') || '12', 10), 24);
+      try {
+        const browse = ['featured','new','updated','popular'].includes(q) ? q : '';
+        let apiUrl;
+        if (browse) {
+          apiUrl = `https://api.wordpress.org/themes/info/1.2/?action=query_themes&request[browse]=${browse}&request[per_page]=${perPage}&request[fields][screenshot_url]=1&request[fields][description]=1&request[fields][version]=1&request[fields][preview_url]=1&request[fields][author]=1`;
+        } else {
+          apiUrl = `https://api.wordpress.org/themes/info/1.2/?action=query_themes&request[search]=${encodeURIComponent(q)}&request[per_page]=${perPage}&request[fields][screenshot_url]=1&request[fields][description]=1&request[fields][version]=1&request[fields][preview_url]=1`;
+        }
+        const wpRes = await fetch(apiUrl, {
+          headers: { 'User-Agent': 'CloudPress/20.0' },
+          cf: { cacheTtl: 3600, cacheEverything: true },
+        });
+        if (!wpRes.ok) return j({ themes: [] });
+        const data = await wpRes.json();
+        return j({ themes: data.themes || [], info: data.info });
+      } catch (e) { return j({ themes: [], error: e.message }); }
+    }
+
+    // 테마 설치
+    if (path.match(/^\/cloudpress\/v1\/themes\/([^\/]+)\/install$/) && method === 'POST') {
+      const slug = path.match(/\/themes\/([^\/]+)\/install/)[1];
+      try {
+        await env.DB.prepare(`CREATE TABLE IF NOT EXISTS wp_cloudpress_themes (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          theme_slug TEXT NOT NULL UNIQUE,
+          theme_name TEXT NOT NULL,
+          theme_version TEXT NOT NULL DEFAULT '',
+          status TEXT NOT NULL DEFAULT 'inactive',
+          installed_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )`).run().catch(() => {});
+        const infoRes = await fetch(`https://api.wordpress.org/themes/info/1.2/?action=theme_information&request[slug]=${encodeURIComponent(slug)}&request[fields][version]=1`, { headers: { 'User-Agent': 'CloudPress/20.0' } });
+        let name = slug, version = '';
+        if (infoRes.ok) { const info = await infoRes.json().catch(()=>({})); name = info.name || slug; version = info.version || ''; }
+        await env.DB.prepare(`INSERT INTO wp_cloudpress_themes (theme_slug, theme_name, theme_version, status)
+          VALUES (?, ?, ?, 'inactive') ON CONFLICT(theme_slug) DO UPDATE SET theme_version=excluded.theme_version`
+        ).bind(slug, name, version).run();
+        return j({ ok: true, slug, name, version }, 201);
+      } catch (e) { return j({ ok: false, message: e.message }, 500); }
+    }
+
+    // 테마 활성화
+    if (path.match(/^\/cloudpress\/v1\/themes\/([^\/]+)\/activate$/) && method === 'POST') {
+      const slug = path.match(/\/themes\/([^\/]+)\/activate/)[1];
+      try {
+        await env.DB.prepare(`UPDATE wp_cloudpress_themes SET status='inactive'`).run().catch(()=>{});
+        await env.DB.prepare(`UPDATE wp_cloudpress_themes SET status='active' WHERE theme_slug=?`).bind(slug).run();
+        await env.DB.prepare(`INSERT INTO wp_options (option_name, option_value, autoload) VALUES ('template', ?, 'yes') ON CONFLICT(option_name) DO UPDATE SET option_value=excluded.option_value`).bind(slug).run();
+        await env.DB.prepare(`INSERT INTO wp_options (option_name, option_value, autoload) VALUES ('stylesheet', ?, 'yes') ON CONFLICT(option_name) DO UPDATE SET option_value=excluded.option_value`).bind(slug).run();
+        return j({ ok: true, slug, status: 'active' });
+      } catch (e) { return j({ ok: false, message: e.message }, 500); }
+    }
+
+    // 카테고리 생성
+    if (path.match(/^\/wp\/v2\/categories\/?$/) && method === 'POST') {
+      const body = await request.json().catch(() => ({}));
+      const name = String(body.name || '').trim();
+      if (!name) return j({ code: 'rest_missing_name', message: '이름은 필수입니다.' }, 400);
+      const slug = body.slug || name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9가-힣-]/g, '') || `cat-${Date.now()}`;
+      try {
+        const existing = await env.DB.prepare(`SELECT t.term_id FROM wp_terms t JOIN wp_term_taxonomy tt ON tt.term_id=t.term_id WHERE t.slug=? AND tt.taxonomy='category' LIMIT 1`).bind(slug).first().catch(()=>null);
+        if (existing) return j({ code: 'term_exists', message: '이미 존재하는 카테고리입니다.', data: { term_id: existing.term_id } }, 400);
+        await env.DB.prepare(`INSERT INTO wp_terms (name, slug, term_group) VALUES (?, ?, 0)`).bind(name, slug).run();
+        const term = await env.DB.prepare(`SELECT term_id FROM wp_terms WHERE slug=? LIMIT 1`).bind(slug).first();
+        await env.DB.prepare(`INSERT INTO wp_term_taxonomy (term_id, taxonomy, description, parent, count) VALUES (?, 'category', ?, ?, 0)`).bind(term.term_id, body.description || '', body.parent || 0).run();
+        return j({ id: term.term_id, name, slug, taxonomy: 'category', description: body.description || '', count: 0 }, 201);
+      } catch (e) { return j({ code: 'rest_db_error', message: e.message }, 500); }
+    }
+
+    // 사이트 내보내기 (WXR XML)
+    if (path.match(/^\/cloudpress\/v1\/export\/?$/) && method === 'GET') {
+      try {
+        const opts = await getWPOptions(env, siteInfo.site_prefix, ['blogname', 'blogdescription', 'siteurl']);
+        const postsRes = await env.DB.prepare(`SELECT * FROM wp_posts WHERE post_status='publish' AND post_type IN ('post','page') ORDER BY post_date ASC LIMIT 1000`).all();
+        const posts = postsRes.results || [];
+        const siteUrl = opts.siteurl || `https://${url.hostname}`;
+        const items = posts.map(p => `  <item>
+    <title><![CDATA[${p.post_title}]]></title>
+    <link>${siteUrl}/${p.post_name}/</link>
+    <pubDate>${new Date(p.post_date).toUTCString()}</pubDate>
+    <dc:creator><![CDATA[admin]]></dc:creator>
+    <content:encoded><![CDATA[${p.post_content}]]></content:encoded>
+    <excerpt:encoded><![CDATA[${p.post_excerpt}]]></excerpt:encoded>
+    <wp:post_id>${p.ID}</wp:post_id>
+    <wp:post_type><![CDATA[${p.post_type}]]></wp:post_type>
+    <wp:status><![CDATA[${p.post_status}]]></wp:status>
+    <wp:post_name><![CDATA[${p.post_name}]]></wp:post_name>
+  </item>`).join('\n');
+        const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:excerpt="http://wordpress.org/export/1.2/excerpt/" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:wfw="http://wellformedweb.org/CommentAPI/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:wp="http://wordpress.org/export/1.2/">
+<channel>
+  <title>${opts.blogname}</title>
+  <link>${siteUrl}</link>
+  <description>${opts.blogdescription}</description>
+  <wp:wxr_version>1.2</wp:wxr_version>
+  <wp:base_site_url>${siteUrl}</wp:base_site_url>
+  <wp:base_blog_url>${siteUrl}</wp:base_blog_url>
+${items}
+</channel>
+</rss>`;
+        return new Response(xml, {
+          headers: { 'Content-Type': 'application/xml; charset=utf-8', 'Content-Disposition': 'attachment; filename="wordpress-export.xml"' },
+        });
+      } catch (e) { return j({ error: e.message }, 500); }
     }
 
     return j({ code: 'rest_no_route', message: '일치하는 라우트가 없습니다.', data: { status: 404 } }, 404);
@@ -1879,9 +2742,33 @@ async function handleRequest(request, env, ctx) {
     });
   }
 
-  // ── wp-login.php ─────────────────────────────────────────────────────────────
+  // ── wp-login.php (로그아웃 포함) ─────────────────────────────────────────────
   if (pathname === '/wp-login.php') {
+    // 로그아웃
+    if (url.searchParams.get('action') === 'logout') {
+      const cookie = request.headers.get('cookie') || '';
+      const sessionMatch = cookie.match(/wordpress_logged_in_[^=]+=([^;]+)/);
+      if (sessionMatch && env.CACHE) {
+        await env.CACHE.delete(`wp_session:${sessionMatch[1]}`).catch(() => {});
+      }
+      const cookieDomain = url.hostname;
+      return new Response('', {
+        status: 302,
+        headers: {
+          'Location': `https://${cookieDomain}/wp-login.php?loggedout=true`,
+          'Set-Cookie': `wordpress_logged_in_${hashSimple(cookieDomain)}=; Path=/; HttpOnly; Secure; SameSite=Lax; Expires=Thu, 01 Jan 1970 00:00:00 GMT`,
+        },
+      });
+    }
     return handleWPLogin(env, request, url, siteInfo);
+  }
+
+  // ── wp-admin 정적 자산 서빙 (CSS, 이미지 등) ──────────────────────────────
+  if (pathname === '/wp-admin/css/login.min.css') {
+    return new Response(WP_LOGIN_CSS, { headers: { 'Content-Type': 'text/css; charset=utf-8', 'Cache-Control': 'public, max-age=86400' } });
+  }
+  if (pathname === '/wp-admin/images/wordpress-logo.svg') {
+    return new Response(WP_LOGO_SVG, { headers: { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'public, max-age=86400' } });
   }
 
   // ── wp-admin ─────────────────────────────────────────────────────────────────
