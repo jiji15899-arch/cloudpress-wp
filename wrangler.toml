@@ -1,41 +1,58 @@
-# CloudPress v19.0 — wrangler.toml
-# [v19.0 수정 사항]
-# - compatibility_date 최신화 (2025-01-01 → 2025-04-01)
-# - WP_ORIGIN_URL 제거: 플랫폼 Worker는 origin proxy 없음 (각 사이트 Worker가 직접 처리)
-# - 도메인 cloudpress.site 기준
-# - CF_ACCOUNT_ID / CF_API_TOKEN → wrangler secret put 으로 설정
+# CloudPress v20.0 — wrangler.toml
+# Originless Edge CMS (WordPress on Cloudflare Workers)
+# 스토리지: Supabase (Primary + Secondary) + D1 (쓰기 전용) + KV (캐시)
 
 name = "cloudpress-wp"
 main = "worker.js"
 compatibility_date = "2025-04-01"
+compatibility_flags = ["nodejs_compat"]
 
-# ── 메인 D1 Database ──
+# ── D1: 플랫폼 메인 DB ─────────────────────────────────────────────────────────
 [[d1_databases]]
 binding       = "DB"
 database_name = "cloudpress-db"
 database_id   = "02d86436-b49f-4efa-a93b-baa90f3ee095"
 
-# ── KV: 세션 ──
+# ── KV: 세션 ───────────────────────────────────────────────────────────────────
 [[kv_namespaces]]
 binding = "SESSIONS"
 id      = "7486ca3c985b41ee8e2d24589ab2be6d"
 
-# ── KV: 도메인→사이트 매핑 캐시 ──
+# ── KV: 이중 캐시 (Edge + KV) ─────────────────────────────────────────────────
+# Edge Cache (Cache API) + KV 이중 레이어 캐시
+# KV: page:{prefix}:{path} → HTML 캐시
+# KV: site_domain:{hostname} → 사이트 정보 캐시
+# KV: opt:{prefix}:{key} → WordPress 옵션 캐시
+# KV: rl:{ip}:{window} → Rate Limit 카운터
+# KV: ddos_ban:{ip} → DDoS 밴 목록
+# KV: wp_session:{token} → WordPress 로그인 세션
+# KV: media:{path} → 소형 미디어 D1 fallback
 [[kv_namespaces]]
 binding = "CACHE"
 id      = "e1acf814c1244a59bbc24865723e479d"
 
-# ── 환경 변수 ──
-# CF_ACCOUNT_ID, CF_API_TOKEN → wrangler secret put CF_ACCOUNT_ID
+# ── 환경 변수 ─────────────────────────────────────────────────────────────────
+# CF_ACCOUNT_ID, CF_API_TOKEN → wrangler secret put
+# SUPABASE_URL, SUPABASE_KEY  → wrangler secret put (Primary)
+# SUPABASE_URL2, SUPABASE_KEY2 → wrangler secret put (Secondary)
+# PURGE_KEY → wrangler secret put (캐시 Purge 인증)
+# ENCRYPTION_KEY → wrangler secret put
 [vars]
-CF_ACCOUNT_ID = ""
-CF_API_TOKEN  = ""
+CF_ACCOUNT_ID  = ""
+CF_API_TOKEN   = ""
+PURGE_KEY      = ""
+ENCRYPTION_KEY = ""
 
-# ── Limits ──
+# ── CPU 한도 ───────────────────────────────────────────────────────────────────
 [limits]
-cpu_ms = 30000
+cpu_ms = 50000
 
-# ── 개발 환경 ──
+# ── Scheduled (ISR 캐시 갱신 cron) ────────────────────────────────────────────
+# 매 5분마다 활성 사이트 홈 페이지 캐시 예열
+[[triggers.crons]]
+crons = ["*/5 * * * *"]
+
+# ── 개발 환경 ──────────────────────────────────────────────────────────────────
 [dev]
 port = 8788
 local_protocol = "http"

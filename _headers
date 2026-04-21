@@ -1,28 +1,55 @@
-/api/*
-  Access-Control-Allow-Origin: *
-  Access-Control-Allow-Methods: GET, POST, PUT, PATCH, DELETE, OPTIONS
-  Access-Control-Allow-Headers: Content-Type, Authorization
-  Cache-Control: no-store
-
-/*.html
-  Cache-Control: public, max-age=60, stale-while-revalidate=300
-
-/assets/*
-  Cache-Control: public, max-age=31536000, immutable
+# CloudPress v20.0 — Cloudflare Pages _headers
+# Edge 보안 헤더 + WAF 지원
 
 /*
-  X-Frame-Options: DENY
+  X-Frame-Options: SAMEORIGIN
   X-Content-Type-Options: nosniff
-  Referrer-Policy: strict-origin-when-cross-origin
   X-XSS-Protection: 1; mode=block
-  Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
-  Permissions-Policy: camera=(), microphone=(), geolocation=()
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()
+  Content-Security-Policy: default-src 'self' https: data: 'unsafe-inline' 'unsafe-eval'; img-src 'self' https: data: blob:; font-src 'self' https: data:; frame-ancestors 'self'
+  Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+  X-CloudPress-Version: 20.0
 
+# 정적 자산 캐시 헤더
 /*.css
-  Cache-Control: public, max-age=86400
+  Cache-Control: public, max-age=31536000, immutable
 
 /*.js
+  Cache-Control: public, max-age=31536000, immutable
+
+/*.png
   Cache-Control: public, max-age=86400
 
-/assets/*
+/*.jpg
+  Cache-Control: public, max-age=86400
+
+/*.svg
+  Cache-Control: public, max-age=86400
+
+/*.woff2
   Cache-Control: public, max-age=31536000, immutable
+  Access-Control-Allow-Origin: *
+
+# API: CORS
+/api/*
+  Access-Control-Allow-Origin: *
+  Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS
+  Access-Control-Allow-Headers: Content-Type, Authorization, X-WP-Nonce
+
+# 인증 페이지: 캐시 없음
+/auth.html
+  Cache-Control: no-store, private
+  X-Robots-Tag: noindex
+
+/dashboard.html
+  Cache-Control: no-store, private
+  X-Robots-Tag: noindex
+
+/create.html
+  Cache-Control: no-store, private
+  X-Robots-Tag: noindex
+
+/account.html
+  Cache-Control: no-store, private
+  X-Robots-Tag: noindex
