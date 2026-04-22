@@ -478,8 +478,8 @@ async function renderWPTemplate(env, sitePrefix, siteInfo, contentData, ctx) {
       mainContent += `<header class="page-header"><h1 class="page-title">${esc(term.name)}</h1>${term.description ? `<div class="taxonomy-description">${esc(term.description)}</div>` : ''}</header>`;
     }
     if (posts.length === 0) {
-      // 게시글 없음 - 빈 상태 (메시지 없음)
-      mainContent += '';
+      // 게시글 없음 - 빈 상태 (메시지 없이 깔끔하게)
+      mainContent += `<div class="wp-block-query"><p class="no-results" style="color:var(--wp--preset--color--accent-4);font-size:var(--wp--preset--font-size--medium)"></p></div>`;
     } else {
       mainContent += '<div class="posts-loop">';
       for (const p of posts) {
@@ -1221,44 +1221,600 @@ function showMediaDetail(el){
   if(url)prompt('미디어 URL (복사하세요):',url);
 }`;
 
-  } else if (page === 'themes') {
-    pageTitle = '테마';
-    bodyHtml = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:20px">` +
-      [
-        {name:'Twenty Twenty-Four', desc:'2024 기본 테마. 다목적 블록 테마.', ver:'1.2', active:true},
-        {name:'Twenty Twenty-Three', desc:'유연한 블록 테마.', ver:'1.4'},
-        {name:'Astra', desc:'빠르고 가벼운 다목적 테마.', ver:'4.6'},
-      ].map(t =>
-        `<div style="border:${t.active?'2px solid #2271b1':'1px solid #dcdcde'};border-radius:4px;overflow:hidden;background:#fff">
-          <div style="height:140px;background:linear-gradient(135deg,#f0f0f1,#c3c4c7);display:flex;align-items:center;justify-content:center;font-size:2.5rem">🎨</div>
+  } else if (page === 'themes' || page === 'theme-install') {
+    pageTitle = page === 'theme-install' ? '새 테마 추가' : '테마';
+    // Twenty Twenty-Five 포함 WP 공식 테마 목록 (theme.json 기반)
+    const builtinThemes = [
+      { slug:'twentytwentyfive', name:'Twenty Twenty-Five', ver:'1.4', active:true,
+        desc:'단순함과 적응성을 강조한 블록 테마. 개인 블로그, 포트폴리오, 온라인 매거진에 최적.',
+        colors:['#FFFFFF','#111111','#FFEE58','#F6CFF4','#503AA8'],
+        screenshot:'linear-gradient(135deg,#FBFAF3 50%,#FFEE58 100%)',
+        tags:['블록 테마','풀 사이트 편집','접근성']},
+      { slug:'twentytwentyfour', name:'Twenty Twenty-Four', ver:'1.3',
+        desc:'블록 테마의 다목적 캔버스. 다양한 스타일 변형 포함.',
+        colors:['#FAFAFA','#1A1A1A','#D1E4DD'],
+        screenshot:'linear-gradient(135deg,#FAFAFA 50%,#D1E4DD 100%)',
+        tags:['블록 테마','풀 사이트 편집']},
+      { slug:'twentytwentythree', name:'Twenty Twenty-Three', ver:'1.5',
+        desc:'유연하고 가벼운 블록 테마. 다양한 색상 팔레트.',
+        colors:['#FFFFFF','#000000','#CDDCE8'],
+        screenshot:'linear-gradient(135deg,#fff 50%,#CDDCE8 100%)',
+        tags:['블록 테마','미니멀']},
+      { slug:'astra', name:'Astra', ver:'4.8',
+        desc:'초경량(< 50KB) 다목적 테마. WooCommerce 완벽 지원.',
+        colors:['#ffffff','#3a3a3a','#4169e1'],
+        screenshot:'linear-gradient(135deg,#ffffff 50%,#4169e1 100%)',
+        tags:['다목적','WooCommerce','빠른 속도']},
+      { slug:'generatepress', name:'GeneratePress', ver:'3.4',
+        desc:'성능과 접근성에 집중. 모든 페이지 빌더와 호환.',
+        colors:['#ffffff','#252525','#1b8be0'],
+        screenshot:'linear-gradient(135deg,#f5f5f5 50%,#1b8be0 100%)',
+        tags:['경량','접근성','페이지 빌더']},
+      { slug:'kadence', name:'Kadence', ver:'1.2',
+        desc:'강력한 커스터마이징. 헤더/푸터 빌더 포함.',
+        colors:['#ffffff','#1a1a1a','#3182CE'],
+        screenshot:'linear-gradient(135deg,#f0f0f0 50%,#3182CE 100%)',
+        tags:['블록 테마','커스터마이징','빌더']},
+    ];
+    if (page === 'theme-install') {
+      bodyHtml = `
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+  <h2 style="margin:0;font-size:1.1rem">테마 검색 및 설치</h2>
+  <div style="flex:1;max-width:300px">
+    <input type="text" id="theme-search" placeholder="WordPress.org 테마 검색…" 
+      style="width:100%;padding:7px 12px;border:1px solid #8c8f94;border-radius:4px;font-size:.875rem"
+      oninput="searchThemes(this.value)">
+  </div>
+  <a href="/wp-admin/themes.php" style="font-size:.875rem;color:#2271b1">← 내 테마로</a>
+</div>
+<div id="theme-search-notice" style="display:none;padding:10px 14px;background:#e7f3ff;border:1px solid #72aee6;border-radius:4px;margin-bottom:16px;font-size:.875rem"></div>
+<div id="themes-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:20px">
+  ${builtinThemes.map(t => `
+  <div class="theme-card" data-slug="${t.slug}" style="border:1px solid #c3c4c7;border-radius:6px;overflow:hidden;background:#fff;transition:box-shadow .2s" onmouseenter="this.style.boxShadow='0 4px 12px rgba(0,0,0,.12)'" onmouseleave="this.style.boxShadow=''">
+    <div style="height:140px;background:${t.screenshot};position:relative">
+      <div style="position:absolute;bottom:8px;right:8px;display:flex;gap:4px">
+        ${t.colors.map(c=>`<span style="width:16px;height:16px;border-radius:50%;background:${c};border:1px solid rgba(0,0,0,.1)"></span>`).join('')}
+      </div>
+    </div>
+    <div style="padding:14px">
+      <h3 style="margin:0 0 5px;font-size:.9375rem">${t.name} <span style="color:#8c8f94;font-weight:400;font-size:.8rem">v${t.ver}</span></h3>
+      <p style="margin:0 0 8px;font-size:.8rem;color:#50575e;line-height:1.5">${t.desc}</p>
+      <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px">
+        ${t.tags.map(tag=>`<span style="background:#f0f0f1;color:#50575e;font-size:.7rem;padding:2px 7px;border-radius:20px">${tag}</span>`).join('')}
+      </div>
+      <div style="display:flex;gap:6px">
+        <button onclick="installTheme('${t.slug}','${t.name}',this)" style="flex:1;padding:6px;background:#2271b1;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:.8rem;font-weight:600">설치</button>
+        <button onclick="previewTheme('${t.slug}')" style="padding:6px 10px;background:#f6f7f7;border:1px solid #ccc;border-radius:4px;cursor:pointer;font-size:.8rem">미리보기</button>
+      </div>
+    </div>
+  </div>`).join('')}
+</div>
+<div id="wp-org-results" style="display:none;margin-top:30px">
+  <h3 style="font-size:1rem;margin-bottom:12px">WordPress.org 검색 결과</h3>
+  <div id="wp-org-themes-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:20px"></div>
+</div>`;
+      inlineScript = `
+async function searchThemes(q) {
+  const notice = document.getElementById('theme-search-notice');
+  if (!q || q.length < 2) { notice.style.display='none'; return; }
+  notice.style.display='block'; notice.textContent='WordPress.org에서 테마 검색 중…';
+  try {
+    const r = await fetch('https://api.wordpress.org/themes/info/1.1/?action=query_themes&request[search]='+encodeURIComponent(q)+'&request[per_page]=8&request[fields][screenshot_url]=1&request[fields][version]=1&request[fields][description]=1&request[fields][tags]=1');
+    const data = r.ok ? await r.json() : null;
+    const grid = document.getElementById('wp-org-themes-grid');
+    const section = document.getElementById('wp-org-results');
+    if (data && data.themes && data.themes.length) {
+      grid.innerHTML = data.themes.map(t => \`
+        <div style="border:1px solid #c3c4c7;border-radius:6px;overflow:hidden;background:#fff">
+          <div style="height:120px;background:url('\${t.screenshot_url}') center/cover no-repeat #f0f0f1"></div>
           <div style="padding:12px">
-            <h3 style="margin:0 0 6px;font-size:.9375rem">${t.name}${t.active?' <span style="background:#2271b1;color:#fff;font-size:.7rem;padding:1px 6px;border-radius:2px">활성화</span>':''}</h3>
-            <p style="margin:0 0 10px;font-size:.8rem;color:#50575e">${t.desc} (v${t.ver})</p>
-            ${!t.active?'<button class="btn-wp btn-secondary" style="font-size:.8rem;padding:4px 10px">활성화</button>':''}
+            <h4 style="margin:0 0 5px;font-size:.875rem">\${t.name} <span style="color:#8c8f94;font-size:.75rem">v\${t.version}</span></h4>
+            <p style="margin:0 0 8px;font-size:.75rem;color:#50575e;line-height:1.4">\${(t.description||'').replace(/<[^>]+>/g,'').slice(0,100)}…</p>
+            <button onclick="installTheme('\${t.slug}','\${t.name.replace(/'/g,'')}',this)" style="width:100%;padding:5px;background:#2271b1;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:.8rem;font-weight:600">설치</button>
           </div>
-        </div>`
-      ).join('') + '</div>';
+        </div>\`).join('');
+      section.style.display='block';
+      notice.textContent=\`\${data.themes.length}개의 테마를 찾았습니다.\`;
+    } else {
+      section.style.display='none';
+      notice.textContent='검색 결과가 없습니다.';
+    }
+  } catch(e) { notice.textContent='검색 중 오류: '+e.message; }
+}
+async function installTheme(slug, name, btn) {
+  btn.textContent='설치 중…'; btn.disabled=true;
+  try {
+    const r = await fetch('/wp-json/cloudpress/v1/themes/install', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({slug, name})
+    });
+    const d = r.ok ? await r.json() : {success:false};
+    if (d.success) {
+      btn.textContent='✓ 설치됨'; btn.style.background='#00a32a';
+      btn.nextElementSibling && (btn.nextElementSibling.textContent = '활성화');
+      btn.nextElementSibling && btn.nextElementSibling.setAttribute('onclick', \`activateTheme('\${slug}','\${name}',this)\`);
+    } else {
+      btn.textContent='실패'; btn.style.background='#d63638';
+    }
+  } catch(e) { btn.textContent='오류'; btn.style.background='#d63638'; }
+}
+async function activateTheme(slug, name, btn) {
+  btn.textContent='활성화 중…'; btn.disabled=true;
+  const r = await fetch('/wp-json/cloudpress/v1/themes/activate', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({slug, name})
+  });
+  const d = r.ok ? await r.json() : {success:false};
+  if (d.success) { btn.textContent='✓ 활성화됨'; btn.style.background='#00a32a'; }
+  else { btn.textContent='실패'; btn.disabled=false; }
+}
+function previewTheme(slug) {
+  window.open('/wp-admin/themes.php?preview='+slug, '_blank');
+}`;
+    } else {
+      // 테마 목록 페이지
+      bodyHtml = `
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+  <h2 style="margin:0;font-size:1.1rem">테마 (${builtinThemes.length}개)</h2>
+  <a href="/wp-admin/theme-install.php" class="btn-wp">새 테마 추가</a>
+</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:20px">
+${builtinThemes.map(t => `
+  <div style="border:${t.active?'3px solid #2271b1':'1px solid #c3c4c7'};border-radius:6px;overflow:hidden;background:#fff;position:relative;transition:box-shadow .2s" onmouseenter="this.style.boxShadow='0 4px 12px rgba(0,0,0,.15)'" onmouseleave="this.style.boxShadow=''">
+    ${t.active?`<span style="position:absolute;top:10px;left:10px;background:#2271b1;color:#fff;font-size:.7rem;font-weight:700;padding:3px 8px;border-radius:20px;z-index:1">활성화된 테마</span>`:''}
+    <div style="height:150px;background:${t.screenshot};display:flex;align-items:flex-end;padding:8px;justify-content:flex-end">
+      <div style="display:flex;gap:3px">
+        ${t.colors.map(c=>`<span style="width:14px;height:14px;border-radius:50%;background:${c};border:1px solid rgba(0,0,0,.1)"></span>`).join('')}
+      </div>
+    </div>
+    <div style="padding:14px">
+      <h3 style="margin:0 0 5px;font-size:.9375rem">${t.name} <span style="color:#8c8f94;font-weight:400;font-size:.8rem">v${t.ver}</span></h3>
+      <p style="margin:0 0 10px;font-size:.8rem;color:#50575e;line-height:1.5">${t.desc}</p>
+      <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px">
+        ${t.tags.map(tag=>`<span style="background:#f0f0f1;color:#50575e;font-size:.7rem;padding:2px 7px;border-radius:20px">${tag}</span>`).join('')}
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        ${t.active
+          ? `<button onclick="customizeTheme()" style="flex:1;padding:7px;background:#2271b1;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:.8rem;font-weight:600">🎨 커스터마이즈</button>`
+          : `<button onclick="activateTheme('${t.slug}','${t.name}',this)" style="flex:1;padding:7px;background:#00a32a;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:.8rem;font-weight:600">활성화</button>`
+        }
+        <button onclick="window.open('/','_blank')" style="padding:7px 10px;background:#f6f7f7;border:1px solid #ccc;border-radius:4px;cursor:pointer;font-size:.8rem">미리보기</button>
+        ${!t.active?`<button style="padding:7px 10px;background:#fff;border:1px solid #c3c4c7;border-radius:4px;cursor:pointer;font-size:.8rem;color:#d63638" onclick="if(confirm('${t.name} 테마를 삭제하시겠습니까?'))deleteTheme('${t.slug}',this)">삭제</button>`:''}
+      </div>
+    </div>
+  </div>`).join('')}
+</div>`;
+      inlineScript = `
+async function activateTheme(slug, name, btn) {
+  if (!confirm(name + ' 테마를 활성화하시겠습니까?')) return;
+  btn.textContent='처리 중…'; btn.disabled=true;
+  try {
+    const r = await fetch('/wp-json/cloudpress/v1/themes/activate', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({slug, name})
+    });
+    const d = r.ok ? await r.json() : {success:false};
+    if (d.success) { location.reload(); }
+    else { alert('활성화 실패: ' + (d.message||'')); btn.textContent='활성화'; btn.disabled=false; }
+  } catch(e) { alert('오류: '+e.message); btn.textContent='활성화'; btn.disabled=false; }
+}
+async function deleteTheme(slug, btn) {
+  const r = await fetch('/wp-json/cloudpress/v1/themes/delete', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({slug})
+  });
+  if (r.ok) { btn.closest('[data-slug]')?.remove() || location.reload(); }
+}
+function customizeTheme() { window.open('/wp-admin/customize.php','_blank'); }`;
+    }
 
-  } else if (page === 'plugins') {
-    pageTitle = '플러그인';
-    bodyHtml = `<div class="tablenav top" style="margin-bottom:10px"><a href="/wp-admin/plugin-install.php" class="btn-wp">새 플러그인 추가</a></div>
-    <table class="wp-list-table" style="width:100%;border-collapse:collapse;border:1px solid #c3c4c7;background:#fff">
-      <thead><tr style="background:#f6f7f7"><th style="padding:8px 10px;text-align:left">플러그인</th><th style="padding:8px 10px;width:100px">상태</th></tr></thead>
-      <tbody>` +
-      [
-        {name:'Akismet Anti-Spam', desc:'수백만 WordPress 사이트에서 검증된 스팸 방지.', ver:'5.3.3'},
-        {name:'CloudPress Cache',  desc:'CloudPress 전용 고성능 엣지 캐시.', ver:'1.0.0', active:true},
-        {name:'Yoast SEO',         desc:'검색엔진 최적화의 표준.', ver:'22.0'},
-      ].map(p =>
-        `<tr style="border-top:1px solid #f0f0f1">
-          <td style="padding:10px"><strong>${p.name}</strong> <span style="color:#8c8f94;font-size:.8rem">v${p.ver}</span>
-            <p style="margin:4px 0 6px;font-size:.8rem;color:#50575e">${p.desc}</p>
-            <div style="font-size:.8rem">${p.active
-              ? '<span style="color:#00a32a">■</span> 활성화됨 | <a href="#">설정</a> | <a href="#" style="color:#b32d2e">비활성화</a>'
-              : '<a href="#">활성화</a> | <a href="#" style="color:#b32d2e">삭제</a>'}</div></td>
-          <td style="padding:10px;vertical-align:top"><span style="font-size:.8rem;${p.active?'color:#00a32a;font-weight:600':'color:#8c8f94'}">${p.active?'활성':'비활성'}</span></td>
-        </tr>`
-      ).join('') + '</tbody></table>';
+  } else if (page === 'plugins' || page === 'plugin-install') {
+    pageTitle = page === 'plugin-install' ? '새 플러그인 추가' : '플러그인';
+
+    if (page === 'plugin-install') {
+      // ── 플러그인 설치 페이지: WordPress.org API 실시간 크롤링 ──
+      const featuredPlugins = [
+        { slug:'woocommerce',     name:'WooCommerce',      ver:'9.4',  active:false, downloads:'200M+',
+          desc:'완전한 오픈소스 전자상거래 솔루션. 제품, 결제, 배송 관리.',
+          icon:'🛒', tags:['전자상거래','결제','배송'], stars:4.5},
+        { slug:'yoast-seo',       name:'Yoast SEO',        ver:'23.1', active:false, downloads:'300M+',
+          desc:'WordPress SEO 표준. On-page SEO, 사이트맵, 소셜 미리보기.',
+          icon:'🔍', tags:['SEO','사이트맵','소셜'], stars:4.8},
+        { slug:'wordfence',       name:'Wordfence Security', ver:'7.11', active:false, downloads:'150M+',
+          desc:'방화벽, 악성코드 스캐너, 로그인 보안 포함 종합 보안 플러그인.',
+          icon:'🛡️', tags:['보안','방화벽','악성코드'], stars:4.7},
+        { slug:'contact-form-7',  name:'Contact Form 7',   ver:'5.9',  active:false, downloads:'500M+',
+          desc:'가장 많이 사용되는 문의 양식 플러그인. 간단하고 유연.',
+          icon:'📧', tags:['폼','문의','이메일'], stars:4.3},
+        { slug:'elementor',       name:'Elementor',        ver:'3.25', active:false, downloads:'180M+',
+          desc:'드래그 앤 드롭 페이지 빌더. 100+ 위젯, 실시간 편집.',
+          icon:'🎨', tags:['페이지 빌더','드래그앤드롭','디자인'], stars:4.6},
+        { slug:'jetpack',         name:'Jetpack',          ver:'14.0', active:false, downloads:'400M+',
+          desc:'보안, 성능, 성장을 위한 올인원 플러그인.',
+          icon:'⚡', tags:['보안','성능','통계'], stars:4.2},
+        { slug:'w3-total-cache',  name:'W3 Total Cache',   ver:'2.7',  active:false, downloads:'50M+',
+          desc:'검증된 성능 최적화 플러그인. CDN, minify, 캐싱.',
+          icon:'🚀', tags:['캐시','CDN','성능'], stars:4.4},
+        { slug:'wpforms-lite',    name:'WPForms Lite',     ver:'1.9',  active:false, downloads:'200M+',
+          desc:'드래그앤드롭 폼 빌더. 초보자도 쉽게 아름다운 폼 제작.',
+          icon:'📝', tags:['폼','드래그앤드롭','문의'], stars:4.8},
+        { slug:'akismet',         name:'Akismet Anti-Spam',ver:'5.3',  active:true,  downloads:'800M+',
+          desc:'WordPress에 기본 포함. AI 기반 스팸 방지.',
+          icon:'🚫', tags:['스팸 방지','AI','보안'], stars:4.5},
+        { slug:'wp-super-cache',  name:'WP Super Cache',   ver:'1.12', active:false, downloads:'60M+',
+          desc:'WordPress.org 공식 캐시 플러그인. 정적 HTML 파일 생성.',
+          icon:'⚡', tags:['캐시','성능','정적'], stars:4.3},
+        { slug:'classic-editor',  name:'Classic Editor',   ver:'1.6',  active:false, downloads:'700M+',
+          desc:'구 편집기(TinyMCE) 복원. 블록 편집기가 불편한 경우.',
+          icon:'✏️', tags:['편집기','클래식','호환성'], stars:4.7},
+        { slug:'tablepress',      name:'TablePress',       ver:'3.0',  active:false, downloads:'40M+',
+          desc:'쉽게 반응형 테이블 생성. Excel/CSV 가져오기 지원.',
+          icon:'📊', tags:['테이블','CSV','데이터'], stars:4.8},
+      ];
+
+      bodyHtml = `
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+  <h2 style="margin:0;font-size:1.1rem">플러그인 추가</h2>
+  <div style="flex:1;max-width:360px;position:relative">
+    <input type="text" id="plugin-search" placeholder="WordPress.org 플러그인 검색…" 
+      style="width:100%;padding:7px 36px 7px 12px;border:1px solid #8c8f94;border-radius:4px;font-size:.875rem"
+      oninput="debounceSearch(this.value)">
+    <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);color:#8c8f94">🔍</span>
+  </div>
+  <div style="display:flex;gap:6px">
+    <button onclick="filterPlugins('featured')" id="tab-featured" class="plugin-tab active-tab" style="padding:6px 12px;border:1px solid #2271b1;border-radius:4px;cursor:pointer;font-size:.8rem;background:#2271b1;color:#fff">추천</button>
+    <button onclick="filterPlugins('popular')" id="tab-popular" class="plugin-tab" style="padding:6px 12px;border:1px solid #c3c4c7;border-radius:4px;cursor:pointer;font-size:.8rem;background:#f6f7f7;color:#1e1e1e">인기</button>
+    <button onclick="filterPlugins('new')" id="tab-new" class="plugin-tab" style="padding:6px 12px;border:1px solid #c3c4c7;border-radius:4px;cursor:pointer;font-size:.8rem;background:#f6f7f7;color:#1e1e1e">최신</button>
+  </div>
+  <a href="/wp-admin/plugins.php" style="font-size:.875rem;color:#2271b1;margin-left:auto">← 설치된 플러그인</a>
+</div>
+
+<div id="search-results-bar" style="display:none;padding:10px 14px;background:#e7f3ff;border:1px solid #72aee6;border-radius:4px;margin-bottom:16px;font-size:.875rem"></div>
+
+<div id="plugin-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px">
+  ${featuredPlugins.map(p => `
+  <div class="plugin-install-card" data-slug="${p.slug}" data-tags="${p.tags.join(',')}" style="border:1px solid #c3c4c7;border-radius:6px;background:#fff;padding:16px;display:flex;flex-direction:column;gap:10px;transition:box-shadow .2s" onmouseenter="this.style.boxShadow='0 2px 8px rgba(0,0,0,.1)'" onmouseleave="this.style.boxShadow=''">
+    <div style="display:flex;align-items:flex-start;gap:12px">
+      <div style="font-size:2rem;width:48px;height:48px;display:flex;align-items:center;justify-content:center;background:#f6f7f7;border-radius:8px;flex-shrink:0">${p.icon}</div>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <strong style="font-size:.9375rem">${p.name}</strong>
+          <span style="color:#8c8f94;font-size:.75rem">v${p.ver}</span>
+          ${p.active?`<span style="background:#00a32a;color:#fff;font-size:.65rem;padding:2px 6px;border-radius:20px">설치됨</span>`:''}
+        </div>
+        <div style="color:#8c8f94;font-size:.75rem;margin-top:2px">다운로드: ${p.downloads}</div>
+      </div>
+    </div>
+    <p style="margin:0;font-size:.8rem;color:#50575e;line-height:1.5;flex:1">${p.desc}</p>
+    <div style="display:flex;flex-wrap:wrap;gap:4px">
+      ${p.tags.map(tag=>`<span style="background:#f0f0f1;color:#50575e;font-size:.7rem;padding:2px 7px;border-radius:20px">${tag}</span>`).join('')}
+    </div>
+    <div style="display:flex;align-items:center;gap:6px">
+      <div style="flex:1;font-size:.75rem;color:#f0ad00">
+        ${'★'.repeat(Math.floor(p.stars))}${'☆'.repeat(5-Math.floor(p.stars))} <span style="color:#8c8f94">${p.stars}</span>
+      </div>
+      ${p.active
+        ? `<button onclick="activatePlugin('${p.slug}','${p.name}',this)" style="padding:6px 14px;background:#00a32a;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:.8rem;font-weight:600">활성화</button>`
+        : `<button onclick="installPlugin('${p.slug}','${p.name}',this)" style="padding:6px 14px;background:#2271b1;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:.8rem;font-weight:600">지금 설치</button>`
+      }
+      <button onclick="window.open('https://wordpress.org/plugins/${p.slug}/','_blank')" style="padding:6px 10px;background:#f6f7f7;border:1px solid #c3c4c7;border-radius:4px;cursor:pointer;font-size:.8rem">상세 정보</button>
+    </div>
+  </div>`).join('')}
+</div>
+
+<div id="wp-org-plugin-results" style="display:none;margin-top:24px">
+  <h3 id="wp-org-results-title" style="font-size:1rem;margin-bottom:12px"></h3>
+  <div id="wp-org-plugin-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px"></div>
+  <div id="wp-org-loading" style="display:none;text-align:center;padding:30px;color:#8c8f94">WordPress.org에서 검색 중…</div>
+</div>`;
+
+      inlineScript = `
+let searchTimer = null;
+function debounceSearch(q) {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => searchPlugins(q), 500);
+}
+
+async function searchPlugins(q) {
+  const bar = document.getElementById('search-results-bar');
+  const section = document.getElementById('wp-org-plugin-results');
+  const loading = document.getElementById('wp-org-loading');
+  const grid = document.getElementById('wp-org-plugin-grid');
+  const title = document.getElementById('wp-org-results-title');
+  const mainGrid = document.getElementById('plugin-grid');
+
+  if (!q || q.length < 2) {
+    bar.style.display='none'; section.style.display='none';
+    mainGrid.style.display=''; return;
+  }
+
+  // 로컬 필터 먼저
+  document.querySelectorAll('.plugin-install-card').forEach(card => {
+    const match = card.dataset.slug.includes(q.toLowerCase()) ||
+                  card.querySelector('strong').textContent.toLowerCase().includes(q.toLowerCase()) ||
+                  card.querySelector('p').textContent.toLowerCase().includes(q.toLowerCase());
+    card.style.display = match ? '' : 'none';
+  });
+
+  // WordPress.org API 검색
+  bar.style.display='block'; bar.textContent='WordPress.org에서 검색 중…';
+  section.style.display='block'; loading.style.display='block'; grid.innerHTML='';
+
+  try {
+    const url = 'https://api.wordpress.org/plugins/info/1.2/?action=query_plugins&request[search]='
+              + encodeURIComponent(q) + '&request[per_page]=12&request[fields][short_description]=1&request[fields][icons]=1&request[fields][downloaded]=1&request[fields][rating]=1&request[fields][num_ratings]=1&request[fields][active_installs]=1&request[fields][tags]=1&request[fields][version]=1';
+    const r = await fetch(url);
+    loading.style.display='none';
+    if (r.ok) {
+      const data = await r.json();
+      const plugins = data.plugins || [];
+      if (plugins.length) {
+        title.textContent = 'WordPress.org 검색 결과: ' + plugins.length + '개';
+        grid.innerHTML = plugins.map(p => {
+          const icon = (p.icons && (p.icons['1x'] || p.icons.default)) || '';
+          const stars = Math.round((p.rating||0)/20);
+          const installs = p.active_installs >= 1000000 ? Math.floor(p.active_installs/1000000)+'M+' : p.active_installs >= 1000 ? Math.floor(p.active_installs/1000)+'K+' : p.active_installs+'';
+          const tags = Object.values(p.tags||{}).slice(0,3);
+          return \`<div style="border:1px solid #c3c4c7;border-radius:6px;background:#fff;padding:16px;display:flex;flex-direction:column;gap:10px">
+            <div style="display:flex;align-items:flex-start;gap:12px">
+              <div style="width:48px;height:48px;border-radius:8px;overflow:hidden;background:#f6f7f7;flex-shrink:0">\${icon?'<img src="'+icon+'" style="width:100%;height:100%;object-fit:cover">':'<div style=\\"font-size:1.8rem;display:flex;align-items:center;justify-content:center;height:100%\\">🔌</div>'}</div>
+              <div style="flex:1;min-width:0">
+                <strong style="font-size:.875rem">\${p.name}</strong>
+                <div style="color:#8c8f94;font-size:.75rem">v\${p.version||''} · 활성 설치: \${installs}</div>
+              </div>
+            </div>
+            <p style="margin:0;font-size:.8rem;color:#50575e;line-height:1.5;flex:1">\${(p.short_description||'').replace(/<[^>]+>/g,'').slice(0,120)}…</p>
+            <div style="display:flex;flex-wrap:wrap;gap:4px">
+              \${tags.map(t=>'<span style="background:#f0f0f1;color:#50575e;font-size:.7rem;padding:2px 7px;border-radius:20px">'+t+'</span>').join('')}
+            </div>
+            <div style="display:flex;align-items:center;gap:6px">
+              <div style="flex:1;font-size:.75rem;color:#f0ad00">\${'★'.repeat(stars)+('☆'.repeat(5-stars))} <span style="color:#8c8f94">\${((p.rating||0)/20).toFixed(1)}</span></div>
+              <button onclick="installPlugin('\${p.slug}','\${(p.name||'').replace(/'/g,'')}',this)" style="padding:6px 14px;background:#2271b1;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:.8rem;font-weight:600">지금 설치</button>
+              <button onclick="window.open('https://wordpress.org/plugins/\${p.slug}/','_blank')" style="padding:6px 10px;background:#f6f7f7;border:1px solid #c3c4c7;border-radius:4px;cursor:pointer;font-size:.8rem">상세</button>
+            </div>
+          </div>\`;
+        }).join('');
+        bar.textContent = \`WordPress.org에서 "\${q}" 검색: \${plugins.length}개 발견\`;
+      } else {
+        title.textContent='검색 결과 없음';
+        grid.innerHTML='<p style="color:#8c8f94;grid-column:1/-1">검색 결과가 없습니다.</p>';
+        bar.textContent='WordPress.org에서 검색 결과가 없습니다.';
+      }
+    }
+  } catch(e) {
+    loading.style.display='none';
+    bar.textContent='WordPress.org API 검색 실패: ' + e.message;
+  }
+}
+
+async function filterPlugins(type) {
+  document.querySelectorAll('.plugin-tab').forEach(b=>{
+    b.style.background='#f6f7f7'; b.style.color='#1e1e1e'; b.style.borderColor='#c3c4c7';
+  });
+  const active = document.getElementById('tab-'+type);
+  active.style.background='#2271b1'; active.style.color='#fff'; active.style.borderColor='#2271b1';
+  // 탭에 따라 WordPress.org API 호출
+  const map = {featured:'browse=featured', popular:'browse=popular', new:'browse=new'};
+  const bar = document.getElementById('search-results-bar');
+  const section = document.getElementById('wp-org-plugin-results');
+  const grid = document.getElementById('wp-org-plugin-grid');
+  const title = document.getElementById('wp-org-results-title');
+  bar.style.display='block'; bar.textContent='WordPress.org에서 불러오는 중…';
+  document.getElementById('plugin-search').value='';
+  document.querySelectorAll('.plugin-install-card').forEach(c=>c.style.display='');
+  try {
+    const url='https://api.wordpress.org/plugins/info/1.2/?action=query_plugins&request['+map[type]+']&request[per_page]=12&request[fields][short_description]=1&request[fields][icons]=1&request[fields][downloaded]=1&request[fields][rating]=1&request[fields][active_installs]=1&request[fields][tags]=1&request[fields][version]=1';
+    const r = await fetch(url);
+    if (r.ok) {
+      const data = await r.json();
+      const plugins = data.plugins||[];
+      title.textContent = {featured:'추천 플러그인',popular:'인기 플러그인',new:'최신 플러그인'}[type];
+      grid.innerHTML = plugins.map(p => {
+        const icon = (p.icons&&(p.icons['1x']||p.icons.default))||'';
+        const stars = Math.round((p.rating||0)/20);
+        const installs = p.active_installs>=1000000?Math.floor(p.active_installs/1000000)+'M+':p.active_installs>=1000?Math.floor(p.active_installs/1000)+'K+':p.active_installs+'';
+        return \`<div style="border:1px solid #c3c4c7;border-radius:6px;background:#fff;padding:16px;display:flex;flex-direction:column;gap:10px">
+          <div style="display:flex;align-items:flex-start;gap:12px">
+            <div style="width:48px;height:48px;border-radius:8px;overflow:hidden;background:#f6f7f7;flex-shrink:0">\${icon?'<img src="'+icon+'" style="width:100%;height:100%;object-fit:cover">':'🔌'}</div>
+            <div><strong style="font-size:.875rem">\${p.name}</strong><div style="color:#8c8f94;font-size:.75rem">v\${p.version||''} · 활성: \${installs}</div></div>
+          </div>
+          <p style="margin:0;font-size:.8rem;color:#50575e;line-height:1.5;flex:1">\${(p.short_description||'').replace(/<[^>]+>/g,'').slice(0,120)}…</p>
+          <div style="display:flex;align-items:center;gap:6px">
+            <div style="flex:1;font-size:.75rem;color:#f0ad00">\${'★'.repeat(stars)+('☆'.repeat(5-stars))}</div>
+            <button onclick="installPlugin('\${p.slug}','\${(p.name||'').replace(/'/g,'')}',this)" style="padding:6px 14px;background:#2271b1;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:.8rem;font-weight:600">지금 설치</button>
+          </div>
+        </div>\`;
+      }).join('');
+      section.style.display='block';
+      bar.textContent = \`\${title.textContent}: \${plugins.length}개\`;
+    }
+  } catch(e) { bar.textContent='불러오기 실패: '+e.message; }
+}
+
+async function installPlugin(slug, name, btn) {
+  btn.textContent='설치 중…'; btn.disabled=true; btn.style.background='#72aee6';
+  try {
+    const r = await fetch('/wp-json/cloudpress/v1/plugins/install', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({slug, name})
+    });
+    const d = r.ok ? await r.json() : {success:false, message:'응답 오류'};
+    if (d.success) {
+      btn.textContent='활성화'; btn.style.background='#00a32a'; btn.disabled=false;
+      btn.setAttribute('onclick', \`activatePlugin('\${slug}','\${name}',this)\`);
+      // 설치된 플러그인 배지 표시
+      const card = btn.closest('[data-slug],[style*="border-radius:6px"]');
+      if (card) {
+        const nameEl = card.querySelector('strong');
+        if (nameEl && !nameEl.nextElementSibling?.textContent?.includes('설치됨')) {
+          const badge = document.createElement('span');
+          badge.style.cssText='background:#00a32a;color:#fff;font-size:.65rem;padding:2px 6px;border-radius:20px;margin-left:6px';
+          badge.textContent='설치됨';
+          nameEl.after(badge);
+        }
+      }
+    } else {
+      btn.textContent='설치 실패'; btn.style.background='#d63638'; btn.disabled=false;
+      setTimeout(()=>{ btn.textContent='다시 시도'; btn.style.background='#2271b1'; }, 2000);
+    }
+  } catch(e) { btn.textContent='오류: '+e.message.slice(0,20); btn.style.background='#d63638'; btn.disabled=false; }
+}
+
+async function activatePlugin(slug, name, btn) {
+  btn.textContent='활성화 중…'; btn.disabled=true;
+  try {
+    const r = await fetch('/wp-json/cloudpress/v1/plugins/activate', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({slug, name})
+    });
+    const d = r.ok ? await r.json() : {success:false};
+    if (d.success) {
+      btn.textContent='✓ 활성화됨'; btn.style.background='#00a32a';
+      setTimeout(()=>{ window.location.href='/wp-admin/plugins.php'; }, 1000);
+    } else {
+      btn.textContent='활성화 실패'; btn.disabled=false;
+      alert('활성화 실패: ' + (d.message||'알 수 없는 오류'));
+    }
+  } catch(e) { btn.textContent='오류'; btn.disabled=false; }
+}`;
+
+    } else {
+      // ── 설치된 플러그인 목록 ──
+      bodyHtml = `
+<div id="plugin-msg" style="display:none;padding:10px 14px;border-radius:4px;margin-bottom:12px"></div>
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+  <div style="display:flex;align-items:center;gap:8px">
+    <h2 style="margin:0;font-size:1.1rem">플러그인</h2>
+    <span id="plugin-count" style="background:#f0f0f1;color:#50575e;font-size:.75rem;padding:2px 8px;border-radius:20px">불러오는 중…</span>
+  </div>
+  <div style="display:flex;gap:8px">
+    <input type="text" id="plugin-filter" placeholder="플러그인 검색…" oninput="filterList(this.value)"
+      style="padding:6px 10px;border:1px solid #8c8f94;border-radius:4px;font-size:.8rem;width:200px">
+    <a href="/wp-admin/plugin-install.php" class="btn-wp">새 플러그인 추가</a>
+  </div>
+</div>
+<table class="wp-list-table" style="width:100%;border-collapse:collapse;border:1px solid #c3c4c7;background:#fff">
+  <thead>
+    <tr style="background:#f6f7f7;border-bottom:1px solid #c3c4c7">
+      <th style="padding:8px 12px;text-align:left;font-size:.875rem">플러그인</th>
+      <th style="padding:8px 12px;text-align:left;font-size:.875rem;width:80px">버전</th>
+      <th style="padding:8px 12px;text-align:left;font-size:.875rem;width:90px">상태</th>
+      <th style="padding:8px 12px;text-align:left;font-size:.875rem;width:200px">작업</th>
+    </tr>
+  </thead>
+  <tbody id="plugins-list">
+    <tr><td colspan="4" style="padding:20px;text-align:center;color:#8c8f94">플러그인 목록을 불러오는 중…</td></tr>
+  </tbody>
+</table>`;
+
+      inlineScript = `
+(async function() {
+  const list = document.getElementById('plugins-list');
+  const countEl = document.getElementById('plugin-count');
+  try {
+    const r = await fetch('/wp-json/cloudpress/v1/plugins', {headers:{'Accept':'application/json'}});
+    const plugins = r.ok ? await r.json() : [];
+    if (!plugins.length) {
+      list.innerHTML='<tr><td colspan="4" style="padding:20px;text-align:center;color:#8c8f94">설치된 플러그인이 없습니다. <a href="/wp-admin/plugin-install.php">새 플러그인 추가</a></td></tr>';
+      countEl.textContent = '0개';
+      return;
+    }
+    countEl.textContent = plugins.length + '개';
+    renderPlugins(plugins);
+  } catch(e) {
+    list.innerHTML = '<tr><td colspan="4" style="padding:20px;text-align:center;color:#d63638">불러오기 오류: '+e.message+'</td></tr>';
+  }
+})();
+
+function renderPlugins(plugins) {
+  const list = document.getElementById('plugins-list');
+  list.innerHTML = plugins.map(p => \`
+    <tr id="row-\${p.slug}" style="border-top:1px solid #f0f0f1;\${p.active?'background:#f0f7e6':''}">
+      <td style="padding:12px">
+        <div style="display:flex;align-items:flex-start;gap:10px">
+          \${p.icon?'<img src="'+p.icon+'" style="width:36px;height:36px;border-radius:6px;flex-shrink:0">':'<div style=\\"width:36px;height:36px;border-radius:6px;background:#f0f0f1;display:flex;align-items:center;justify-content:center;font-size:1.2rem;flex-shrink:0\\">🔌</div>'}
+          <div>
+            <strong style="font-size:.9rem">\${p.name}</strong>
+            <p style="margin:3px 0 0;font-size:.8rem;color:#50575e">\${p.description||''}</p>
+            \${p.author?'<p style="margin:3px 0 0;font-size:.75rem;color:#8c8f94">제작: '+p.author+'</p>':''}
+          </div>
+        </div>
+      </td>
+      <td style="padding:12px;font-size:.8rem;color:#50575e;vertical-align:top">v\${p.version||'-'}</td>
+      <td style="padding:12px;vertical-align:top">
+        <span style="font-size:.8rem;font-weight:600;\${p.active?'color:#00a32a':'color:#8c8f94'}">\${p.active?'● 활성':'○ 비활성'}</span>
+      </td>
+      <td style="padding:12px;vertical-align:top">
+        <div style="display:flex;flex-wrap:wrap;gap:4px;font-size:.8rem">
+          \${p.active
+            ? '<button onclick="deactivatePlugin(\''+p.slug+'\',\''+p.name.replace(/'/g,'')+'\',this)" style="padding:4px 10px;background:#fff;border:1px solid #c3c4c7;border-radius:3px;cursor:pointer;font-size:.8rem">비활성화</button>'
+            : '<button onclick="activatePlugin(\''+p.slug+'\',\''+p.name.replace(/'/g,'')+'\',this)" style="padding:4px 10px;background:#00a32a;color:#fff;border:none;border-radius:3px;cursor:pointer;font-size:.8rem;font-weight:600">활성화</button>'
+          }
+          \${p.settings_url?'<a href="'+p.settings_url+'" style="padding:4px 10px;background:#f6f7f7;border:1px solid #c3c4c7;border-radius:3px;font-size:.8rem;text-decoration:none;color:#1e1e1e">설정</a>':''}
+          \${!p.active?'<button onclick="deletePlugin(\''+p.slug+'\',\''+p.name.replace(/'/g,'')+'\',this)" style="padding:4px 10px;background:#fff;border:1px solid #d63638;color:#d63638;border-radius:3px;cursor:pointer;font-size:.8rem">삭제</button>':''}
+        </div>
+      </td>
+    </tr>\`).join('');
+  window._pluginData = plugins;
+}
+
+function filterList(q) {
+  const rows = document.querySelectorAll('#plugins-list tr[id]');
+  const lq = q.toLowerCase();
+  rows.forEach(row => {
+    const text = row.textContent.toLowerCase();
+    row.style.display = text.includes(lq) ? '' : 'none';
+  });
+}
+
+async function activatePlugin(slug, name, btn) {
+  btn.textContent='처리 중…'; btn.disabled=true;
+  const r = await fetch('/wp-json/cloudpress/v1/plugins/activate', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({slug, name})
+  });
+  const d = r.ok ? await r.json() : {success:false};
+  showMsg(d.success ? '✓ ' + name + ' 활성화됨' : '활성화 실패: '+(d.message||''), d.success);
+  if (d.success) location.reload();
+  else { btn.textContent='활성화'; btn.disabled=false; }
+}
+
+async function deactivatePlugin(slug, name, btn) {
+  btn.textContent='처리 중…'; btn.disabled=true;
+  const r = await fetch('/wp-json/cloudpress/v1/plugins/deactivate', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({slug, name})
+  });
+  const d = r.ok ? await r.json() : {success:false};
+  showMsg(d.success ? '✓ ' + name + ' 비활성화됨' : '실패', d.success);
+  if (d.success) location.reload();
+  else { btn.textContent='비활성화'; btn.disabled=false; }
+}
+
+async function deletePlugin(slug, name, btn) {
+  if (!confirm(name + ' 플러그인을 삭제하시겠습니까?\\n이 작업은 되돌릴 수 없습니다.')) return;
+  btn.textContent='삭제 중…'; btn.disabled=true;
+  const r = await fetch('/wp-json/cloudpress/v1/plugins/delete', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({slug})
+  });
+  const d = r.ok ? await r.json() : {success:false};
+  if (d.success) {
+    document.getElementById('row-'+slug)?.remove();
+    showMsg('✓ ' + name + ' 삭제됨', true);
+  } else { btn.textContent='삭제'; btn.disabled=false; showMsg('삭제 실패', false); }
+}
+
+function showMsg(text, ok) {
+  const el = document.getElementById('plugin-msg');
+  el.style.cssText = ok
+    ? 'display:block;background:#edfaef;border:1px solid #00a32a;color:#1d7a35;padding:10px 14px;border-radius:4px;margin-bottom:12px'
+    : 'display:block;background:#fff0f0;border:1px solid #d63638;color:#d63638;padding:10px 14px;border-radius:4px;margin-bottom:12px';
+  el.textContent = text;
+  setTimeout(()=>el.style.display='none', 4000);
+}`;
+    }
+
 
   } else if (page === 'options-general' || page === 'options') {
     pageTitle = '일반 설정';
@@ -1429,8 +1985,8 @@ el.innerHTML=list.map(function(c){
     media:     page === 'upload',
     pages:     page === 'edit' && isPage,
     comments:  page === 'edit-comments',
-    themes:    page === 'themes',
-    plugins:   page === 'plugins',
+    themes:    page === 'themes' || page === 'theme-install',
+    plugins:   page === 'plugins' || page === 'plugin-install',
     users:     page === 'users' || page === 'user-new' || page === 'profile',
     settings:  page === 'options-general' || page === 'options' || page === 'options-permalink',
   };
@@ -1725,6 +2281,205 @@ async function handleWPRestAPI(env, request, url, siteInfo) {
         }
       }
       return j({ ...updated, ok: true });
+    }
+
+    // ── CloudPress v1 API ──────────────────────────────────────────────────────
+
+    // GET /cloudpress/v1/plugins — 설치된 플러그인 목록
+    if (path === '/cloudpress/v1/plugins' && method === 'GET') {
+      try {
+        const res = await env.DB.prepare(
+          `SELECT option_value FROM wp_options WHERE option_name = 'active_plugins' LIMIT 1`
+        ).first();
+        const allPluginsRes = await env.DB.prepare(
+          `SELECT option_name, option_value FROM wp_options WHERE option_name LIKE 'cp_plugin_%'`
+        ).all();
+        const activePlugins = res?.option_value ? JSON.parse(res.option_value) : [];
+        const pluginMeta = {};
+        for (const row of (allPluginsRes.results || [])) {
+          try { pluginMeta[row.option_name] = JSON.parse(row.option_value); } catch {}
+        }
+        // 기본 내장 플러그인 목록
+        const builtins = [
+          { slug:'akismet', name:'Akismet Anti-Spam', version:'5.3.4', description:'수백만 WordPress 사이트에서 검증된 AI 기반 스팸 방지.', author:'Automattic', settings_url:'/wp-admin/options-general.php?page=akismet-key-config' },
+          { slug:'cloudpress-cache', name:'CloudPress Cache', version:'1.0.0', description:'CloudPress 엣지 캐시 최적화 플러그인.', author:'CloudPress' },
+        ];
+        // DB에 저장된 추가 플러그인과 병합
+        const dbPlugins = Object.entries(pluginMeta).map(([k, v]) => ({
+          slug: k.replace('cp_plugin_', ''),
+          ...v,
+        }));
+        const allPlugins = [...builtins, ...dbPlugins.filter(p => !builtins.find(b => b.slug === p.slug))];
+        const result = allPlugins.map(p => ({
+          ...p,
+          active: activePlugins.includes(p.slug) || activePlugins.includes(p.slug + '/index.php'),
+        }));
+        return j(result);
+      } catch(e) {
+        return j([{ slug:'akismet', name:'Akismet Anti-Spam', version:'5.3.4', description:'스팸 방지', active:true }]);
+      }
+    }
+
+    // POST /cloudpress/v1/plugins/install
+    if (path === '/cloudpress/v1/plugins/install' && method === 'POST') {
+      let body = {};
+      try { body = await request.json(); } catch {}
+      const { slug, name } = body;
+      if (!slug) return j({ success: false, message: 'slug 필요' }, 400);
+      try {
+        // WordPress.org API에서 플러그인 메타 가져오기
+        let pluginInfo = { slug, name: name || slug, version: 'latest', description: '' };
+        try {
+          const wpRes = await fetch(
+            `https://api.wordpress.org/plugins/info/1.2/?action=plugin_information&request[slug]=${encodeURIComponent(slug)}&request[fields][short_description]=1&request[fields][versions]=0&request[fields][icons]=1`,
+            { headers: { 'User-Agent': 'CloudPress/20' } }
+          );
+          if (wpRes.ok) {
+            const info = await wpRes.json();
+            if (info && info.slug) {
+              pluginInfo = {
+                slug: info.slug,
+                name: info.name || name || slug,
+                version: info.version || 'latest',
+                description: (info.short_description || '').replace(/<[^>]+>/g, '').slice(0, 200),
+                author: (info.author || '').replace(/<[^>]+>/g, ''),
+                icon: info.icons?.['1x'] || info.icons?.default || '',
+                download_link: info.download_link || '',
+                installed_at: new Date().toISOString(),
+              };
+            }
+          }
+        } catch {}
+        // DB에 플러그인 메타 저장
+        await env.DB.prepare(
+          `INSERT OR REPLACE INTO wp_options (option_name, option_value, autoload) VALUES (?, ?, 'no')`
+        ).bind(`cp_plugin_${slug}`, JSON.stringify(pluginInfo)).run();
+        return j({ success: true, plugin: pluginInfo, message: `${pluginInfo.name} 설치됨` });
+      } catch(e) {
+        return j({ success: false, message: '설치 실패: ' + e.message }, 500);
+      }
+    }
+
+    // POST /cloudpress/v1/plugins/activate
+    if (path === '/cloudpress/v1/plugins/activate' && method === 'POST') {
+      let body = {};
+      try { body = await request.json(); } catch {}
+      const { slug } = body;
+      if (!slug) return j({ success: false, message: 'slug 필요' }, 400);
+      try {
+        const res = await env.DB.prepare(
+          `SELECT option_value FROM wp_options WHERE option_name = 'active_plugins' LIMIT 1`
+        ).first();
+        const active = res?.option_value ? JSON.parse(res.option_value) : [];
+        if (!active.includes(slug)) active.push(slug);
+        await env.DB.prepare(
+          `INSERT OR REPLACE INTO wp_options (option_name, option_value, autoload) VALUES ('active_plugins', ?, 'yes')`
+        ).bind(JSON.stringify(active)).run();
+        return j({ success: true, message: `${slug} 활성화됨`, active_plugins: active });
+      } catch(e) { return j({ success: false, message: e.message }, 500); }
+    }
+
+    // POST /cloudpress/v1/plugins/deactivate
+    if (path === '/cloudpress/v1/plugins/deactivate' && method === 'POST') {
+      let body = {};
+      try { body = await request.json(); } catch {}
+      const { slug } = body;
+      if (!slug) return j({ success: false, message: 'slug 필요' }, 400);
+      try {
+        const res = await env.DB.prepare(
+          `SELECT option_value FROM wp_options WHERE option_name = 'active_plugins' LIMIT 1`
+        ).first();
+        const active = (res?.option_value ? JSON.parse(res.option_value) : []).filter(s => s !== slug);
+        await env.DB.prepare(
+          `INSERT OR REPLACE INTO wp_options (option_name, option_value, autoload) VALUES ('active_plugins', ?, 'yes')`
+        ).bind(JSON.stringify(active)).run();
+        return j({ success: true, message: `${slug} 비활성화됨` });
+      } catch(e) { return j({ success: false, message: e.message }, 500); }
+    }
+
+    // POST /cloudpress/v1/plugins/delete
+    if (path === '/cloudpress/v1/plugins/delete' && method === 'POST') {
+      let body = {};
+      try { body = await request.json(); } catch {}
+      const { slug } = body;
+      if (!slug) return j({ success: false, message: 'slug 필요' }, 400);
+      try {
+        // active_plugins에서 제거
+        const res = await env.DB.prepare(
+          `SELECT option_value FROM wp_options WHERE option_name = 'active_plugins' LIMIT 1`
+        ).first();
+        const active = (res?.option_value ? JSON.parse(res.option_value) : []).filter(s => s !== slug);
+        await env.DB.prepare(
+          `INSERT OR REPLACE INTO wp_options (option_name, option_value, autoload) VALUES ('active_plugins', ?, 'yes')`
+        ).bind(JSON.stringify(active)).run();
+        // 플러그인 메타 삭제
+        await env.DB.prepare(`DELETE FROM wp_options WHERE option_name = ?`).bind(`cp_plugin_${slug}`).run();
+        return j({ success: true, message: `${slug} 삭제됨` });
+      } catch(e) { return j({ success: false, message: e.message }, 500); }
+    }
+
+    // POST /cloudpress/v1/themes/install
+    if (path === '/cloudpress/v1/themes/install' && method === 'POST') {
+      let body = {};
+      try { body = await request.json(); } catch {}
+      const { slug, name } = body;
+      if (!slug) return j({ success: false, message: 'slug 필요' }, 400);
+      try {
+        let themeInfo = { slug, name: name || slug, version: 'latest' };
+        try {
+          const wpRes = await fetch(
+            `https://api.wordpress.org/themes/info/1.1/?action=theme_information&request[slug]=${encodeURIComponent(slug)}&request[fields][description]=1&request[fields][screenshots]=1&request[fields][version]=1`,
+            { headers: { 'User-Agent': 'CloudPress/20' } }
+          );
+          if (wpRes.ok) {
+            const info = await wpRes.json();
+            if (info && info.slug) {
+              themeInfo = {
+                slug: info.slug,
+                name: info.name || name || slug,
+                version: info.version || 'latest',
+                description: (info.description || '').replace(/<[^>]+>/g, '').slice(0, 200),
+                author: (info.author || '').replace(/<[^>]+>/g, ''),
+                screenshot_url: info.screenshot_url || '',
+                installed_at: new Date().toISOString(),
+              };
+            }
+          }
+        } catch {}
+        await env.DB.prepare(
+          `INSERT OR REPLACE INTO wp_options (option_name, option_value, autoload) VALUES (?, ?, 'no')`
+        ).bind(`cp_theme_${slug}`, JSON.stringify(themeInfo)).run();
+        return j({ success: true, theme: themeInfo, message: `${themeInfo.name} 설치됨` });
+      } catch(e) { return j({ success: false, message: '테마 설치 실패: ' + e.message }, 500); }
+    }
+
+    // POST /cloudpress/v1/themes/activate
+    if (path === '/cloudpress/v1/themes/activate' && method === 'POST') {
+      let body = {};
+      try { body = await request.json(); } catch {}
+      const { slug, name } = body;
+      if (!slug) return j({ success: false, message: 'slug 필요' }, 400);
+      try {
+        await env.DB.prepare(
+          `INSERT OR REPLACE INTO wp_options (option_name, option_value, autoload) VALUES ('stylesheet', ?, 'yes')`
+        ).bind(slug).run();
+        await env.DB.prepare(
+          `INSERT OR REPLACE INTO wp_options (option_name, option_value, autoload) VALUES ('template', ?, 'yes')`
+        ).bind(slug).run();
+        return j({ success: true, message: `${name || slug} 테마 활성화됨`, active_theme: slug });
+      } catch(e) { return j({ success: false, message: e.message }, 500); }
+    }
+
+    // POST /cloudpress/v1/themes/delete
+    if (path === '/cloudpress/v1/themes/delete' && method === 'POST') {
+      let body = {};
+      try { body = await request.json(); } catch {}
+      const { slug } = body;
+      if (!slug) return j({ success: false, message: 'slug 필요' }, 400);
+      try {
+        await env.DB.prepare(`DELETE FROM wp_options WHERE option_name = ?`).bind(`cp_theme_${slug}`).run();
+        return j({ success: true, message: `${slug} 테마 삭제됨` });
+      } catch(e) { return j({ success: false, message: e.message }, 500); }
     }
 
     return j({ code: 'rest_no_route', message: '일치하는 라우트가 없습니다.', data: { status: 404 } }, 404);
