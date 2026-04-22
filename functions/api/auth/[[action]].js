@@ -124,6 +124,32 @@ async function ensureSchema(DB, env) {
     `ALTER TABLE sites ADD COLUMN site_d1_name TEXT`,
     `ALTER TABLE sites ADD COLUMN site_kv_id TEXT`,
     `ALTER TABLE sites ADD COLUMN site_kv_title TEXT`,
+    // v20: Supabase 스토리지 컬럼
+    `ALTER TABLE sites ADD COLUMN supabase_url TEXT`,
+    `ALTER TABLE sites ADD COLUMN supabase_key TEXT`,
+    `ALTER TABLE sites ADD COLUMN supabase_url2 TEXT`,
+    `ALTER TABLE sites ADD COLUMN supabase_key2 TEXT`,
+    `ALTER TABLE sites ADD COLUMN storage_bucket TEXT DEFAULT 'media'`,
+    `ALTER TABLE sites ADD COLUMN storage_bucket2 TEXT DEFAULT 'media-backup'`,
+    `ALTER TABLE sites ADD COLUMN wp_installed INTEGER DEFAULT 0`,
+    `ALTER TABLE sites ADD COLUMN worker_name TEXT`,
+    `ALTER TABLE sites ADD COLUMN wp_admin_pw TEXT`,
+    // v20: chat_tickets 테이블
+    `CREATE TABLE IF NOT EXISTS chat_tickets (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id),
+      message TEXT NOT NULL,
+      reply TEXT,
+      status TEXT NOT NULL DEFAULT 'open',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      replied_at TEXT
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_chat_tickets_user ON chat_tickets(user_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_chat_tickets_status ON chat_tickets(status)`,
+    // v20: settings 추가 키
+    `INSERT OR IGNORE INTO settings (key,value) VALUES ('supabase_mgmt_token','')`,
+    `INSERT OR IGNORE INTO settings (key,value) VALUES ('supabase_org_id','')`,
+    `INSERT OR IGNORE INTO settings (key,value) VALUES ('cf_account_email','')`,
     // 2FA 컬럼 마이그레이션 (기존 users에 없을 수 있음)
     `ALTER TABLE users ADD COLUMN twofa_type TEXT DEFAULT NULL`,
     `ALTER TABLE users ADD COLUMN twofa_secret TEXT DEFAULT NULL`,
