@@ -5,7 +5,6 @@
  *  - CP.apiFetch is not a function 오류 완전 제거
  *  - 로그인 세션 토큰 KV 실제 검증 (쿠키 파싱 → KV lookup)
  *  - 미인증 wp-admin 접근 → wp-login.php 리다이렉트 (세션 없으면 무조건)
- *  - 홈 화면 "아직 게시물이 없습니다" 조건부 렌더 + 로그인 링크 포함
  *  - 어드민 페이지 fetch 호출 전부 표준 fetch() 사용 (CP.apiFetch 제거)
  *  - 로그인 폼 완전 작동 (POST → D1 user 조회 → KV 세션 생성 → 쿠키 Set)
  *  - 세션 쿠키명 일관성 확보 (wordpress_logged_in_SESSION)
@@ -479,18 +478,8 @@ async function renderWPTemplate(env, sitePrefix, siteInfo, contentData, ctx) {
       mainContent += `<header class="page-header"><h1 class="page-title">${esc(term.name)}</h1>${term.description ? `<div class="taxonomy-description">${esc(term.description)}</div>` : ''}</header>`;
     }
     if (posts.length === 0) {
-      // 게시글 없음 - 로그인 링크 포함
-      mainContent += `
-<div class="no-posts">
-  <header class="page-header"><h1 class="page-title">아직 게시물이 없습니다</h1></header>
-  <div class="page-content">
-    <p>새로운 글을 작성하면 이곳에 표시됩니다.</p>
-    <p style="margin-top:1rem;">
-      <a href="${esc(siteUrl)}/wp-admin/" class="btn-admin">관리자 페이지로 이동</a>
-      <a href="${esc(siteUrl)}/wp-login.php" class="btn-login">로그인</a>
-    </p>
-  </div>
-</div>`;
+      // 게시글 없음 - 빈 상태 (메시지 없음)
+      mainContent += '';
     } else {
       mainContent += '<div class="posts-loop">';
       for (const p of posts) {
