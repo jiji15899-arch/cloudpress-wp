@@ -20,16 +20,33 @@ export async function onRequest({ request, env }) {
     const admin = await requireAdmin(env, request);
     if (!admin) return err('관리자 권한이 필요합니다.', 403);
 
+    const unreadOnly = url.searchParams.get('unread') === '1';
+
     try {
-      const res = await env.DB.prepare(`
+      let sql = `
         SELECT t.id, t.message, t.reply, t.status, t.created_at, t.replied_at,
                u.name AS user_name, u.email AS user_email
         FROM chat_tickets t
         LEFT JOIN users u ON t.user_id = u.id
-        ORDER BY t.created_at DESC
-        LIMIT 200
-      `).all();
-      return ok({ tickets: res.results || [] });
+      `;
+      if (unreadOnly) sql += ` WHERE t.status = 'open'`;
+      sql += ` ORDER BY t.created_at DESC LIMIT 200`;
+
+      const res = await env.DB.prepare(sql).all();
+      const tickets = res.results || [];
+
+      // 미읽음 카운트 초기화 (목록 조회 시)
+      if (!unreadOnly && env.SESSIONS) {
+        env.SESSIONS.put('admin:unread_tickets', '0', { expirationTtl: 86400 * 7 }).catch(() => {});
+      }
+
+      // 미읽음 카운트 반환
+      let unreadCount = 0;
+      try {
+        unreadCount = parseInt(await env.SESSIONS.get('admin:unread_tickets') || '0', 10);
+      } catch {}
+
+      return ok({ tickets, unreadCount });
     } catch (e) {
       return err('DB 오류: ' + e.message, 500);
     }
