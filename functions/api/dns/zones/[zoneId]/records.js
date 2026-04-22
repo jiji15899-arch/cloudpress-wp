@@ -1,7 +1,7 @@
 // functions/api/dns/zones/[zoneId]/records.js — CloudPress DNS 레코드 API
 // DNS 레코드 조회 / 추가 / 수정 / 삭제
 
-import { CORS, ok, err, getUser } from '../../../../../_shared.js';
+import { CORS, ok, err, getUser } from '../../../_shared.js';
 
 const CF_API = 'https://api.cloudflare.com/client/v4';
 
