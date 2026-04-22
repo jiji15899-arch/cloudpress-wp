@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=5.0"/>
+  <title>문의 관리 — CloudPress 어드민</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml"/>
+  <link rel="alternate icon" href="/favicon.ico"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:opsz,wght@9..40,400;9..40,500&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="dashboard.css"/>
+  <style>
+    .ticket-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:12px;transition:border-color .2s}
+    .ticket-card:hover{border-color:var(--border2)}
+    .ticket-card.unread{border-left:3px solid var(--accent)}
+    .ticket-header{display:flex;align-items:flex-start;gap:12px;margin-bottom:10px}
+    .ticket-avatar{width:34px;height:34px;border-radius:50%;background:rgba(99,102,241,.15);color:#6366f1;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.88rem;flex-shrink:0}
+    .ticket-info{flex:1;min-width:0}
+    .ticket-user{font-weight:700;font-size:.9rem}
+    .ticket-email{font-size:.76rem;color:var(--muted)}
+    .ticket-time{font-size:.73rem;color:var(--muted);white-space:nowrap}
+    .ticket-msg{font-size:.87rem;line-height:1.6;margin-bottom:12px;background:var(--bg);padding:12px 14px;border-radius:8px}
+    .ticket-reply{background:rgba(34,197,94,.06);border:1px solid rgba(34,197,94,.15);border-radius:8px;padding:11px 14px;font-size:.85rem;margin-bottom:12px}
+    .ticket-reply-label{font-size:.72rem;color:#16a34a;font-weight:700;margin-bottom:4px}
+    .reply-form{display:flex;gap:8px;margin-top:10px}
+    .reply-form textarea{flex:1;background:var(--bg);border:1px solid var(--border2);border-radius:8px;padding:9px 12px;color:var(--text);font-size:.85rem;font-family:inherit;resize:none;min-height:60px;outline:none}
+    .reply-form textarea:focus{border-color:var(--accent)}
+    .status-badge{padding:2px 8px;border-radius:10px;font-size:.71rem;font-weight:700}
+    .sb-open{background:rgba(249,115,22,.1);color:var(--accent)}
+    .sb-answered{background:rgba(34,197,94,.1);color:#16a34a}
+    .sb-closed{background:rgba(148,163,184,.1);color:var(--muted)}
+    .filter-bar{display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap;align-items:center}
+    .filter-btn{padding:6px 14px;border-radius:20px;border:1px solid var(--border2);background:var(--surface);font-size:.8rem;cursor:pointer;color:var(--muted);transition:all .15s}
+    .filter-btn.active{background:var(--accent);border-color:var(--accent);color:#fff}
+    .filter-btn:hover:not(.active){border-color:var(--accent);color:var(--accent)}
+    .stats-row{display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap}
+    .stat-mini{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 16px;flex:1;min-width:80px;text-align:center}
+    .stat-mini-val{font-family:var(--font-head);font-size:1.4rem;font-weight:700}
+    .stat-mini-lbl{font-size:.73rem;color:var(--muted);margin-top:2px}
+    .badge-new{background:var(--accent);color:#fff;font-size:.68rem;font-weight:700;padding:1px 5px;border-radius:8px;margin-left:6px}
+  </style>
+</head>
+<body>
+<div class="app-wrap">
+  <aside class="sidebar" id="sidebar">
+    <a href="/dashboard.html" class="sb-logo">
+      <svg width="22" height="22" viewBox="0 0 28 28" fill="none"><path d="M14 2L26 8V20L14 26L2 20V8L14 2Z" stroke="currentColor" stroke-width="1.5"/><path d="M14 8L20 11V17L14 20L8 17V11L14 8Z" fill="currentColor" opacity=".5"/><circle cx="14" cy="14" r="2.2" fill="currentColor"/></svg>
+      CloudPress
+    </a>
+    <nav class="sb-nav">
+      <div class="sb-section">
+        <div class="sb-label">관리자</div>
+        <a href="/admin.html" class="sb-link"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" stroke="currentColor" stroke-width="1.5"/></svg>어드민 패널</a>
+        <a href="/admin-chat.html" class="sb-link active"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" stroke="currentColor" stroke-width="1.5"/></svg>문의 관리<span class="badge-new" id="unreadBadge" style="display:none">새글</span></a>
+        <a href="/admin-site-control.html" class="sb-link">사이트 관리</a>
+        <a href="/admin-user-control.html" class="sb-link">사용자 관리</a>
+        <a href="/admin-settings.html" class="sb-link">설정</a>
+      </div>
+      <div class="sb-section">
+        <button class="sb-link danger" onclick="CP.logout()">로그아웃</button>
+      </div>
+    </nav>
+  </aside>
+  <div class="sidebar-overlay" id="overlay" onclick="closeSidebar()"></div>
+  <main class="main">
+    <div class="topbar">
+      <div style="display:flex;align-items:center;gap:14px">
+        <button class="sidebar-toggle" onclick="openSidebar()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M3 12h18M3 6h18M3 18h18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
+        <span class="topbar-title">문의 관리</span>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="loadTickets()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M23 4v6h-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M1 20v-6h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        새로고침
+      </button>
+    </div>
+
+    <div class="content">
+      <div class="stats-row" id="statsRow">
+        <div class="stat-mini"><div class="stat-mini-val" id="statTotal">—</div><div class="stat-mini-lbl">전체 문의</div></div>
+        <div class="stat-mini"><div class="stat-mini-val" id="statOpen" style="color:var(--accent)">—</div><div class="stat-mini-lbl">대기 중</div></div>
+        <div class="stat-mini"><div class="stat-mini-val" id="statAnswered" style="color:#16a34a">—</div><div class="stat-mini-lbl">답변 완료</div></div>
+        <div class="stat-mini"><div class="stat-mini-val" id="statToday">—</div><div class="stat-mini-lbl">오늘 접수</div></div>
+      </div>
+
+      <div class="filter-bar">
+        <button class="filter-btn active" onclick="setFilter('all',this)">전체</button>
+        <button class="filter-btn" onclick="setFilter('open',this)">대기 중</button>
+        <button class="filter-btn" onclick="setFilter('answered',this)">답변 완료</button>
+        <button class="filter-btn" onclick="setFilter('closed',this)">종료</button>
+        <input type="text" id="searchInput" placeholder="검색..." style="margin-left:auto;background:var(--surface);border:1px solid var(--border2);border-radius:8px;padding:6px 12px;color:var(--text);font-size:.83rem;outline:none;width:180px" oninput="renderTickets()"/>
+      </div>
+
+      <div id="ticketsList">
+        <div style="text-align:center;padding:60px;color:var(--muted)">
+          <div style="display:inline-block;width:28px;height:28px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite"></div>
+          <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="app.js"></script>
+<script>
+let allTickets = [];
+let currentFilter = 'all';
+
+function setFilter(f, btn) {
+  currentFilter = f;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderTickets();
+}
+
+async function loadTickets() {
+  document.getElementById('ticketsList').innerHTML = `
+    <div style="text-align:center;padding:40px;color:var(--muted)">
+      <div style="display:inline-block;width:24px;height:24px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite"></div>
+    </div>`;
+  try {
+    const res = await CP.apiFetch('/api/chat?type=admin');
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data.error || '조회 실패');
+    allTickets = data.tickets || [];
+    updateStats();
+    renderTickets();
+  } catch(e) {
+    document.getElementById('ticketsList').innerHTML = `<div style="color:var(--error);text-align:center;padding:40px;font-size:.87rem">오류: ${esc(e.message)}</div>`;
+  }
+}
+
+function updateStats() {
+  const today = new Date().toDateString();
+  document.getElementById('statTotal').textContent = allTickets.length;
+  document.getElementById('statOpen').textContent = allTickets.filter(t=>t.status==='open').length;
+  document.getElementById('statAnswered').textContent = allTickets.filter(t=>t.status==='answered').length;
+  document.getElementById('statToday').textContent = allTickets.filter(t=>new Date(t.created_at).toDateString()===today).length;
+
+  const unread = allTickets.filter(t=>t.status==='open').length;
+  const badge = document.getElementById('unreadBadge');
+  badge.style.display = unread > 0 ? '' : 'none';
+  badge.textContent = unread > 9 ? '9+' : String(unread);
+}
+
+function renderTickets() {
+  const q = document.getElementById('searchInput')?.value?.toLowerCase() || '';
+  let tickets = allTickets;
+  if (currentFilter !== 'all') tickets = tickets.filter(t => t.status === currentFilter);
+  if (q) tickets = tickets.filter(t =>
+    t.message?.toLowerCase().includes(q) ||
+    t.user_name?.toLowerCase().includes(q) ||
+    t.user_email?.toLowerCase().includes(q)
+  );
+
+  const el = document.getElementById('ticketsList');
+  if (!tickets.length) {
+    el.innerHTML = `<div style="text-align:center;padding:40px;color:var(--muted);font-size:.87rem">문의가 없습니다.</div>`;
+    return;
+  }
+  el.innerHTML = tickets.map(t => renderTicketCard(t)).join('');
+}
+
+function renderTicketCard(t) {
+  const statusLabel = t.status === 'answered' ? '답변완료' : t.status === 'closed' ? '종료' : '대기중';
+  const statusCls = t.status === 'answered' ? 'sb-answered' : t.status === 'closed' ? 'sb-closed' : 'sb-open';
+  return `
+  <div class="ticket-card ${t.status === 'open' ? 'unread' : ''}" id="ticket-${t.id}">
+    <div class="ticket-header">
+      <div class="ticket-avatar">${(t.user_name||t.user_email||'?')[0].toUpperCase()}</div>
+      <div class="ticket-info">
+        <div class="ticket-user">${esc(t.user_name || '알 수 없음')}</div>
+        <div class="ticket-email">${esc(t.user_email || '')}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
+        <span class="status-badge ${statusCls}">${statusLabel}</span>
+        <div class="ticket-time">${new Date(t.created_at).toLocaleString('ko-KR')}</div>
+      </div>
+    </div>
+
+    <div class="ticket-msg">${esc(t.message)}</div>
+
+    ${t.reply ? `
+    <div class="ticket-reply">
+      <div class="ticket-reply-label">✅ 관리자 답변 (${new Date(t.replied_at||t.created_at).toLocaleString('ko-KR')})</div>
+      <div style="font-size:.85rem">${esc(t.reply)}</div>
+    </div>` : ''}
+
+    ${t.status !== 'closed' ? `
+    <div class="reply-form" id="replyForm-${t.id}">
+      <textarea placeholder="답변을 입력하세요..." id="replyText-${t.id}"></textarea>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <button class="btn btn-primary btn-sm" onclick="sendReply('${t.id}')">답변 전송</button>
+        <button class="btn btn-ghost btn-sm" onclick="closeTicket('${t.id}')">종료</button>
+      </div>
+    </div>` : ''}
+  </div>`;
+}
+
+async function sendReply(ticketId) {
+  const textarea = document.getElementById(`replyText-${ticketId}`);
+  const reply = textarea?.value?.trim();
+  if (!reply) { alert('답변 내용을 입력해주세요.'); return; }
+
+  const btn = document.querySelector(`#ticket-${ticketId} .btn-primary`);
+  if (btn) { btn.disabled = true; btn.textContent = '전송 중...'; }
+
+  try {
+    const res = await CP.apiFetch(`/api/chat/${ticketId}/reply`, {
+      method: 'POST',
+      body: JSON.stringify({ reply }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data.error || '전송 실패');
+    // Update local state
+    const ticket = allTickets.find(t => t.id === ticketId);
+    if (ticket) { ticket.reply = reply; ticket.status = 'answered'; ticket.replied_at = new Date().toISOString(); }
+    renderTickets();
+    updateStats();
+  } catch(e) {
+    alert('오류: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = '답변 전송'; }
+  }
+}
+
+async function closeTicket(ticketId) {
+  if (!confirm('이 문의를 종료하시겠습니까?')) return;
+  try {
+    const res = await CP.apiFetch(`/api/chat/${ticketId}/close`, { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data.error || '종료 실패');
+    const ticket = allTickets.find(t => t.id === ticketId);
+    if (ticket) ticket.status = 'closed';
+    renderTickets();
+    updateStats();
+  } catch(e) {
+    alert('오류: ' + e.message);
+  }
+}
+
+function esc(s){ return String(s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+
+(async () => {
+  const u = await CP.requireAdmin();
+  if (!u) { location.href = '/dashboard.html'; return; }
+  await loadTickets();
+
+  // 30초마다 새 문의 폴링
+  setInterval(async () => {
+    try {
+      const res = await CP.apiFetch('/api/chat?type=admin&unread=1');
+      const data = await res.json();
+      if (data.ok && data.tickets) {
+        const newCount = data.tickets.filter(t => t.status === 'open').length;
+        const badge = document.getElementById('unreadBadge');
+        badge.style.display = newCount > 0 ? '' : 'none';
+        badge.textContent = newCount > 9 ? '9+' : String(newCount);
+      }
+    } catch {}
+  }, 30000);
+})();
+</script>
+</body>
+</html>
