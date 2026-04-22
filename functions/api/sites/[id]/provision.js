@@ -495,14 +495,31 @@ async function uploadWordPressWorker(auth, accountId, workerName, opts) {
     bindings,
   };
 
-  // worker.js 소스: GitHub에서 fetch 또는 내장 fallback
+  // worker.js 소스: env.WORKER_SOURCE → KV → GitHub → 내장 fallback
   let workerSource = '';
-  try {
-    const githubRepo = 'cloudpress-wp'; // 설정에서 가져옴
-    // GitHub fetch는 provision.js 컨텍스트에서는 내장 소스 사용
-    // (실제 배포 시 cms_github_repo 설정으로 교체)
-    workerSource = getBuiltinWorkerSource(opts);
-  } catch (e) {
+  // [1] 환경변수 직접 주입 (wrangler secrets으로 WORKER_SOURCE 배포 시)
+  if (opts.workerSourceEnv && opts.workerSourceEnv.length > 500) {
+    workerSource = opts.workerSourceEnv;
+  }
+  // [2] GitHub에서 최신 worker.js 가져오기
+  if (!workerSource || workerSource.length < 500) {
+    try {
+      const ghUrl = 'https://raw.githubusercontent.com/cloudpress-wp/cloudpress-wp/main/worker.js';
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 8000);
+      const ghRes = await fetch(ghUrl, {
+        headers: { 'User-Agent': 'CloudPress-Provision/20' },
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      if (ghRes.ok) {
+        const src = await ghRes.text();
+        if (src && src.length > 1000) workerSource = src;
+      }
+    } catch {}
+  }
+  // [3] 내장 fallback (최소 동작 보장)
+  if (!workerSource || workerSource.length < 500) {
     workerSource = getBuiltinWorkerSource(opts);
   }
 
@@ -1002,15 +1019,21 @@ export async function onRequestPost({ request, env, params }) {
 
   const upRes = await uploadWordPressWorker(cfAuth, cfAccount, workerName, {
     mainDbId, cacheKvId, sessionsKvId,
-    siteD1Id:    d1Id,
-    siteKvId:    kvId,
-    cfAccountId: cfAccount,
-    cfApiToken:  cfApiTokenForWorker,
-    sitePrefix:  prefix,
-    siteName:    site.name,
-    siteDomain:  domain,
+    siteD1Id:       d1Id,
+    siteKvId:       kvId,
+    cfAccountId:    cfAccount,
+    cfApiToken:     cfApiTokenForWorker,
+    sitePrefix:     prefix,
+    siteName:       site.name,
+    siteDomain:     domain,
     supabaseUrl, supabaseKey, supabaseUrl2, supabaseKey2,
     storageBucket, storageBucket2,
+    // WORKER_SOURCE: 환경변수로 실제 worker.js 소스를 주입 가능
+    // wrangler secret put WORKER_SOURCE < worker.js 로 배포 시 사용
+    workerSourceEnv: (env.WORKER_SOURCE && env.WORKER_SOURCE.length > 500) ? env.WORKER_SOURCE : '',
+    cacheKv:        cacheKvId,
+    cfAuth,
+    cfAccountId:    cfAccount,
   });
 
   if (!upRes.ok) {
