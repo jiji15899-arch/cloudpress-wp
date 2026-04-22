@@ -671,12 +671,59 @@ async function renderPage(env, pathname, url) {
     }
   } catch {}
 
-  const postsHtml = posts.map(p =>
-    '<article><h2><a href="' + SITE_URL + '/' + p.post_name + '/">' + (p.post_title || '') + '</a></h2><p>' + ((p.post_excerpt || p.post_content || '').slice(0, 200).replace(/<[^>]+>/g,'')) + '</p></article>'
-  ).join('');
+  // Twenty Twenty-Five 스타일 포스트 HTML 빌드
+  const postsHtml = posts.map(p => {
+    const excerpt = (p.post_excerpt || p.post_content || '').replace(/<[^>]+>/g,'').slice(0,200);
+    return '<div class="wp-block-post">' +
+      '<div class="wp-block-post-date"><time datetime="' + (p.post_date||'') + '">' + (p.post_date ? p.post_date.slice(0,10) : '') + '</time></div>' +
+      '<h2 class="wp-block-post-title"><a href="' + SITE_URL + '/' + (p.post_name||'') + '/">' + (p.post_title||'') + '</a></h2>' +
+      (excerpt ? '<p class="wp-block-post-excerpt__excerpt">' + excerpt + (excerpt.length >= 200 ? '…' : '') + '</p>' : '') +
+      '</div>';
+  }).join('');
 
-  return '<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + SITE_NAME + '</title><style>body{margin:0;font-family:-apple-system,sans-serif;line-height:1.7}header{background:#1d2327;color:#fff;padding:1rem 2rem}main{max-width:900px;margin:2rem auto;padding:0 1rem}article{border-bottom:1px solid #eee;padding:1.5rem 0}article h2{margin:0 0 .5rem}a{color:#0073aa}footer{text-align:center;padding:2rem;color:#777;font-size:.875rem}.no-posts{text-align:center;padding:3rem 0;color:#767676}</style></head><body><header><h1><a href="' + SITE_URL + '/" style="color:#fff;text-decoration:none">' + SITE_NAME + '</a></h1></header><main>' + (postsHtml || '') + '</main><footer>Powered by WordPress + CloudPress</footer></body></html>';
-}
+  // Twenty Twenty-Five 디자인 토큰 기반 초기 홈페이지
+  return '<!DOCTYPE html><html lang="ko" class="no-js"><head>' +
+    '<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
+    '<meta name="generator" content="WordPress 6.9">' +
+    '<title>' + SITE_NAME + '</title>' +
+    '<link rel="preconnect" href="https://fonts.bunny.net">' +
+    '<link href="https://fonts.bunny.net/css?family=manrope:300,400,500,600,700&display=swap" rel="stylesheet">' +
+    '<style>' +
+    ':root{--base:#FFFFFF;--contrast:#111111;--accent-4:#686868;--sp-30:20px;--sp-40:30px;--sp-50:clamp(30px,5vw,50px);--sp-60:clamp(30px,7vw,70px);--fs-sm:0.875rem;--fs-md:clamp(1rem,2vw,1.125rem);--fs-lg:clamp(1.125rem,2.5vw,1.375rem);--fs-xl:clamp(1.75rem,3vw,2rem);}' +
+    '@media(prefers-color-scheme:dark){:root{--base:#111111;--contrast:#FFFFFF;--accent-4:#aaaaaa;}}' +
+    '*,::after,::before{box-sizing:border-box}html{font-size:16px}' +
+    'body{margin:0;background:var(--base);color:var(--contrast);font-family:"Manrope",-apple-system,sans-serif;font-size:var(--fs-lg);font-weight:300;line-height:1.4;letter-spacing:-0.1px}' +
+    'a{color:inherit;text-underline-offset:.1em}a:hover{opacity:.7}' +
+    '.wp-site-blocks{display:flex;flex-direction:column;min-height:100vh}' +
+    '.site-header{background:var(--base);border-bottom:1px solid rgba(0,0,0,.08);position:sticky;top:0;z-index:100}' +
+    '.h-inner{max-width:1340px;margin:0 auto;padding:var(--sp-30) var(--sp-50);display:flex;align-items:center;justify-content:space-between}' +
+    '.site-title{margin:0;font-size:var(--fs-lg);font-weight:700;letter-spacing:-.5px}' +
+    '.site-title a{text-decoration:none;color:var(--contrast)}' +
+    '.site-nav{list-style:none;margin:0;padding:0;display:flex;gap:var(--sp-40)}' +
+    '.site-nav a{font-size:var(--fs-sm);text-decoration:none;font-weight:400}' +
+    '.site-content{flex:1;max-width:780px;margin:0 auto;padding:var(--sp-60) var(--sp-50);width:100%}' +
+    '.wp-block-post{padding:var(--sp-50) 0;border-top:1px solid rgba(0,0,0,.08)}' +
+    '.wp-block-post:first-child{border-top:none}' +
+    '.wp-block-post-date{font-size:var(--fs-sm);color:var(--accent-4);margin-bottom:8px}' +
+    '.wp-block-post-title{margin:0 0 10px;font-size:var(--fs-xl);font-weight:300;line-height:1.2}' +
+    '.wp-block-post-title a{text-decoration:none;color:var(--contrast)}' +
+    '.wp-block-post-excerpt__excerpt{font-size:var(--fs-md);color:var(--accent-4);line-height:1.6;margin:0}' +
+    '.site-footer{background:var(--contrast);color:var(--base);padding:var(--sp-60) var(--sp-50);text-align:center}' +
+    '.footer-title{display:block;font-size:var(--fs-xl);font-weight:400;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;color:var(--base);text-decoration:none}' +
+    '.footer-info{font-size:var(--fs-sm);opacity:.5}' +
+    '</style></head>' +
+    '<body class="wp-site-blocks home blog">' +
+    '<header class="site-header"><div class="h-inner">' +
+    '<p class="site-title"><a href="' + SITE_URL + '/" rel="home">' + SITE_NAME + '</a></p>' +
+    '<nav><ul class="site-nav"><li><a href="' + SITE_URL + '/wp-admin/">관리자</a></li><li><a href="' + SITE_URL + '/wp-login.php">로그인</a></li></ul></nav>' +
+    '</div></header>' +
+    '<div class="site-content"><main>' + postsHtml + '</main></div>' +
+    '<footer class="site-footer">' +
+    '<a href="' + SITE_URL + '/" class="footer-title">' + SITE_NAME + '</a>' +
+    '<div class="footer-info">WordPress로 제작 &nbsp;|&nbsp; Powered by CloudPress</div>' +
+    '</footer>' +
+    '<script>document.documentElement.className=document.documentElement.className.replace("no-js","js");</script>' +
+    '</body></html>';}
 
 async function handleRestAPI(env, request, url) {
   const path = url.pathname.replace('/wp-json', '');
