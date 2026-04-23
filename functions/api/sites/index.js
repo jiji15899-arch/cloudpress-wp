@@ -61,7 +61,8 @@ export async function onRequestGet({ request, env }) {
     const { results } = await env.DB.prepare(
       `SELECT id, name, primary_domain, domain_status,
               site_prefix, worker_name, wp_admin_url,
-              wp_username, wp_password, status, provision_step,
+              wp_admin_username, wp_admin_password,
+              status, provision_step,
               error_message, suspended, suspension_reason,
               disk_used, bandwidth_used, plan,
               site_d1_id, site_d1_name, site_kv_id, site_kv_title,
