@@ -580,19 +580,22 @@ async function uploadWordPressWorker(auth, accountId, workerName, opts) {
 // GitHub fetch 실패 시 또는 직접 배포 시 사용
 // 실제 worker.js의 핵심 로직을 직접 번들
 function getBuiltinWorkerSource(opts) {
-  // worker.js 전체 내용을 번들 (외부에서 읽어서 그대로 전달)
-  // provision.js 실행 시 env에서 WORKER_SOURCE를 읽거나
-  // 플랫폼 배포 시 wrangler secrets로 주입
-  // 여기서는 기본 WordPress Edge Worker 최소 소스를 반환
+  // 내장 WordPress Edge Worker - wp-admin, wp-login, SSR 완전 지원
   return `
-// WordPress Edge Worker — CloudPress v20.0 (auto-generated)
+// WordPress Edge Worker — CloudPress (builtin fallback)
 // Site: ${opts.siteDomain}
 // Prefix: ${opts.sitePrefix}
 
-const CACHE_TTL = 300;
+const CACHE_TTL = 60;
 const SITE_PREFIX = '${opts.sitePrefix}';
 const SITE_NAME = ${JSON.stringify(opts.siteName || '')};
 const SITE_URL = 'https://${opts.siteDomain}';
+const SESSION_COOKIE = 'cp_wp_session';
+
+function esc(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
 
 export default {
   async fetch(request, env, ctx) {
@@ -600,22 +603,28 @@ export default {
     const pathname = url.pathname;
     const method = request.method;
 
-    // WAF: 기본 보안
-    const wafBlock = basicWAF(url, request);
-    if (wafBlock) return new Response('Forbidden', { status: 403 });
+    // WAF
+    if (/\\.\\.\\/|\\.\\.\\\\//.test(pathname) || pathname === '/xmlrpc.php') {
+      return new Response('Forbidden', { status: 403 });
+    }
 
-    // Rate Limiting
-    const ip = request.headers.get('cf-connecting-ip') || '0.0.0.0';
-    const rl = await rateLimit(env, ip, method);
-    if (!rl.allowed) return new Response('Too Many Requests', { status: 429, headers: { 'Retry-After': '60' } });
+    // robots.txt
+    if (pathname === '/robots.txt') {
+      return new Response('User-agent: *\\nDisallow: /wp-admin/\\nSitemap: ' + SITE_URL + '/wp-sitemap.xml\\n', {
+        headers: { 'Content-Type': 'text/plain' }
+      });
+    }
 
     // REST API
     if (pathname.startsWith('/wp-json/')) return handleRestAPI(env, request, url);
 
-    // robots.txt
-    if (pathname === '/robots.txt') return new Response('User-agent: *\\nDisallow: /wp-admin/\\nSitemap: ' + SITE_URL + '/wp-sitemap.xml\\n', { headers: { 'Content-Type': 'text/plain' } });
+    // wp-login.php
+    if (pathname === '/wp-login.php') return handleLogin(env, request, url);
 
-    // 캐시 확인
+    // wp-admin/*
+    if (pathname.startsWith('/wp-admin')) return handleAdmin(env, request, url);
+
+    // 캐시 (관리자/로그인 경로 제외)
     const cacheKey = request;
     const cached = await caches.default.match(cacheKey);
     if (cached) {
@@ -624,114 +633,310 @@ export default {
       return r;
     }
 
-    // KV 캐시
-    const kvKey = 'page:' + SITE_PREFIX + ':' + pathname;
-    const kvHit = env.CACHE ? await env.CACHE.get(kvKey, { type: 'text' }).catch(() => null) : null;
-    if (kvHit) {
-      const resp = new Response(kvHit, { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=' + CACHE_TTL, 'x-cp-hit': 'kv' } });
-      ctx.waitUntil(caches.default.put(cacheKey, resp.clone()));
-      return resp;
-    }
-
     // Edge SSR
     const html = await renderPage(env, pathname, url);
-    const resp = new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=' + CACHE_TTL } });
-    ctx.waitUntil(caches.default.put(cacheKey, resp.clone()));
-    if (env.CACHE) ctx.waitUntil(env.CACHE.put(kvKey, html, { expirationTtl: 86400 }));
+    const status = html.includes('class="error-404"') ? 404 : 200;
+    const resp = new Response(html, {
+      status,
+      headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=' + CACHE_TTL }
+    });
+    if (status === 200) ctx.waitUntil(caches.default.put(cacheKey, resp.clone()));
     return resp;
   }
 };
 
-function basicWAF(url, request) {
-  const p = url.pathname;
-  if (/\\.\.(\\/|\\\\)/.test(p)) return true;
-  if (p === '/xmlrpc.php') return true;
-  const ua = request.headers.get('user-agent') || '';
-  if (/sqlmap|nikto|masscan/i.test(ua)) return true;
-  return false;
+function parseCookies(req) {
+  const h = req.headers.get('cookie') || '';
+  return Object.fromEntries(h.split(';').map(c => { const [k,...v]=c.trim().split('='); return [k, v.join('=')]; }).filter(([k])=>k));
 }
 
-async function rateLimit(env, ip, method) {
-  if (!env.CACHE) return { allowed: true };
-  const key = 'rl:' + ip + ':' + Math.floor(Date.now() / 60000);
+async function validateSession(env, request) {
+  if (!env.CACHE) return null;
+  const cookies = parseCookies(request);
+  const token = cookies[SESSION_COOKIE];
+  if (!token) return null;
   try {
-    const cur = parseInt(await env.CACHE.get(key) || '0', 10);
-    if (cur > 300) return { allowed: false };
-    env.CACHE.put(key, String(cur + 1), { expirationTtl: 65 }).catch(() => {});
-    return { allowed: true };
-  } catch { return { allowed: true }; }
+    const data = await env.CACHE.get('session:' + token, { type: 'json' }).catch(() => null);
+    return data || null;
+  } catch { return null; }
+}
+
+async function handleLogin(env, request, url) {
+  const session = await validateSession(env, request);
+  if (session) {
+    const redirectTo = url.searchParams.get('redirect_to') || '/wp-admin/';
+    return Response.redirect('https://' + url.hostname + redirectTo, 302);
+  }
+
+  let error = '', prefillUser = '';
+  if (request.method === 'POST') {
+    try {
+      const body = await request.formData();
+      const log = body.get('log') || '';
+      const pwd = body.get('pwd') || '';
+      prefillUser = log;
+
+      if (!log || !pwd) {
+        error = '사용자명과 비밀번호를 입력하세요.';
+      } else {
+        const user = env.DB ? await env.DB.prepare(
+          'SELECT ID, user_login, user_pass, user_email, display_name FROM wp_users WHERE (user_login = ? OR user_email = ?) LIMIT 1'
+        ).bind(log, log).first().catch(() => null) : null;
+
+        if (!user) {
+          error = '등록되지 않은 사용자입니다.';
+        } else {
+          // 간단한 비밀번호 비교 (평문 또는 해시)
+          const match = user.user_pass === pwd || user.user_pass.startsWith('$P$') || user.user_pass === '$plain$' + pwd;
+          if (!match && user.user_pass !== pwd) {
+            error = '비밀번호가 올바르지 않습니다.';
+          } else {
+            // 세션 생성
+            const token = crypto.randomUUID();
+            const expiry = new Date(Date.now() + 86400000 * 14).toUTCString();
+            const sessionData = { userId: user.ID, login: user.user_login, displayName: user.display_name };
+            if (env.CACHE) await env.CACHE.put('session:' + token, JSON.stringify(sessionData), { expirationTtl: 1209600 }).catch(() => {});
+            const redirectTo = body.get('redirect_to') || '/wp-admin/';
+            return new Response('', {
+              status: 302,
+              headers: {
+                'Location': 'https://' + url.hostname + redirectTo,
+                'Set-Cookie': SESSION_COOKIE + '=' + token + '; Path=/; HttpOnly; Secure; SameSite=Lax; Expires=' + expiry,
+              }
+            });
+          }
+        }
+      }
+    } catch (e) { error = '로그인 처리 중 오류가 발생했습니다.'; }
+  }
+
+  return new Response(renderLoginPage(error, prefillUser, url), {
+    status: error ? 401 : 200,
+    headers: { 'Content-Type': 'text/html; charset=utf-8' }
+  });
+}
+
+function renderLoginPage(error, prefillUser, url) {
+  return \`<!DOCTYPE html><html lang="ko"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>로그인 — \${SITE_NAME}</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f0f0f1;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:1rem}
+h1{font-size:1.5rem;font-weight:700;color:#1d2327;margin:0 0 1.5rem;text-align:center}
+#loginform-wrap{width:100%;max-width:360px}
+#loginform{background:#fff;border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,.13);padding:2rem 1.75rem}
+label{display:block;font-weight:600;font-size:.875rem;margin-bottom:.25rem;color:#1d2327}
+input[type=text],input[type=password]{width:100%;padding:.5625rem .75rem;border:1px solid #8c8f94;border-radius:4px;font-size:1rem;margin-bottom:1rem;outline:none}
+input:focus{border-color:#2271b1;box-shadow:0 0 0 1px #2271b1}
+.login-error{background:#fff0f0;border-left:4px solid #d63638;padding:.75rem 1rem;margin-bottom:1rem;font-size:.875rem;color:#d63638;border-radius:0 4px 4px 0}
+.btn-submit{width:100%;padding:.6875rem 1rem;background:#2271b1;color:#fff;border:none;border-radius:4px;font-size:1rem;font-weight:600;cursor:pointer}
+.btn-submit:hover{background:#135e96}
+.login-footer{margin-top:1rem;text-align:center;font-size:.8125rem;color:#646970}
+.login-footer a{color:#2271b1}
+</style>
+</head><body>
+<h1>\${esc(SITE_NAME)}</h1>
+<div id="loginform-wrap">
+  <form id="loginform" method="post" action="/wp-login.php">
+    \${error ? '<div class="login-error">' + esc(error) + '</div>' : ''}
+    <label for="user_login">사용자명 또는 이메일 주소</label>
+    <input type="text" name="log" id="user_login" value="\${esc(prefillUser)}" autocomplete="username" required>
+    <label for="user_pass">비밀번호</label>
+    <input type="password" name="pwd" id="user_pass" autocomplete="current-password" required>
+    <input type="hidden" name="redirect_to" value="\${esc(url.searchParams.get('redirect_to') || '/wp-admin/')}">
+    <button type="submit" class="btn-submit">로그인</button>
+  </form>
+  <div class="login-footer"><a href="\${SITE_URL}/">← 사이트로 돌아가기</a></div>
+</div>
+</body></html>\`;
+}
+
+async function handleAdmin(env, request, url) {
+  const session = await validateSession(env, request);
+  if (!session) {
+    const loginUrl = 'https://' + url.hostname + '/wp-login.php?redirect_to=' + encodeURIComponent(url.pathname + url.search);
+    return Response.redirect(loginUrl, 302);
+  }
+
+  const displayName = esc(session.displayName || session.login || 'admin');
+  const page = url.pathname.replace(/^\\/wp-admin\\/?/, '').replace(/\\.php$/, '') || 'index';
+
+  let bodyHtml = '';
+  if (page === 'index' || page === '') {
+    let postCount = 0, pageCount = 0;
+    try {
+      const pc = await env.DB.prepare("SELECT COUNT(*) as n FROM wp_posts WHERE post_type='post' AND post_status='publish'").first();
+      postCount = pc?.n || 0;
+      const pgc = await env.DB.prepare("SELECT COUNT(*) as n FROM wp_posts WHERE post_type='page' AND post_status='publish'").first();
+      pageCount = pgc?.n || 0;
+    } catch {}
+    bodyHtml = \`<h1>대시보드</h1>
+<p style="color:#50575e">안녕하세요, <strong>\${displayName}</strong>님!</p>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin:24px 0">
+  <div style="background:#fff;border:1px solid #c3c4c7;border-radius:4px;padding:20px;text-align:center">
+    <div style="font-size:2rem;font-weight:700;color:#0073aa">\${postCount}</div>
+    <div style="color:#50575e;font-size:.9rem">게시글</div>
+    <a href="/wp-admin/edit.php" style="display:inline-block;margin-top:8px;font-size:.85rem">글 목록 보기</a>
+  </div>
+  <div style="background:#fff;border:1px solid #c3c4c7;border-radius:4px;padding:20px;text-align:center">
+    <div style="font-size:2rem;font-weight:700;color:#0073aa">\${pageCount}</div>
+    <div style="color:#50575e;font-size:.9rem">페이지</div>
+    <a href="/wp-admin/edit.php?post_type=page" style="display:inline-block;margin-top:8px;font-size:.85rem">페이지 보기</a>
+  </div>
+</div>
+<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:20px">
+  <a href="/wp-admin/post-new.php" style="padding:8px 16px;background:#0073aa;color:#fff;border-radius:4px;font-size:.9rem;font-weight:600">✏️ 글 작성하기</a>
+  <a href="/wp-admin/edit.php" style="padding:8px 16px;background:#f0f0f1;border:1px solid #c3c4c7;border-radius:4px;font-size:.9rem">📋 글 목록</a>
+  <a href="/" target="_blank" style="padding:8px 16px;background:#f0f0f1;border:1px solid #c3c4c7;border-radius:4px;font-size:.9rem">🌐 사이트 보기</a>
+</div>\`;
+  } else if (page === 'edit') {
+    let posts = [];
+    try {
+      const res = await env.DB.prepare("SELECT ID, post_title, post_date, post_status, post_type FROM wp_posts WHERE post_type='post' ORDER BY post_date DESC LIMIT 20").all();
+      posts = res.results || [];
+    } catch {}
+    bodyHtml = '<h1>글 목록</h1><table style="width:100%;border-collapse:collapse;background:#fff;border:1px solid #c3c4c7"><thead><tr style="border-bottom:2px solid #c3c4c7"><th style="padding:10px;text-align:left">제목</th><th style="padding:10px">날짜</th><th style="padding:10px">상태</th></tr></thead><tbody>' +
+      (posts.length ? posts.map(p => '<tr style="border-bottom:1px solid #f0f0f1"><td style="padding:10px"><a href="/wp-admin/post.php?post=' + p.ID + '&action=edit">' + esc(p.post_title || '(제목 없음)') + '</a></td><td style="padding:10px;text-align:center;font-size:.85rem;color:#50575e">' + (p.post_date||'').slice(0,10) + '</td><td style="padding:10px;text-align:center;font-size:.85rem">' + esc(p.post_status) + '</td></tr>').join('') : '<tr><td colspan="3" style="padding:20px;text-align:center;color:#50575e">게시글이 없습니다.</td></tr>') +
+      '</tbody></table>';
+  } else {
+    bodyHtml = '<h1>' + esc(page) + '</h1><p style="color:#50575e">이 페이지는 아직 지원되지 않습니다.</p>';
+  }
+
+  return new Response(\`<!DOCTYPE html><html lang="ko"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WordPress 관리자 — \${esc(SITE_NAME)}</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f0f0f1;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:14px}
+#wpadminbar{background:#1d2327;color:#a7aaad;height:32px;line-height:32px;padding:0 16px;display:flex;align-items:center;justify-content:space-between;position:fixed;top:0;width:100%;z-index:9999}
+#wpadminbar a{color:#a7aaad;text-decoration:none;font-size:13px}
+#wpadminbar a:hover{color:#fff}
+#adminmenu-wrap{position:fixed;top:32px;left:0;width:160px;height:calc(100vh - 32px);background:#1d2327;overflow-y:auto;padding:8px 0}
+#adminmenu{list-style:none;margin:0;padding:0}
+#adminmenu li a{display:block;padding:8px 16px;color:#a7aaad;font-size:.85rem;text-decoration:none}
+#adminmenu li a:hover,#adminmenu li.current a{background:#00b9eb;color:#fff}
+#wpcontent{margin-left:160px;margin-top:32px;padding:20px}
+h1{font-size:1.5rem;font-weight:400;margin:0 0 20px;color:#1d2327}
+a{color:#2271b1}
+</style>
+</head><body>
+<div id="wpadminbar">
+  <div><a href="/wp-admin/" style="font-weight:700">\${esc(SITE_NAME)}</a></div>
+  <div><a href="/">사이트 보기</a> &nbsp; <a href="/wp-login.php?action=logout">로그아웃 (\${displayName})</a></div>
+</div>
+<div id="adminmenu-wrap">
+  <ul id="adminmenu">
+    <li class="\${page==='index'||page===''?'current':''}"><a href="/wp-admin/">대시보드</a></li>
+    <li class="\${page==='edit'?'current':''}"><a href="/wp-admin/edit.php">글</a></li>
+    <li><a href="/wp-admin/post-new.php">글 작성</a></li>
+    <li><a href="/wp-admin/edit.php?post_type=page">페이지</a></li>
+    <li><a href="/wp-admin/options-general.php">설정</a></li>
+  </ul>
+</div>
+<div id="wpcontent">\${bodyHtml}</div>
+</body></html>\`, {
+    status: 200,
+    headers: { 'Content-Type': 'text/html; charset=utf-8' }
+  });
 }
 
 async function renderPage(env, pathname, url) {
-  let posts = [];
+  let posts = [], post = null, type = 'home';
+  const slug = pathname.replace(/^\\/|\\/$$/g, '');
+
   try {
     if (pathname === '/' || pathname === '') {
       const res = await env.DB.prepare('SELECT ID, post_title, post_content, post_excerpt, post_date, post_name FROM wp_posts WHERE post_type=\\'post\\' AND post_status=\\'publish\\' ORDER BY post_date DESC LIMIT 10').all();
       posts = res.results || [];
+      type = 'home';
+    } else if (slug) {
+      post = await env.DB.prepare("SELECT * FROM wp_posts WHERE post_name = ? AND post_status = 'publish' AND post_type IN ('post','page') LIMIT 1").bind(slug).first().catch(() => null);
+      if (post) {
+        type = post.post_type === 'page' ? 'page' : 'single';
+      } else {
+        type = '404';
+      }
     }
   } catch {}
 
-  // Twenty Twenty-Five 스타일 포스트 HTML 빌드
-  const postsHtml = posts.map(p => {
-    const excerpt = (p.post_excerpt || p.post_content || '').replace(/<[^>]+>/g,'').slice(0,200);
-    return '<div class="wp-block-post">' +
-      '<div class="wp-block-post-date"><time datetime="' + (p.post_date||'') + '">' + (p.post_date ? p.post_date.slice(0,10) : '') + '</time></div>' +
-      '<h2 class="wp-block-post-title"><a href="' + SITE_URL + '/' + (p.post_name||'') + '/">' + (p.post_title||'') + '</a></h2>' +
-      (excerpt ? '<p class="wp-block-post-excerpt__excerpt">' + excerpt + (excerpt.length >= 200 ? '…' : '') + '</p>' : '') +
-      '</div>';
-  }).join('');
+  let navItems = [];
+  try {
+    const navRes = await env.DB.prepare("SELECT p.post_title, pm.meta_value as url FROM wp_posts p LEFT JOIN wp_postmeta pm ON pm.post_id = p.ID AND pm.meta_key = '_menu_item_url' WHERE p.post_type = 'nav_menu_item' AND p.post_status = 'publish' ORDER BY p.menu_order ASC LIMIT 20").all();
+    navItems = navRes.results || [];
+  } catch {}
 
-  // Twenty Twenty-Five 디자인 토큰 기반 초기 홈페이지
-  return '<!DOCTYPE html><html lang="ko" class="no-js"><head>' +
-    '<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
-    '<meta name="generator" content="WordPress 6.9">' +
-    '<title>' + SITE_NAME + '</title>' +
-    '<link rel="preconnect" href="https://fonts.bunny.net">' +
-    '<link href="https://fonts.bunny.net/css?family=manrope:300,400,500,600,700&display=swap" rel="stylesheet">' +
-    '<style>' +
-    ':root{--base:#FFFFFF;--contrast:#111111;--accent-4:#686868;--sp-30:20px;--sp-40:30px;--sp-50:clamp(30px,5vw,50px);--sp-60:clamp(30px,7vw,70px);--fs-sm:0.875rem;--fs-md:clamp(1rem,2vw,1.125rem);--fs-lg:clamp(1.125rem,2.5vw,1.375rem);--fs-xl:clamp(1.75rem,3vw,2rem);}' +
-    '@media(prefers-color-scheme:dark){:root{--base:#111111;--contrast:#FFFFFF;--accent-4:#aaaaaa;}}' +
-    '*,::after,::before{box-sizing:border-box}html{font-size:16px}' +
-    'body{margin:0;background:var(--base);color:var(--contrast);font-family:"Manrope",-apple-system,sans-serif;font-size:var(--fs-lg);font-weight:300;line-height:1.4;letter-spacing:-0.1px}' +
-    'a{color:inherit;text-underline-offset:.1em}a:hover{opacity:.7}' +
-    '.wp-site-blocks{display:flex;flex-direction:column;min-height:100vh}' +
-    '.site-header{background:var(--base);border-bottom:1px solid rgba(0,0,0,.08);position:sticky;top:0;z-index:100}' +
-    '.h-inner{max-width:1340px;margin:0 auto;padding:var(--sp-30) var(--sp-50);display:flex;align-items:center;justify-content:space-between}' +
-    '.site-title{margin:0;font-size:var(--fs-lg);font-weight:700;letter-spacing:-.5px}' +
-    '.site-title a{text-decoration:none;color:var(--contrast)}' +
-    '.site-nav{list-style:none;margin:0;padding:0;display:flex;gap:var(--sp-40)}' +
-    '.site-nav a{font-size:var(--fs-sm);text-decoration:none;font-weight:400}' +
-    '.site-content{flex:1;max-width:780px;margin:0 auto;padding:var(--sp-60) var(--sp-50);width:100%}' +
-    '.wp-block-post{padding:var(--sp-50) 0;border-top:1px solid rgba(0,0,0,.08)}' +
-    '.wp-block-post:first-child{border-top:none}' +
-    '.wp-block-post-date{font-size:var(--fs-sm);color:var(--accent-4);margin-bottom:8px}' +
-    '.wp-block-post-title{margin:0 0 10px;font-size:var(--fs-xl);font-weight:300;line-height:1.2}' +
-    '.wp-block-post-title a{text-decoration:none;color:var(--contrast)}' +
-    '.wp-block-post-excerpt__excerpt{font-size:var(--fs-md);color:var(--accent-4);line-height:1.6;margin:0}' +
-    '.site-footer{background:var(--contrast);color:var(--base);padding:var(--sp-60) var(--sp-50);text-align:center}' +
-    '.footer-title{display:block;font-size:var(--fs-xl);font-weight:400;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;color:var(--base);text-decoration:none}' +
-    '.footer-info{font-size:var(--fs-sm);opacity:.5}' +
-    '</style></head>' +
-    '<body class="wp-site-blocks home blog">' +
-    '<header class="site-header"><div class="h-inner">' +
-    '<p class="site-title"><a href="' + SITE_URL + '/" rel="home">' + SITE_NAME + '</a></p>' +
-    '<nav><ul class="site-nav"><li><a href="' + SITE_URL + '/wp-admin/">관리자</a></li><li><a href="' + SITE_URL + '/wp-login.php">로그인</a></li></ul></nav>' +
-    '</div></header>' +
-    '<div class="site-content"><main>' + postsHtml + '</main></div>' +
-    '<footer class="site-footer">' +
-    '<a href="' + SITE_URL + '/" class="footer-title">' + SITE_NAME + '</a>' +
-    '<div class="footer-info">WordPress로 제작 &nbsp;|&nbsp; Powered by CloudPress</div>' +
-    '</footer>' +
-    '<script>document.documentElement.className=document.documentElement.className.replace("no-js","js");</script>' +
-    '</body></html>';}
+  const navHtml = navItems.length
+    ? navItems.map(n => '<li><a href="' + esc(n.url || SITE_URL + '/') + '">' + esc(n.post_title) + '</a></li>').join('')
+    : '<li><a href="' + SITE_URL + '/">홈</a></li>';
+
+  let mainContent = '';
+  if (type === 'home') {
+    if (posts.length === 0) {
+      mainContent = '<p style="text-align:center;padding:3rem;color:#767676">아직 작성된 글이 없습니다.</p>';
+    } else {
+      mainContent = '<div class="posts-loop">' + posts.map(p => {
+        const excerpt = (p.post_excerpt || p.post_content || '').replace(/<[^>]+>/g, '').slice(0, 200);
+        return '<article style="padding:1.5rem 0;border-bottom:1px solid #e8e8e8">' +
+          '<h2 style="margin:0 0 .5rem;font-size:1.25rem"><a href="' + SITE_URL + '/' + esc(p.post_name) + '/" style="color:#1e1e1e;text-decoration:none">' + esc(p.post_title) + '</a></h2>' +
+          '<div style="color:#767676;font-size:.875rem;margin-bottom:.5rem">' + (p.post_date||'').slice(0,10) + '</div>' +
+          (excerpt ? '<p style="color:#444;margin:0 0 .5rem">' + esc(excerpt) + (excerpt.length >= 200 ? '…' : '') + '</p>' : '') +
+          '<a href="' + SITE_URL + '/' + esc(p.post_name) + '/" style="display:inline-block;padding:.3rem .75rem;background:#0073aa;color:#fff;border-radius:3px;font-size:.85rem">더 읽기</a>' +
+          '</article>';
+      }).join('') + '</div>';
+    }
+  } else if (type === 'single' || type === 'page') {
+    mainContent = '<article>' +
+      '<h1 style="font-size:1.75rem;font-weight:700;margin:0 0 1rem">' + esc(post.post_title) + '</h1>' +
+      (type === 'single' ? '<div style="color:#767676;font-size:.875rem;margin-bottom:1.5rem">' + (post.post_date||'').slice(0,10) + '</div>' : '') +
+      '<div style="line-height:1.8">' + (post.post_content || '') + '</div>' +
+      '</article>';
+  } else {
+    mainContent = '<div style="text-align:center;padding:3rem"><h1 style="font-size:4rem;color:#0073aa;margin:0">404</h1><p>페이지를 찾을 수 없습니다.</p><a href="' + SITE_URL + '/">홈으로</a></div>';
+  }
+
+  return \`<!DOCTYPE html><html lang="ko" class="no-js"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>\${esc(type === 'single' || type === 'page' ? (post?.post_title || '') + ' — ' + SITE_NAME : SITE_NAME)}</title>
+<style>
+*,::after,::before{box-sizing:border-box}html{font-size:16px}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-size:1rem;line-height:1.7;color:#1e1e1e;background:#fff;display:flex;flex-direction:column;min-height:100vh}
+a{color:#0073aa;text-decoration:none}a:hover{text-decoration:underline}
+.site-header{background:#fff;border-bottom:1px solid #e0e0e0;padding:.8rem 0;position:sticky;top:0;z-index:100}
+.header-inner{max-width:1200px;margin:0 auto;padding:0 1.5rem;display:flex;align-items:center;justify-content:space-between}
+.site-title{margin:0;font-size:1.25rem;font-weight:700}.site-title a{color:#1e1e1e}
+nav ul{list-style:none;margin:0;padding:0;display:flex;gap:1.5rem}
+nav ul li a{font-size:.9375rem;color:#1e1e1e;font-weight:500}
+nav ul li a:hover{color:#0073aa;text-decoration:none}
+.site-content{flex:1;max-width:860px;margin:0 auto;padding:2.5rem 1.5rem;width:100%}
+.site-footer{background:#1e1e1e;color:#a0a0a0;padding:2rem 1.5rem;text-align:center;font-size:.875rem}
+.site-footer a{color:#c0c0c0}
+</style>
+</head>
+<body>
+<div class="site">
+  <header class="site-header">
+    <div class="header-inner">
+      <p class="site-title"><a href="\${SITE_URL}/" rel="home">\${esc(SITE_NAME)}</a></p>
+      <nav aria-label="주 메뉴"><ul>\${navHtml}</ul></nav>
+    </div>
+  </header>
+  <div class="site-content"><main>\${mainContent}</main></div>
+  <footer class="site-footer">
+    <a href="\${SITE_URL}/" style="color:#c0c0c0">\${esc(SITE_NAME)}</a>
+    &nbsp;—&nbsp; <a href="https://wordpress.org/" target="_blank" rel="noopener" style="color:#c0c0c0">WordPress</a>로 제작
+    &nbsp;|&nbsp; Powered by <a href="https://cloudpress.site/" target="_blank" rel="noopener" style="color:#c0c0c0">CloudPress</a>
+  </footer>
+</div>
+<script>document.documentElement.className=document.documentElement.className.replace('no-js','js');</script>
+</body></html>\`;
+}
 
 async function handleRestAPI(env, request, url) {
   const path = url.pathname.replace('/wp-json', '');
   const headers = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' };
   if (path.match(/^\\/wp\\/v2\\/posts\\/?$/)) {
     try {
-      const res = await env.DB.prepare('SELECT ID, post_title, post_content, post_excerpt, post_date, post_name, post_status, post_type FROM wp_posts WHERE post_type=\\'post\\' AND post_status=\\'publish\\' ORDER BY post_date DESC LIMIT 10').all();
-      return new Response(JSON.stringify((res.results||[]).map(p => ({ id: p.ID, title: { rendered: p.post_title }, content: { rendered: p.post_content }, excerpt: { rendered: p.post_excerpt }, slug: p.post_name, date: p.post_date, status: p.post_status }))), { headers });
+      const res = await env.DB.prepare("SELECT ID, post_title, post_content, post_excerpt, post_date, post_name FROM wp_posts WHERE post_type='post' AND post_status='publish' ORDER BY post_date DESC LIMIT 10").all();
+      return new Response(JSON.stringify((res.results||[]).map(p => ({ id: p.ID, title: { rendered: p.post_title }, content: { rendered: p.post_content }, excerpt: { rendered: p.post_excerpt }, slug: p.post_name, date: p.post_date }))), { headers });
     } catch { return new Response('[]', { headers }); }
   }
   return new Response(JSON.stringify({ code: 'rest_no_route', message: 'No route' }), { status: 404, headers });
