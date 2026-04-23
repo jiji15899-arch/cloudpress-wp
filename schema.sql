@@ -79,6 +79,8 @@ CREATE TABLE IF NOT EXISTS sites (
 
   -- WordPress 설치 정보
   wp_admin_url        TEXT,
+  wp_admin_username   TEXT DEFAULT 'admin',
+  wp_admin_password   TEXT,
   wp_installed        INTEGER DEFAULT 0,  -- 한 번 설치 후 재설치 방지
   wp_version          TEXT DEFAULT '6.7',
 
