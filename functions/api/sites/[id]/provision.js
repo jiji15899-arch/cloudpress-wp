@@ -500,21 +500,7 @@ async function uploadWordPressWorker(auth, accountId, workerName, opts) {
   if (opts.workerSourceEnv && opts.workerSourceEnv.length > 500) {
     workerSource = opts.workerSourceEnv;
   }
-  // [2] GitHub에서 최신 worker.js 가져오기
-  if (!workerSource || workerSource.length < 500) {
-    try {
-      const ghUrl = 'https://raw.githubusercontent.com/cloudpress-wp/cloudpress-wp/main/worker.js';
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 8000);
-      const ghRes = await fetch(ghUrl, { headers: { 'User-Agent': 'CloudPress-Provision/20' }, signal: controller.signal });
-      clearTimeout(timer);
-      if (ghRes.ok) {
-        const src = await ghRes.text();
-        if (src && src.length > 1000) workerSource = src;
-      }
-    } catch {}
-  }
-  // [3] 내장 fallback (최소 동작 보장)
+  // [2] 내장 worker 소스 사용 (GitHub fetch 제거 - 버전 불일치 방지)
   if (!workerSource || workerSource.length < 500) {
     workerSource = getBuiltinWorkerSource(opts);
   }
