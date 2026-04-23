@@ -235,10 +235,10 @@ async function createKV(auth, accountId, prefix) {
 
 // ── D1 WordPress 스키마 초기화 ────────────────────────────────────────────────
 async function initWordPressD1Schema(auth, accountId, d1Id, siteConfig) {
-  const { siteName, siteUrl, adminEmail } = siteConfig;
+  const { siteName, siteUrl, adminEmail, adminUser, adminPass } = siteConfig;
 
   // WordPress 완전 호환 스키마
-  const schema = getWPSchema(siteName, siteUrl, adminEmail);
+  const schema = getWPSchema(siteName, siteUrl, adminEmail, adminUser, adminPass);
 
   const res = await cfReq(auth, `/accounts/${accountId}/d1/database/${d1Id}/query`, 'POST', {
     sql: schema,
@@ -254,7 +254,12 @@ async function initWordPressD1Schema(auth, accountId, d1Id, siteConfig) {
   return { ok: true };
 }
 
-function getWPSchema(siteName, siteUrl, adminEmail) {
+function getWPSchema(siteName, siteUrl, adminEmail, adminUser, adminPass) {
+  const safeUser = (adminUser || 'admin').replace(/'/g, "''");
+  const safePass = (adminPass || 'cloudpress2024!').replace(/'/g, "''");
+  const safeEmail = (adminEmail || 'admin@cloudpress.site').replace(/'/g, "''");
+  const safeUrl = (siteUrl || '').replace(/'/g, "''");
+  const safeName = (siteName || 'My Site').replace(/'/g, "''")
   return `
 CREATE TABLE IF NOT EXISTS wp_posts (
   ID INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -399,11 +404,11 @@ CREATE INDEX IF NOT EXISTS idx_wp_comments_post ON wp_comments(comment_post_ID);
 CREATE INDEX IF NOT EXISTS idx_wp_cron_ts ON wp_cron_events(timestamp);
 INSERT OR IGNORE INTO wp_terms (term_id, name, slug, term_group) VALUES (1, '미분류', 'uncategorized', 0);
 INSERT OR IGNORE INTO wp_term_taxonomy (term_taxonomy_id, term_id, taxonomy, description, parent, count) VALUES (1, 1, 'category', '', 0, 1);
-INSERT OR IGNORE INTO wp_options (option_name, option_value) VALUES ('siteurl', '${siteUrl}');
-INSERT OR IGNORE INTO wp_options (option_name, option_value) VALUES ('home', '${siteUrl}');
-INSERT OR IGNORE INTO wp_options (option_name, option_value) VALUES ('blogname', '${siteName.replace(/'/g, "''")}');
+INSERT OR IGNORE INTO wp_options (option_name, option_value) VALUES ('siteurl', '${safeUrl}');
+INSERT OR IGNORE INTO wp_options (option_name, option_value) VALUES ('home', '${safeUrl}');
+INSERT OR IGNORE INTO wp_options (option_name, option_value) VALUES ('blogname', '${safeName}');
 INSERT OR IGNORE INTO wp_options (option_name, option_value) VALUES ('blogdescription', '');
-INSERT OR IGNORE INTO wp_options (option_name, option_value) VALUES ('admin_email', '${adminEmail || 'admin@example.com'}');
+INSERT OR IGNORE INTO wp_options (option_name, option_value) VALUES ('admin_email', '${safeEmail}');
 INSERT OR IGNORE INTO wp_options (option_name, option_value) VALUES ('permalink_structure', '/%postname%/');
 INSERT OR IGNORE INTO wp_options (option_name, option_value) VALUES ('posts_per_page', '10');
 INSERT OR IGNORE INTO wp_options (option_name, option_value) VALUES ('date_format', 'Y년 n월 j일');
@@ -417,6 +422,10 @@ INSERT OR IGNORE INTO wp_options (option_name, option_value) VALUES ('cp_install
 INSERT OR IGNORE INTO wp_options (option_name, option_value) VALUES ('cp_version', '20.0');
 INSERT OR IGNORE INTO wp_options (option_name, option_value) VALUES ('fresh_site', '1');
 INSERT OR IGNORE INTO cp_install_lock (id, installed_at, version) VALUES (1, datetime('now'), '20.0');
+INSERT OR IGNORE INTO wp_users (ID, user_login, user_pass, user_nicename, user_email, user_url, user_registered, user_status, display_name)
+  VALUES (1, '${safeUser}', '${safePass}', '${safeUser}', '${safeEmail}', '', datetime('now'), 0, '${safeUser}');
+INSERT OR IGNORE INTO wp_usermeta (user_id, meta_key, meta_value) VALUES (1, 'wp_capabilities', 'a:1:{s:13:"administrator";b:1;}');
+INSERT OR IGNORE INTO wp_usermeta (user_id, meta_key, meta_value) VALUES (1, 'wp_user_level', '10');
 INSERT OR IGNORE INTO wp_posts (
   ID, post_author, post_date, post_date_gmt, post_content, post_title,
   post_excerpt, post_status, comment_status, ping_status, post_name,
@@ -426,7 +435,7 @@ INSERT OR IGNORE INTO wp_posts (
   '<p>WordPress에 오신 것을 환영합니다. 이것은 첫 번째 게시글입니다.</p>',
   'Hello world!', '',
   'publish', 'open', 'open', 'hello-world',
-  datetime('now'), datetime('now'), 'post', 0, '${siteUrl}/?p=1'
+  datetime('now'), datetime('now'), 'post', 0, '${safeUrl}/?p=1'
 );
 INSERT OR IGNORE INTO wp_term_relationships (object_id, term_taxonomy_id, term_order) VALUES (1, 1, 0);
 `.trim();
@@ -461,6 +470,7 @@ async function uploadWordPressWorker(auth, accountId, workerName, opts) {
     cfAccountId, cfApiToken, sitePrefix, siteName, siteDomain,
     supabaseUrl, supabaseKey, supabaseUrl2, supabaseKey2,
     storageBucket, storageBucket2,
+    adminUser, adminPass, adminEmail,
   } = opts;
 
   const token = typeof auth === 'string' ? auth : auth.token;
@@ -480,6 +490,9 @@ async function uploadWordPressWorker(auth, accountId, workerName, opts) {
   bindings.push({ type: 'plain_text', name: 'CF_ACCOUNT_ID',     text: cfAccountId || '' });
   bindings.push({ type: 'plain_text', name: 'STORAGE_BUCKET',    text: storageBucket  || 'media' });
   bindings.push({ type: 'plain_text', name: 'STORAGE_BUCKET2',   text: storageBucket2 || 'media-backup' });
+  bindings.push({ type: 'plain_text', name: 'WP_ADMIN_USER',     text: opts.adminUser || 'admin' });
+  if (opts.adminPass) bindings.push({ type: 'secret_text', name: 'WP_ADMIN_PASS', text: opts.adminPass });
+  if (opts.adminEmail) bindings.push({ type: 'plain_text', name: 'ADMIN_EMAIL', text: opts.adminEmail });
 
   // Supabase 시크릿 바인딩
   if (supabaseUrl)  bindings.push({ type: 'secret_text', name: 'SUPABASE_URL',  text: supabaseUrl });
@@ -4195,11 +4208,16 @@ export async function onRequestPost({ request, env, params }) {
     const dbPass1 = genPassword(20);
     const dbPass2 = genPassword(20);
 
-    // Primary 프로젝트 생성
-    const [proj1, proj2] = await Promise.all([
-      createSupabaseProject(supabaseToken, supabaseOrgId, projectName1, dbPass1),
-      createSupabaseProject(supabaseToken, supabaseOrgId, projectName2, dbPass2),
-    ]);
+    // Primary/Secondary 프로젝트 병렬 생성 (실패해도 D1+KV 모드로 계속 진행)
+    let proj1 = { ok: false }, proj2 = { ok: false };
+    try {
+      [proj1, proj2] = await Promise.allSettled([
+        createSupabaseProject(supabaseToken, supabaseOrgId, projectName1, dbPass1),
+        createSupabaseProject(supabaseToken, supabaseOrgId, projectName2, dbPass2),
+      ]).then(results => results.map(r => r.status === 'fulfilled' ? r.value : { ok: false, error: r.reason?.message }));
+    } catch (e) {
+      console.warn('[provision] Supabase 프로젝트 생성 오류 (계속 진행):', e.message);
+    }
 
     if (proj1.ok) {
       supabaseUrl = proj1.url;
@@ -4208,12 +4226,16 @@ export async function onRequestPost({ request, env, params }) {
 
       // 버킷 생성 (프로젝트 준비까지 잠시 대기)
       await new Promise(r => setTimeout(r, 5000));
-      const [b1, b2] = await Promise.all([
-        createSupabaseBucket(supabaseUrl, supabaseKey, storageBucket),
-        createSupabaseBucket(supabaseUrl, supabaseKey, 'thumbnails'),
-      ]);
-      if (b1.ok) await setSupabaseBucketPublicPolicy(supabaseUrl, supabaseKey, storageBucket);
-      if (!b1.ok) console.warn('[provision] Primary 버킷 생성 실패:', b1.error);
+      try {
+        const [b1] = await Promise.all([
+          createSupabaseBucket(supabaseUrl, supabaseKey, storageBucket),
+          createSupabaseBucket(supabaseUrl, supabaseKey, 'thumbnails'),
+        ]);
+        if (b1.ok) await setSupabaseBucketPublicPolicy(supabaseUrl, supabaseKey, storageBucket);
+        if (!b1.ok) console.warn('[provision] Primary 버킷 생성 실패:', b1.error);
+      } catch (e) { console.warn('[provision] 버킷 생성 오류:', e.message); }
+    } else {
+      console.warn('[provision] Supabase Primary 생성 실패 — D1+KV 모드로 계속:', proj1.error);
     }
 
     if (proj2.ok) {
@@ -4222,8 +4244,10 @@ export async function onRequestPost({ request, env, params }) {
       console.log(`[provision] Supabase Secondary 생성: ${supabaseUrl2}`);
 
       await new Promise(r => setTimeout(r, 3000));
-      const b3 = await createSupabaseBucket(supabaseUrl2, supabaseKey2, storageBucket2);
-      if (b3.ok) await setSupabaseBucketPublicPolicy(supabaseUrl2, supabaseKey2, storageBucket2);
+      try {
+        const b3 = await createSupabaseBucket(supabaseUrl2, supabaseKey2, storageBucket2);
+        if (b3.ok) await setSupabaseBucketPublicPolicy(supabaseUrl2, supabaseKey2, storageBucket2);
+      } catch (e) { console.warn('[provision] Secondary 버킷 오류:', e.message); }
     }
 
     siteState.set({
@@ -4276,6 +4300,10 @@ export async function onRequestPost({ request, env, params }) {
   siteState.set({ provision_step: 'd1_schema' });
   console.log('[provision] WordPress D1 스키마 초기화...');
 
+  // 관리자 계정 생성
+  const adminUsername = 'admin';
+  const adminPassword = genPassword(16);
+
   let mainDbId     = settingVal(settings, 'main_db_id',     '');
   let cacheKvId    = settingVal(settings, 'cache_kv_id',    '');
   let sessionsKvId = settingVal(settings, 'sessions_kv_id', '');
@@ -4283,6 +4311,7 @@ export async function onRequestPost({ request, env, params }) {
   const [schemaRes, resolvedIds] = await Promise.all([
     initWordPressD1Schema(cfAuth, cfAccount, d1Id, {
       siteName: site.name, siteUrl, adminEmail: site.email || user.email,
+      adminUser: adminUsername, adminPass: adminPassword,
     }),
     (!mainDbId || !cacheKvId || !sessionsKvId)
       ? resolveMainBindingIds(cfAuth, cfAccount)
@@ -4325,6 +4354,9 @@ export async function onRequestPost({ request, env, params }) {
     siteDomain:     domain,
     supabaseUrl, supabaseKey, supabaseUrl2, supabaseKey2,
     storageBucket, storageBucket2,
+    adminUser:      adminUsername,
+    adminPass:      adminPassword,
+    adminEmail:     site.email || user.email,
     // WORKER_SOURCE: 환경변수로 실제 worker.js 소스를 주입 가능
     // wrangler secret put WORKER_SOURCE < worker.js 로 배포 시 사용
     workerSourceEnv: (env.WORKER_SOURCE && env.WORKER_SOURCE.length > 500) ? env.WORKER_SOURCE : '',
@@ -4426,6 +4458,8 @@ export async function onRequestPost({ request, env, params }) {
     provision_step: 'completed',
     domain_status: domainStatus,
     wp_admin_url: adminUrl,
+    wp_admin_username: adminUsername,
+    wp_admin_password: adminPassword,
     wp_installed: 1,   // 설치 잠금
     error_message: domainStatus === 'manual_required'
       ? `외부 DNS 설정 필요 — CNAME ${domain} → ${workerDevUrl}`
