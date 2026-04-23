@@ -35,7 +35,7 @@ export async function onRequest({ request, env, params }) {
                 site_prefix, worker_name, worker_route, worker_route_www,
                 worker_route_id, worker_route_www_id, cf_zone_id,
                 site_d1_id, site_kv_id,
-                wp_admin_url,
+                wp_admin_url, wp_admin_username, wp_admin_password,
                 status, provision_step, error_message,
                 suspended, suspension_reason, disk_used, bandwidth_used,
                 plan, created_at, updated_at
