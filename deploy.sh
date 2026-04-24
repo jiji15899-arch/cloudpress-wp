@@ -96,6 +96,15 @@ wrangler pages deploy . \
   --project-name="$PAGES_PROJECT" \
   --commit-dirty=true
 
+# ── WORKER_SOURCE secret 주입 ─────────────────────────────────────────────
+# [text_blobs]는 ES Module format Worker에서 지원되지 않으므로
+# worker.js 파일 전체를 Pages secret으로 주입합니다.
+echo "▶ WORKER_SOURCE secret 주입 중..."
+wrangler pages secret put WORKER_SOURCE \
+  --project-name="$PAGES_PROJECT" \
+  < worker.js
+echo "  WORKER_SOURCE 주입 완료"
+
 # ── Worker 배포 ───────────────────────────────────────────────────────────
 echo "▶ cloudpress-proxy Worker 배포 중..."
 wrangler deploy --config wrangler.worker.toml
