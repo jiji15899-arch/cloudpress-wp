@@ -37,13 +37,12 @@ id      = "e1acf814c1244a59bbc24865723e479d"
 # SUPABASE_URL2, SUPABASE_KEY2 → wrangler secret put (Secondary)
 # PURGE_KEY → wrangler secret put (캐시 Purge 인증)
 # ENCRYPTION_KEY → wrangler secret put
+# WORKER_SOURCE → wrangler secret put (provision 시 worker.js 소스 주입)
 [vars]
 CF_ACCOUNT_ID  = ""
 CF_API_TOKEN   = ""
 PURGE_KEY      = ""
 ENCRYPTION_KEY = ""
-# WORKER_SOURCE는 아래 [text_blobs]로 자동 주입됨 (worker.js 파일 내용)
-WORKER_SOURCE  = ""
 
 # ── CPU 한도 ───────────────────────────────────────────────────────────────────
 [limits]
@@ -58,9 +57,3 @@ crons = ["*/5 * * * *"]
 [dev]
 port = 8788
 local_protocol = "http"
-
-# ── Worker 소스 번들링 ────────────────────────────────────────────────────────
-# worker.js 파일 내용을 env.WORKER_SOURCE 로 자동 주입
-# provision.js가 사이트 생성 시 이 값을 그대로 CF에 업로드
-[text_blobs]
-WORKER_SOURCE = "worker.js"
