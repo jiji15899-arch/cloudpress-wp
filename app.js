@@ -1,6 +1,10 @@
 /* CloudPress CMS app.js v4.0 */
 'use strict';
 
+// Ensure CP is always defined globally, even if loaded asynchronously or out of order.
+// This helps prevent "CP is not defined" or "CP.apiFetch is not a function" errors.
+window.CP = window.CP || {};
+
 const CP = {
   TOKEN_KEY: 'cp_token',
   USER_KEY:  'cp_user',
@@ -116,6 +120,7 @@ const CP = {
   createSite:  (b)     => CP.post('/sites', b),
   deleteSite:  (id)    => CP.del(`/sites/${id}`),
   updateSite:  (id, b) => CP.put(`/sites/${id}`, b),
+  updateSiteSettings: (id, b) => CP.put(`/sites/${id}/settings`, b),
   pollSite:    (id)    => CP.get(`/sites/${id}`),
   getSiteCreds:(id)    => CP.get(`/sites/${id}/credentials`),
 
@@ -196,29 +201,24 @@ const CP = {
 };
 
 /* Toast */
-function showToast(msg, type = 'info') {
+window.showToast = function(msg, type = 'info') { // Make showToast global
   let el = document.getElementById('cp-toast');
   if (!el) { el = document.createElement('div'); el.id = 'cp-toast'; document.body.appendChild(el); }
   el.className = `cp-toast ${type}`;
   el.textContent = msg;
   el.classList.add('show');
   clearTimeout(el._t);
-  el._t = setTimeout(() => el.classList.remove('show'), 3500);
+  el._t = setTimeout(() => el.classList.remove('show'), 3000);
 }
 
 /* Sidebar */
-function openSidebar()  { document.getElementById('sidebar')?.classList.add('open');  document.getElementById('overlay')?.classList.add('show'); }
-function closeSidebar() { document.getElementById('sidebar')?.classList.remove('open'); document.getElementById('overlay')?.classList.remove('show'); }
+window.openSidebar = function()  { document.getElementById('sidebar')?.classList.add('open');  document.getElementById('overlay')?.classList.add('show'); }
+window.closeSidebar = function() { document.getElementById('sidebar')?.classList.remove('open'); document.getElementById('overlay')?.classList.remove('show'); }
 
 /* Copy */
-async function copyText(text, btn) {
+window.copyText = async function(text, btn) {
   await navigator.clipboard.writeText(text);
   const orig = btn.textContent;
   btn.textContent = '완료!';
   setTimeout(() => btn.textContent = orig, 1500);
-}
-
-// 전역 안전망 — app.js 로드 전 CP.apiFetch 호출 방지
-if (typeof window !== 'undefined') {
-  window.CP = window.CP || CP;
 }
