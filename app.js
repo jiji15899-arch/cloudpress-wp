@@ -1,4 +1,4 @@
-/* CloudPress CMS app.js v5.0 — 전체 재작성 */
+/* CloudPress CMS app.js v20.1 — 캐시 버스팅 적용 */
 'use strict';
 
 window.CP = window.CP || {};
