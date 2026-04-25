@@ -1,5 +1,5 @@
 // functions/api/support.js
-import { ok, err, getUser, loadAllSettings, settingVal } from '../../../../_shared.js';
+import { ok, err, getUser, loadAllSettings, settingVal } from './_shared.js';
 
 export async function onRequestPost(ctx) {
   const { request, env } = ctx;
