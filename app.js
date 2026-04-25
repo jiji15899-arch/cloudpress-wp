@@ -217,3 +217,8 @@ async function copyText(text, btn) {
   btn.textContent = '완료!';
   setTimeout(() => btn.textContent = orig, 1500);
 }
+
+// 전역 안전망 — app.js 로드 전 CP.apiFetch 호출 방지
+if (typeof window !== 'undefined') {
+  window.CP = window.CP || CP;
+}
