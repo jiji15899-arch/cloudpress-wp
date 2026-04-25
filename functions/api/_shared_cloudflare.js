@@ -114,20 +114,30 @@ export async function cfUpdateWafRules(auth, zoneId, sitePrefix, enabled = true)
   }
 
   // WAF 규칙 정의 (공격 패턴 탐지 시 차단)
+  // Cloudways는 더 정교한 WAF 규칙을 사용하지만, 여기서는 기본적인 SQLi, XSS, Path Traversal 방어를 예시로 듭니다.
+  // 실제 프로덕션에서는 Cloudflare Managed Ruleset을 활용하거나 더 복잡한 커스텀 규칙을 구성해야 합니다.
   const ruleData = {
     action: "block",
     description: ruleName,
-    expression: `(http.request.uri.path contains "${sitePrefix}") and (http.request.uri.query contains "union" or http.request.uri.query contains "select" or http.request.uri.query contains "<script>")`,
+    expression: `(http.request.uri.path contains "${sitePrefix}") and (http.request.uri.query contains "union" or http.request.uri.query contains "select" or http.request.uri.query contains "<script>" or http.request.uri.path contains "../" or http.request.uri.path contains "..\\")`,
     enabled: true
   };
 
   if (existingRule) {
     // 기존 규칙 업데이트
     const res = await cfReq(auth, `/zones/${zoneId}/rulesets/${phaseRuleset.id}/rules/${existingRule.id}`, 'PATCH', ruleData);
+    if (!res.success) {
+      console.error(`[cfUpdateWafRules] WAF 규칙 업데이트 실패: ${cfErrMsg(res)}`);
+      return { ok: false, error: cfErrMsg(res) };
+    }
     return { ok: res.success };
   } else {
     // 새 규칙 추가
     const res = await cfReq(auth, `/zones/${zoneId}/rulesets/${phaseRuleset.id}/rules`, 'POST', ruleData);
+    if (!res.success) {
+      console.error(`[cfUpdateWafRules] WAF 규칙 추가 실패: ${cfErrMsg(res)}`);
+      return { ok: false, error: cfErrMsg(res) };
+    }
     return { ok: res.success };
   }
 }
