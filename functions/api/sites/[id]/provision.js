@@ -668,7 +668,6 @@ export async function onRequestPost(ctx) {
 
   // 초기 상태 설정 (try-catch 블록 외부에서, 가능한 빨리)
   const siteState = makeSiteState();
-  let currentSiteStatus = 'provisioning';
   let currentProvisionStep = 'starting';
   let currentErrorMessage = null;
 
@@ -933,167 +932,174 @@ export default {
   }
 };
 `.trim();
-  }
-
-  const cfApiTokenForWorker = typeof cfAuth === 'string' ? '' : cfAuth.token;
-
-  const upRes = await uploadWordPressWorker(cfAuth, cfAccount, workerName, {
-    mainDbId, cacheKvId, sessionsKvId,
-    siteD1Id:    d1Id,
-    siteKvId:    kvId,
-    cfAccountId: cfAccount,
-    cfApiToken:  cfApiTokenForWorker,
-    sitePrefix:  prefix,
-    siteName:    site.name,
-    siteDomain:  domain,
-    supabaseUrl: site.supabase_url || '',
-    supabaseKey: site.supabase_key || '',
-    adminUser:   adminUsername,
-    adminPass:   adminPassword,
-    adminEmail:  site.email || user.email,
-    wpVersion,
-    workerSource,
-  });
-
-  if (!upRes.ok) {
-    await failSite(env.DB, siteId, 'worker_upload', upRes.error);
-    return err('Worker 업로드 실패: ' + upRes.error, 500);
-  }
-
-  console.log(`[provision] Worker 업로드 완료: ${workerName}`);
-  siteState.set({ worker_name: workerName });
-
-  const workerDevEnabled = await enableWorkersDev(cfAuth, cfAccount, workerName);
-  console.log(`[provision] workers.dev 활성화: ${workerDevEnabled ? '성공' : '실패'}`);
-
-  // ── Step 5: KV 도메인 매핑 ──────────────────────────────────────────────
-  siteState.set({ provision_step: 'kv_mapping' });
-
-  const siteMapping = JSON.stringify({
-    id: siteId, name: site.name,
-    site_prefix:   prefix,
-    site_d1_id:    d1Id,
-    site_kv_id:    kvId,
-    supabase_url:  site.supabase_url || '',
-    supabase_key:  site.supabase_key || '',
-    wp_version:    wpVersion,
-    wp_installed:  1,
-    status:        'active',
-    suspended:     0,
-  });
-
-  if (cacheKvId && cfAccount) {
-    await putKVBulk(cfAuth, cfAccount, cacheKvId, [
-      { key: `site_domain:${domain}`,    value: siteMapping },
-      { key: `site_domain:${wwwDomain}`, value: siteMapping },
-      { key: `site_prefix:${prefix}`,    value: siteMapping },
-    ]);
-  }
-
-  // ── Step 6: 도메인 연결 ─────────────────────────────────────────────────
-  siteState.set({ provision_step: 'dns_setup' });
-
-  let domainStatus = 'manual_required';
-  let cfZoneId = null, dnsRecordId = null, dnsRecordWwwId = null;
-  let routeId = null, routeWwwId = null, cnameTarget = '';
-
-  const [cdRoot, cdWww] = await Promise.all([
-    addWorkerCustomDomain(cfAuth, cfAccount, workerName, domain),
-    addWorkerCustomDomain(cfAuth, cfAccount, workerName, wwwDomain),
-  ]);
-
-  if (cdRoot.ok || cdWww.ok) {
-    domainStatus = 'active';
-    console.log(`[provision] Custom Domain 등록: ${domain}`);
-    siteState.set({ worker_route: domain + '/*', worker_route_www: wwwDomain + '/*' });
-  } else {
-    const [workerSubdomain, zone] = await Promise.all([
-      getWorkerSubdomain(cfAuth, cfAccount, workerName),
-      cfGetZone(cfAuth, domain),
-    ]);
-    cnameTarget = workerSubdomain;
-
-    if (zone.ok) {
-      cfZoneId = zone.zoneId;
-      const [rr, rw] = await Promise.all([
-        cfUpsertRoute(cfAuth, cfZoneId, domain + '/*',    workerName),
-        cfUpsertRoute(cfAuth, cfZoneId, wwwDomain + '/*', workerName),
-      ]);
-      if (rr.ok) routeId    = rr.routeId;
-      if (rw.ok) routeWwwId = rw.routeId;
-
-      siteState.set({
-        worker_route:       domain + '/*',
-        worker_route_www:   wwwDomain + '/*',
-        worker_route_id:    routeId    || null,
-        worker_route_www_id:routeWwwId || null,
-        cf_zone_id:         cfZoneId,
-      });
-
-      const [dr, drw] = await Promise.all([
-        cfUpsertDns(cfAuth, cfZoneId, 'CNAME', domain,    cnameTarget, true),
-        cfUpsertDns(cfAuth, cfZoneId, 'CNAME', wwwDomain, cnameTarget, true),
-      ]);
-      if (dr.ok)  dnsRecordId    = dr.recordId;
-      if (drw.ok) dnsRecordWwwId = drw.recordId;
-
-      if ((rr.ok || rw.ok) && (dr.ok || drw.ok)) domainStatus = 'active';
-      else if (rr.ok || rw.ok)                    domainStatus = 'dns_propagating';
-
-      siteState.set({
-        dns_record_id:     dnsRecordId    || null,
-        dns_record_www_id: dnsRecordWwwId || null,
-      });
     }
-  }
 
-  // ── Step 7: 완료 ─────────────────────────────────────────────────────────
-  const adminUrl    = `https://${domain}/wp-admin/`;
-  const workerDevUrl = cnameTarget || `${workerName}.workers.dev`;
+    const cfApiTokenForWorker = typeof cfAuth === 'string' ? '' : cfAuth.token;
 
-  siteState.set({
-    status:            'active',
-    provision_step:    'completed',
-    domain_status:     domainStatus,
-    wp_admin_url:      adminUrl,
-    wp_admin_username: adminUsername,
-    wp_admin_password: adminPassword,
-    wp_installed:      1,
-    wp_version:        wpVersion,
-    error_message:     domainStatus === 'manual_required'
-      ? `외부 DNS 설정 필요 — CNAME ${domain} → ${workerDevUrl}`
+    const upRes = await uploadWordPressWorker(cfAuth, cfAccount, workerName, {
+      mainDbId, cacheKvId, sessionsKvId,
+      siteD1Id:    d1Id,
+      siteKvId:    kvId,
+      cfAccountId: cfAccount,
+      cfApiToken:  cfApiTokenForWorker,
+      sitePrefix:  prefix,
+      siteName:    site.name,
+      siteDomain:  domain,
+      supabaseUrl: site.supabase_url || '',
+      supabaseKey: site.supabase_key || '',
+      adminUser:   adminUsername,
+      adminPass:   adminPassword,
+      adminEmail:  site.email || user.email,
+      wpVersion,
+      workerSource,
+    });
+
+    if (!upRes.ok) {
+      await failSite(env.DB, siteId, 'worker_upload', upRes.error);
+      return err('Worker 업로드 실패: ' + upRes.error, 500);
+    }
+
+    console.log(`[provision] Worker 업로드 완료: ${workerName}`);
+    siteState.set({ worker_name: workerName });
+
+    const workerDevEnabled = await enableWorkersDev(cfAuth, cfAccount, workerName);
+    console.log(`[provision] workers.dev 활성화: ${workerDevEnabled ? '성공' : '실패'}`);
+
+    // ── Step 5: KV 도메인 매핑 ──────────────────────────────────────────────
+    siteState.set({ provision_step: 'kv_mapping' });
+
+    const siteMapping = JSON.stringify({
+      id: siteId, name: site.name,
+      site_prefix:   prefix,
+      site_d1_id:    d1Id,
+      site_kv_id:    kvId,
+      supabase_url:  site.supabase_url || '',
+      supabase_key:  site.supabase_key || '',
+      wp_version:    wpVersion,
+      wp_installed:  1,
+      status:        'active',
+      suspended:     0,
+    });
+
+    if (cacheKvId && cfAccount) {
+      await putKVBulk(cfAuth, cfAccount, cacheKvId, [
+        { key: `site_domain:${domain}`,    value: siteMapping },
+        { key: `site_domain:${wwwDomain}`, value: siteMapping },
+        { key: `site_prefix:${prefix}`,    value: siteMapping },
+      ]);
+    }
+
+    // ── Step 6: 도메인 연결 ─────────────────────────────────────────────────
+    siteState.set({ provision_step: 'dns_setup' });
+
+    let domainStatus = 'manual_required';
+    let cfZoneId = null, dnsRecordId = null, dnsRecordWwwId = null;
+    let routeId = null, routeWwwId = null, cnameTarget = '';
+
+    const [cdRoot, cdWww] = await Promise.all([
+      addWorkerCustomDomain(cfAuth, cfAccount, workerName, domain),
+      addWorkerCustomDomain(cfAuth, cfAccount, workerName, wwwDomain),
+    ]);
+
+    if (cdRoot.ok || cdWww.ok) {
+      domainStatus = 'active';
+      console.log(`[provision] Custom Domain 등록: ${domain}`);
+      siteState.set({ worker_route: domain + '/*', worker_route_www: wwwDomain + '/*' });
+    } else {
+      const [workerSubdomain, zone] = await Promise.all([
+        getWorkerSubdomain(cfAuth, cfAccount, workerName),
+        cfGetZone(cfAuth, domain),
+      ]);
+      cnameTarget = workerSubdomain;
+
+      if (zone.ok) {
+        cfZoneId = zone.zoneId;
+        const [rr, rw] = await Promise.all([
+          cfUpsertRoute(cfAuth, cfZoneId, domain + '/*',    workerName),
+          cfUpsertRoute(cfAuth, cfZoneId, wwwDomain + '/*', workerName),
+        ]);
+        if (rr.ok) routeId    = rr.routeId;
+        if (rw.ok) routeWwwId = rw.routeId;
+
+        siteState.set({
+          worker_route:       domain + '/*',
+          worker_route_www:   wwwDomain + '/*',
+          worker_route_id:    routeId    || null,
+          worker_route_www_id:routeWwwId || null,
+          cf_zone_id:         cfZoneId,
+        });
+
+        const [dr, drw] = await Promise.all([
+          cfUpsertDns(cfAuth, cfZoneId, 'CNAME', domain,    cnameTarget, true),
+          cfUpsertDns(cfAuth, cfZoneId, 'CNAME', wwwDomain, cnameTarget, true),
+        ]);
+        if (dr.ok)  dnsRecordId    = dr.recordId;
+        if (drw.ok) dnsRecordWwwId = drw.recordId;
+
+        if ((rr.ok || rw.ok) && (dr.ok || drw.ok)) domainStatus = 'active';
+        else if (rr.ok || rw.ok)                    domainStatus = 'dns_propagating';
+
+        siteState.set({
+          dns_record_id:     dnsRecordId    || null,
+          dns_record_www_id: dnsRecordWwwId || null,
+        });
+      }
+    }
+
+    // ── Step 7: 완료 ─────────────────────────────────────────────────────────
+    const adminUrl     = `https://${domain}/wp-admin/`;
+    const workerDevUrl = cnameTarget || `${workerName}.workers.dev`;
+
+    siteState.set({
+      status:            'active',
+      provision_step:    'completed',
+      domain_status:     domainStatus,
+      wp_admin_url:      adminUrl,
+      wp_admin_username: adminUsername,
+      wp_admin_password: adminPassword,
+      wp_installed:      1,
+      wp_version:        wpVersion,
+      error_message:     domainStatus === 'manual_required'
+        ? `외부 DNS 설정 필요 — CNAME ${domain} → ${workerDevUrl}`
         : (site.error_message || null),
-  });
+    });
 
-  await flushSiteState(env.DB, siteId, siteState.get());
-    finalStatus = 'active';
+    await flushSiteState(env.DB, siteId, siteState.get());
 
-  const finalSite = await env.DB.prepare(
-    'SELECT status, provision_step, error_message, wp_admin_url, primary_domain,'
-    + ' site_d1_id, site_kv_id, domain_status, worker_name, name, wp_version FROM sites WHERE id=?'
-  ).bind(siteId).first();
-    
+    const finalSite = await env.DB.prepare(
+      'SELECT status, provision_step, error_message, wp_admin_url, primary_domain,'
+      + ' site_d1_id, site_kv_id, domain_status, worker_name, name, wp_version FROM sites WHERE id=?'
+    ).bind(siteId).first();
+
     await env.DB.prepare("UPDATE sites SET wp_installed=1, status='active' WHERE id=?").bind(siteId).run();
 
-  return ok({
-    message: `WordPress ${wpVersion} 프로비저닝 완료`,
-    siteId,
-    site:          finalSite,
-    worker_name:   workerName,
-    cname_target:  cnameTarget,
-    wp_admin_url:  adminUrl,
-    wp_admin_user: adminUsername,
-    wp_admin_pass: adminPassword,
-    wp_version:    wpVersion,
-    files_uploaded: uploadRes.uploaded,
-    install_locked: true,
-    cname_instructions: domainStatus === 'manual_required' ? {
-      type: 'CNAME',
-      root: { host: '@',   value: workerDevUrl },
-      www:  { host: 'www', value: workerDevUrl },
-      note: `DNS 전파 후 ${adminUrl} 에서 WordPress를 사용하세요.`,
-    } : null,
-  });
+    return ok({
+      message: `WordPress ${wpVersion} 프로비저닝 완료`,
+      siteId,
+      site:           finalSite,
+      worker_name:    workerName,
+      cname_target:   cnameTarget,
+      wp_admin_url:   adminUrl,
+      wp_admin_user:  adminUsername,
+      wp_admin_pass:  adminPassword,
+      wp_version:     wpVersion,
+      files_uploaded: uploadRes.uploaded,
+      install_locked: true,
+      cname_instructions: domainStatus === 'manual_required' ? {
+        type: 'CNAME',
+        root: { host: '@',   value: workerDevUrl },
+        www:  { host: 'www', value: workerDevUrl },
+        note: `DNS 전파 후 ${adminUrl} 에서 WordPress를 사용하세요.`,
+      } : null,
+    });
+
+  } catch (e) {
+    console.error('[provision] 예외 발생:', e.message);
+    if (!currentErrorMessage) {
+      await failSite(env.DB, siteId, currentProvisionStep, e.message);
+    }
+    return err('프로비저닝 오류: ' + e.message, 500);
+  }
 }
 
 // ── GET: 프로비저닝 상태 조회 ─────────────────────────────────────────────────
