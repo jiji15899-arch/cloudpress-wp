@@ -34,7 +34,8 @@ export async function onRequestPost({ request, env }) {
 
     try {
       await env.DB.prepare(
-        "INSERT INTO sites (id, user_id, name, site_prefix, plan, status, created_at) VALUES (?, ?, ?, ?, ?, 'pending', datetime('now'))"
+        `INSERT INTO sites (id, user_id, name, site_prefix, plan, status, wp_username, wp_password, created_at)
+         VALUES (?, ?, ?, ?, ?, 'pending', 'admin', '', datetime('now'))`
       ).bind(siteId, user.id, body.name || 'My Site', prefix, body.plan || 'starter').run();
 
       return ok({ siteId, prefix, message: '사이트 레코드가 생성되었습니다.' });
@@ -53,19 +54,17 @@ export async function onRequestGet({ request, env }) {
   if (!user) return err('로그인이 필요합니다.', 401);
 
   try {
-    const isAdmin = user.role === 'admin' || user.role === 'manager';
-    let rows;
-    if (isAdmin) {
-      rows = await env.DB.prepare(
-        `SELECT id, user_id, name, primary_domain, site_prefix, status, plan, created_at, updated_at
-         FROM sites WHERE deleted_at IS NULL ORDER BY created_at DESC`
-      ).all();
-    } else {
-      rows = await env.DB.prepare(
-        `SELECT id, user_id, name, primary_domain, site_prefix, status, plan, created_at, updated_at
-         FROM sites WHERE user_id=? AND deleted_at IS NULL ORDER BY created_at DESC`
-      ).bind(user.id).all();
-    }
+    // admin만 전체 사이트 목록 조회 가능, 나머지(manager 포함)는 본인 사이트만
+    const rows = user.role === 'admin'
+      ? await env.DB.prepare(
+          `SELECT id, user_id, name, primary_domain, site_prefix, status, plan, created_at, updated_at
+           FROM sites WHERE deleted_at IS NULL ORDER BY created_at DESC`
+        ).all()
+      : await env.DB.prepare(
+          `SELECT id, user_id, name, primary_domain, site_prefix, status, plan, created_at, updated_at
+           FROM sites WHERE user_id=? AND deleted_at IS NULL ORDER BY created_at DESC`
+        ).bind(user.id).all();
+
     return ok({ sites: rows.results || [] });
   } catch (e) {
     return err('사이트 목록 조회 실패: ' + e.message, 500);
