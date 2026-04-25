@@ -121,7 +121,6 @@ const CP = {
   deleteSite:  (id)    => CP.del(`/sites/${id}`),
   updateSite:  (id, b) => CP.put(`/sites/${id}`, b),
   updateSiteSettings: (id, b) => CP.put(`/sites/${id}/settings`, b),
-  updateSiteSettings: (id, b) => CP.put(`/sites/${id}/settings`, b), // Added for site settings update
   pollSite:    (id)    => CP.get(`/sites/${id}`),
   getSiteCreds:(id)    => CP.get(`/sites/${id}/credentials`),
 
