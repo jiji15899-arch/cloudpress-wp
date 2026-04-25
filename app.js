@@ -232,6 +232,24 @@ Object.assign(window.CP, {
     return String(s || '').replace(/[&<>"']/g, c =>
       ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
   },
+
+  // Luhn 알고리즘을 사용한 카드 번호 검증
+  validateCardNumber(number) {
+    const digits = String(number).replace(/\D/g, '');
+    if (!digits || digits.length < 13) return false;
+    
+    let sum = 0;
+    let shouldDouble = false;
+    for (let i = digits.length - 1; i >= 0; i--) {
+      let digit = parseInt(digits.charAt(i));
+      if (shouldDouble) {
+        if ((digit *= 2) > 9) digit -= 9;
+      }
+      sum += digit;
+      shouldDouble = !shouldDouble;
+    }
+    return (sum % 10) === 0;
+  },
 });
 
 /* Toast */
