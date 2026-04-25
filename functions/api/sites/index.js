@@ -24,6 +24,7 @@ export async function onRequestPost({ request, env }) {
 
     const siteId = 'site_' + Math.random().toString(36).slice(2, 11);
     const prefix = 's' + Math.random().toString(36).slice(2, 7);
+    if (!prefix) return err('접두사 생성 실패');
 
     try {
       await env.DB.prepare(
