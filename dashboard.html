@@ -122,8 +122,9 @@ async function init(){
     document.getElementById('sbEmail').textContent=user.email;
     document.getElementById('welcome').textContent=`안녕하세요, ${user.name}님!`;
     document.getElementById('sPlan').textContent=CP.planInfo(user.plan).name;
-    if(user.role==='admin'||user.role==='manager') document.getElementById('adminMenu').style.display='';
-    if(!user.has_cf_api) document.getElementById('cfApiWarn').style.display='flex';
+    if(user.role==='admin'||user.role==='manager'){const am=document.getElementById('adminMenu');if(am)am.style.display='';}
+    // CF API 경고: account 페이지에서 확인 필요
+    // (has_cf_api는 /auth/me 에서 반환하지 않으므로 조건 제거)
 
     // 공지사항
     try {
@@ -166,7 +167,7 @@ async function loadSites(){
     }
     el.innerHTML=sites.map(s=>{
       const st=CP.statusBadge(s.status);
-      const url=s.wp_url||(s.custom_domain?`https://${s.custom_domain}`:'—');
+      const url=s.primary_domain?`https://${s.primary_domain}`:(s.wp_url||s.custom_domain?`https://${s.custom_domain}`:'—');
       const adminUrl=s.wp_admin_url||'';
       const ver=s.wp_version?`<span class="ver-badge">v${CP.escHtml(s.wp_version)}</span>`:'';
       return `<div class="site-card">
