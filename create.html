@@ -144,13 +144,21 @@
   async function createSite() {
     const btn = document.getElementById('btnCreate');
     btn.disabled = true; btn.textContent = '프로비저닝 중...';
+    
+    // 1단계: 사이트 레코드 생성
     const res = await CP.createSite({ 
       name: config.name, 
       plan: config.plan,
       payment_method: config.payment_method,
       promo_code: config.promo_code
     });
+
     if (res.ok) {
+      // 2단계: 실제 Cloudflare 프로비저닝 시작 (백그라운드 실행)
+      CP.startProvision(res.siteId).catch(e => console.error('Provision start failed:', e));
+      
+      showToast('사이트 구축이 시작되었습니다!', 'success');
+      // 대시보드로 이동하면 dashboard.html의 폴링 로직이 상태를 추적함
       location.href = '/dashboard.html?new=true';
     } else {
       alert('생성 실패: ' + res.error);
