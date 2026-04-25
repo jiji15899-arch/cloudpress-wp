@@ -1,18 +1,142 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <link rel="icon" href="/favicon.svg" type="image/svg+xml"/>
-  <link rel="alternate icon" href="/favicon.ico"/>
   <meta charset="UTF-8"/>
-  <title>어드민 패널 — CloudPress</title>
-  <script src="app.js"></script>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>시스템 관리자 — CloudPress</title>
+  <link rel="stylesheet" href="dashboard.css"/>
+  <style>
+    .admin-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:20px;margin-bottom:32px}
+    .admin-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px}
+    .table-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+    .admin-table{width:100%;border-collapse:collapse}
+    .admin-table th{background:var(--surface2);padding:12px 20px;text-align:left;font-size:.75rem;color:var(--muted);text-transform:uppercase;font-weight:700}
+    .admin-table td{padding:16px 20px;border-bottom:1px solid var(--border);font-size:.88rem}
+    .user-badge{display:inline-flex;align-items:center;padding:4px 10px;border-radius:20px;font-size:.72rem;font-weight:700}
+  </style>
 </head>
 <body>
+<div class="app-wrap">
+  <aside class="sidebar">
+    <a href="/dashboard.html" class="sb-logo">CloudPress Admin</a>
+    <nav class="sb-nav">
+      <div class="sb-section">
+        <div class="sb-label">시스템 관리</div>
+        <a href="#overview" class="sb-link active">전체 현황</a>
+        <a href="#users" class="sb-link">사용자 관리</a>
+        <a href="#sites" class="sb-link">전체 사이트</a>
+        <a href="#settings" class="sb-link">글로벌 설정</a>
+      </div>
+      <div class="sb-section">
+        <a href="/dashboard.html" class="sb-link">← 사용자 모드</a>
+        <button class="sb-link danger" onclick="CP.logout()">로그아웃</button>
+      </div>
+    </nav>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <span class="topbar-title">관리자 대시보드</span>
+      <div class="topbar-actions">
+        <span id="adminName" style="font-size:.85rem;font-weight:600">Admin</span>
+      </div>
+    </div>
+
+    <div class="content">
+      <!-- Stats Overview -->
+      <div class="admin-stats">
+        <div class="admin-card">
+          <div style="font-size:.8rem;color:var(--muted);margin-bottom:8px">총 사용자</div>
+          <div style="font-size:1.8rem;font-weight:800" id="totalUsers">0</div>
+        </div>
+        <div class="admin-card">
+          <div style="font-size:.8rem;color:var(--muted);margin-bottom:8px">활성 사이트</div>
+          <div style="font-size:1.8rem;font-weight:800;color:var(--accent)" id="activeSites">0</div>
+        </div>
+        <div class="admin-card">
+          <div style="font-size:.8rem;color:var(--muted);margin-bottom:8px">월 매출 (예상)</div>
+          <div style="font-size:1.8rem;font-weight:800;color:var(--success)" id="monthlyRevenue">₩0</div>
+        </div>
+      </div>
+
+      <!-- User Management Table -->
+      <h2 style="font-size:1.1rem;margin-bottom:16px;font-weight:700">최근 가입 사용자</h2>
+      <div class="table-card">
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>이름 / 이메일</th>
+              <th>플랜</th>
+              <th>가입일</th>
+              <th>사이트 수</th>
+              <th>작업</th>
+            </tr>
+          </thead>
+          <tbody id="userList">
+            <tr><td colspan="5" style="text-align:center;padding:40px;color:var(--muted)">데이터를 불러오는 중...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+</div>
+
+  <script src="app.js"></script>
   <script>
-    (async () => {
+    async function initAdmin() {
       const user = await CP.requireAdmin();
-      if (user) window.location.replace('/admin-info.html');
-    })();
+      if (!user) return;
+      document.getElementById('adminName').textContent = user.name;
+      await loadAdminData();
+    }
+
+    async function loadAdminData() {
+      try {
+        const res = await CP.apiFetch('/admin/stats');
+        const data = await res.json();
+        if (data.ok) {
+          document.getElementById('totalUsers').textContent = data.stats.total_users;
+          document.getElementById('activeSites').textContent = data.stats.active_sites;
+          document.getElementById('monthlyRevenue').textContent = '₩' + (data.stats.revenue || 0).toLocaleString();
+          renderUsers(data.users);
+        }
+      } catch (e) {
+        console.error('Admin data load failed:', e);
+      }
+    }
+
+    function renderUsers(users) {
+      const list = document.getElementById('userList');
+      if (!users || !users.length) {
+        list.innerHTML = '<tr><td colspan="5" style="text-align:center">사용자가 없습니다.</td></tr>';
+        return;
+      }
+      list.innerHTML = users.map(u => {
+        const plan = CP.planInfo(u.plan);
+        return `
+          <tr>
+            <td>
+              <div style="font-weight:700">${esc(u.name)}</div>
+              <div style="font-size:.75rem;color:var(--muted)">${esc(u.email)}</div>
+            </td>
+            <td><span class="user-badge" style="background:${plan.color}15;color:${plan.color}">${plan.name}</span></td>
+            <td style="color:var(--muted)">${new Date(u.created_at).toLocaleDateString()}</td>
+            <td style="font-weight:600">${u.site_count || 0}</td>
+            <td>
+              <button class="btn btn-ghost btn-sm" onclick="editUser('${u.id}')">관리</button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function esc(s) { return String(s || '').replace(/[&<>"']/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m])); }
+
+    function editUser(id) {
+      alert('사용자 상세 관리 기능은 개발 중입니다. (ID: ' + id + ')');
+    }
+
+    initAdmin();
   </script>
 </body>
 </html>
