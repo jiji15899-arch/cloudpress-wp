@@ -181,70 +181,107 @@
     </div>
   </main>
 </div>
-<script src="/app.js"></script>
+<div id="cpToast" style="position:fixed;bottom:24px;right:24px;padding:12px 20px;border-radius:10px;font-size:.88rem;font-weight:500;color:#fff;opacity:0;transform:translateY(8px);transition:all .3s;pointer-events:none;z-index:9999;max-width:320px"></div>
+<script src="/app.js?v=20.1"></script>
 <script>
 let currentUser=null;
 let selectedTwofaType=null;
 let personalInfoDetected=false;
-let savedCfEmail=''; // 저장된 이메일 추적
+let savedCfEmail='';
+
+function showToast(msg, type='info') {
+  const t = document.getElementById('cpToast');
+  if (!t) return;
+  t.textContent = msg;
+  const colors = { success:'#22c55e', error:'#ef4444', info:'#6366f1', warning:'#f59e0b' };
+  t.style.background = colors[type] || colors.info;
+  t.style.opacity = '1';
+  t.style.transform = 'translateY(0)';
+  clearTimeout(t._tid);
+  t._tid = setTimeout(() => { t.style.opacity='0'; t.style.transform='translateY(8px)'; }, 3000);
+}
 
 async function init(){
-  currentUser=await CP.requireAuth();if(!currentUser)return;
-  document.getElementById('sbAvatar').textContent=currentUser.name[0].toUpperCase();
-  document.getElementById('sbName').textContent=currentUser.name;
-  document.getElementById('sbEmail').textContent=currentUser.email;
-  
-  // 프로필 정보 로드
-  const d=await CP.getProfile();
-  if(!d.ok){
-    showToast('프로필 정보를 불러오지 못했습니다.', 'error');
-    return;
-  }
-  
-  const u=d.user;
-  
-  // UI 필드 채우기
-  const nameEl = document.getElementById('pName');
-  const emailEl = document.getElementById('pEmail');
-  const siteCountEl = document.getElementById('siteCount');
-  
-  if(nameEl) nameEl.value = u.name || '';
-  if(emailEl) emailEl.value = u.email || '';
-  if(siteCountEl) siteCountEl.textContent = u.site_count || 0;
-  if(u.card_number) {
-    document.getElementById('cardNumber').placeholder = '**** **** **** ' + u.card_number.slice(-4);
-    document.getElementById('cardExpiry').value = u.card_expiry || '';
-  }
+  try {
+    currentUser = await CP.requireAuth();
+    if (!currentUser) return;
 
-  const plan=CP.planInfo(u.plan);
-  const planInfoEl = document.getElementById('planInfo');
-  if(planInfoEl) {
-    planInfoEl.innerHTML=`<span class="plan-badge" style="background:${plan.color}18;color:${plan.color}">${plan.name}</span>${u.plan!=='free'?` <a href="/pricing.html" style="font-size:.78rem;color:var(--accent);text-decoration:none;margin-left:8px">변경 →</a>`:'<a href="/pricing.html" style="font-size:.78rem;color:var(--accent);text-decoration:none;margin-left:8px">업그레이드 →</a>'}`;
-  }
+    const sbAv = document.getElementById('sbAvatar');
+    const sbNm = document.getElementById('sbName');
+    const sbEm = document.getElementById('sbEmail');
+    if (sbAv) sbAv.textContent = (currentUser.name||'?')[0].toUpperCase();
+    if (sbNm) sbNm.textContent = currentUser.name || '';
+    if (sbEm) sbEm.textContent = currentUser.email || '';
 
-  // Cloudflare API 상태 업데이트
-  if(u.cf_account_id || u.has_cf_api){
-    savedCfEmail = u.cf_account_email || '';
-    document.getElementById('cfApiStatus').textContent='✓ 연결됨';
-    document.getElementById('cfApiStatus').className='cf-api-status connected';
-    document.getElementById('cfEmail').value=savedCfEmail;
-    document.getElementById('cfEmail').disabled=true;
-    document.getElementById('cfApiKey').disabled=true;
-    document.getElementById('cfApiKey').placeholder='●●●●●●●● (저장됨)';
-    document.getElementById('cfSaveBtn').style.display='none';
-    document.getElementById('cfChangeBtn').style.display='';
-    document.getElementById('cfRemoveBtn').style.display='';
-  }
+    // 프로필 정보 로드
+    const d = await CP.getProfile();
+    if (!d.ok) {
+      showToast(d.error || '프로필 정보를 불러오지 못했습니다.', 'error');
+      // 기본값이라도 채우기
+      const nameEl = document.getElementById('pName');
+      const emailEl = document.getElementById('pEmail');
+      if (nameEl) nameEl.value = currentUser.name || '';
+      if (emailEl) emailEl.value = currentUser.email || '';
+      return;
+    }
 
-  // 2FA 상태 표시
-  if(u.twofa_enabled){
-    document.getElementById('twofaStatus').textContent='✅ 활성';
-    document.getElementById('twofaStatus').style.background='rgba(34,197,94,.1)';
-    document.getElementById('twofaStatus').style.color='var(--success)';
-    document.getElementById('twofaSetupArea').style.display='none';
-    document.getElementById('twofaDisableArea').style.display='';
-    const typeMap={email:'이메일 인증',second_password:'2차 비밀번호'};
-    document.getElementById('twofaTypeLabel').textContent=typeMap[u.twofa_type]||u.twofa_type;
+    const u = d.user;
+
+    const nameEl = document.getElementById('pName');
+    const emailEl = document.getElementById('pEmail');
+    const siteCountEl = document.getElementById('siteCount');
+    const planInfoEl = document.getElementById('planInfo');
+
+    if (nameEl) nameEl.value = u.name || '';
+    if (emailEl) emailEl.value = u.email || '';
+    if (siteCountEl) siteCountEl.textContent = u.site_count ?? 0;
+    if (u.card_number) {
+      const cn = document.getElementById('cardNumber');
+      const ce = document.getElementById('cardExpiry');
+      if (cn) cn.placeholder = '**** **** **** ' + String(u.card_number).slice(-4);
+      if (ce) ce.value = u.card_expiry || '';
+    }
+
+    if (planInfoEl) {
+      const plan = CP.planInfo(u.plan);
+      planInfoEl.innerHTML = `<span class="plan-badge" style="background:${plan.color}18;color:${plan.color}">${plan.name}</span>`
+        + (u.plan !== 'free'
+          ? `<a href="/pricing.html" style="font-size:.78rem;color:var(--accent);text-decoration:none;margin-left:8px">변경 →</a>`
+          : `<a href="/pricing.html" style="font-size:.78rem;color:var(--accent);text-decoration:none;margin-left:8px">업그레이드 →</a>`);
+    }
+
+    // CF API 상태
+    if (u.cf_account_id || u.has_cf_api) {
+      savedCfEmail = u.cf_account_email || '';
+      const statusEl = document.getElementById('cfApiStatus');
+      const emailEl2 = document.getElementById('cfEmail');
+      const keyEl = document.getElementById('cfApiKey');
+      const saveBtn = document.getElementById('cfSaveBtn');
+      const changeBtn = document.getElementById('cfChangeBtn');
+      const removeBtn = document.getElementById('cfRemoveBtn');
+      if (statusEl) { statusEl.textContent='✓ 연결됨'; statusEl.className='cf-api-status connected'; }
+      if (emailEl2) { emailEl2.value = savedCfEmail; emailEl2.disabled = true; }
+      if (keyEl) { keyEl.disabled = true; keyEl.placeholder = '●●●●●●●● (저장됨)'; }
+      if (saveBtn) saveBtn.style.display = 'none';
+      if (changeBtn) changeBtn.style.display = '';
+      if (removeBtn) removeBtn.style.display = '';
+    }
+
+    // 2FA 상태
+    if (u.twofa_enabled) {
+      const twStatus = document.getElementById('twofaStatus');
+      const twSetup = document.getElementById('twofaSetupArea');
+      const twDisable = document.getElementById('twofaDisableArea');
+      const twTypeLabel = document.getElementById('twofaTypeLabel');
+      if (twStatus) { twStatus.textContent='✅ 활성'; twStatus.style.background='rgba(34,197,94,.1)'; twStatus.style.color='var(--success)'; }
+      if (twSetup) twSetup.style.display = 'none';
+      if (twDisable) twDisable.style.display = '';
+      const typeMap = { email:'이메일 인증', second_password:'2차 비밀번호' };
+      if (twTypeLabel) twTypeLabel.textContent = typeMap[u.twofa_type] || u.twofa_type || '';
+    }
+  } catch(e) {
+    console.error('account init error:', e);
+    showToast('페이지 초기화 중 오류: ' + e.message, 'error');
   }
 }
 
