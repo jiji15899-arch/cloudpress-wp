@@ -78,10 +78,20 @@ Object.assign(CP, {
 
   // ── 인증 ──────────────────────────────────────────────────────────
   async login(email, password, twofaCode) {
-    return this.post('/auth/login', { email, password, twofaCode });
+    const r = await this.post('/auth/login', { email, password, twofa_code: twofaCode });
+    if (r.ok && r.token) {
+      this.setToken(r.token);
+      if (r.user) this.setUser(r.user);
+    }
+    return r;
   },
   async register(name, email, password) {
-    return this.post('/auth/signup', { name, email, password });
+    const r = await this.post('/auth/register', { name, email, password });
+    if (r.ok && r.token) {
+      this.setToken(r.token);
+      if (r.user) this.setUser(r.user);
+    }
+    return r;
   },
   async logout() {
     await this.post('/auth/logout', {});
