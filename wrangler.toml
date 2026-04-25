@@ -3,7 +3,6 @@
 # 스토리지: Supabase (Primary + Secondary) + D1 (쓰기 전용) + KV (캐시)
 
 name = "cloudpress-wp"
-main = "worker.js"
 compatibility_date = "2025-04-01"
 compatibility_flags = ["nodejs_compat"]
 pages_build_output_dir = "."
@@ -48,11 +47,6 @@ ENCRYPTION_KEY = ""
 # ── CPU 한도 ───────────────────────────────────────────────────────────────────
 [limits]
 cpu_ms = 50000
-
-# ── Scheduled (ISR 캐시 갱신 cron) ────────────────────────────────────────────
-# 매 5분마다 활성 사이트 홈 페이지 캐시 예열
-[[triggers.crons]]
-crons = ["*/5 * * * *"]
 
 # ── 개발 환경 ──────────────────────────────────────────────────────────────────
 [dev]
