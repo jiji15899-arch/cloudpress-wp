@@ -17,48 +17,7 @@
 
 import { CORS, _j, ok, err, getToken, getUser, loadAllSettings, settingVal } from '../../_shared.js';
 
-const CF_API = 'https://api.cloudflare.com/client/v4';
-
-// ── CF API 공통 헬퍼 ──────────────────────────────────────────────────────────
-function cfHeaders(token, email) {
-  if (email) {
-    return {
-      'Content-Type': 'application/json',
-      'X-Auth-Key':   token,
-      'X-Auth-Email': email,
-    };
-  }
-  return { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token };
-}
-
-async function cfReq(auth, path, method = 'GET', body) {
-  const token = typeof auth === 'string' ? auth : auth.token;
-  const email = typeof auth === 'string' ? null  : auth.email;
-  const opts  = { method, headers: cfHeaders(token, email) };
-  if (body !== undefined && body !== null) opts.body = JSON.stringify(body);
-  try {
-    const res  = await fetch(CF_API + path, opts);
-    const json = await res.json();
-    if (!json.success) {
-      console.error(`[cfReq] ${method} ${path} 실패:`, JSON.stringify(json.errors || []));
-    }
-    return json;
-  } catch (e) {
-    return { success: false, errors: [{ message: e.message }] };
-  }
-}
-
-function cfErrMsg(json) {
-  return (json?.errors || []).map(e => (e.code ? `[${e.code}] ` : '') + (e.message || '')).join('; ') || 'unknown';
-}
-
-// ── 유틸리티 ──────────────────────────────────────────────────────────────────
-function randSuffix(len = 6) {
-  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
-  let out = '';
-  for (let i = 0; i < len; i++) out += chars[Math.floor(Math.random() * chars.length)];
-  return out;
-}
+import { deobfuscate, createD1, createKV, cfGetZone, cfUpsertDns, cfUpsertRoute, getWorkerSubdomain, enableWorkersDev, addWorkerCustomDomain, uploadWordPressWorker, resolveMainBindingIds, cfReq, cfErrMsg } from '../../_shared_cloudflare.js';
 
 function genPassword(len = 24) {
   const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%';
@@ -66,38 +25,6 @@ function genPassword(len = 24) {
   return Array.from(arr).map(b => chars[b % chars.length]).join('');
 }
 
-function deobfuscate(str, salt) {
-  if (!str) return '';
-  try {
-    const key = salt || 'cp_enc_v1';
-    const dec = atob(str);
-    let out = '';
-    for (let i = 0; i < dec.length; i++) {
-      out += String.fromCharCode(dec.charCodeAt(i) ^ key.charCodeAt(i % key.length));
-    }
-    return out;
-  } catch { return ''; }
-}
-
-// ── CF 리소스 생성 ────────────────────────────────────────────────────────────
-async function createD1(auth, accountId, prefix) {
-  const name = `cloudpress-site-${prefix}-${Date.now().toString(36)}`;
-  const res  = await cfReq(auth, `/accounts/${accountId}/d1/database`, 'POST', { name });
-  if (res.success && res.result) {
-    const id = res.result.uuid || res.result.id || res.result.database_id;
-    if (id) return { ok: true, id, name };
-  }
-  return { ok: false, error: 'D1 생성 실패: ' + cfErrMsg(res) };
-}
-
-async function createKV(auth, accountId, prefix) {
-  const title = `cloudpress-site-${prefix}-kv`;
-  const res   = await cfReq(auth, `/accounts/${accountId}/storage/kv/namespaces`, 'POST', { title });
-  if (res.success && res.result?.id) {
-    return { ok: true, id: res.result.id, title };
-  }
-  return { ok: false, error: 'KV 생성 실패: ' + cfErrMsg(res) };
-}
 
 // ── 상태 관리 ─────────────────────────────────────────────────────────────────
 function makeSiteState(initial = {}) {
@@ -717,191 +644,6 @@ async function uploadWordPressFilesToKV(auth, accountId, kvId, sitePrefix, wpVer
 // - getBuiltinWorkerSource() 완전 제거 (자체 CMS 코드 embed 없음)
 // - worker.js는 항상 env.WORKER_SOURCE에서 로드 (wrangler secret put으로 주입)
 // - GitHub fallback 없음 (항상 배포된 버전 사용)
-async function uploadWordPressWorker(auth, accountId, workerName, opts) {
-  const {
-    mainDbId, cacheKvId, sessionsKvId, siteD1Id, siteKvId,
-    cfAccountId, cfApiToken, sitePrefix, siteName, siteDomain,
-    supabaseUrl, supabaseKey,
-    adminUser, adminPass, adminEmail,
-    wpVersion, workerSource,
-  } = opts;
-
-  const token = typeof auth === 'string' ? auth : auth.token;
-  const email = typeof auth === 'string' ? null  : auth.email;
-
-  // ── Bindings ──────────────────────────────────────────────────────────────
-  const bindings = [];
-  // 플랫폼 공용 DB
-  if (mainDbId)     bindings.push({ type: 'd1',           name: 'CP_MAIN_DB', id: mainDbId });
-  // 캐시 KV
-  if (cacheKvId)    bindings.push({ type: 'kv_namespace', name: 'CACHE',      namespace_id: cacheKvId });
-  // 세션 KV
-  if (sessionsKvId) bindings.push({ type: 'kv_namespace', name: 'SESSIONS',   namespace_id: sessionsKvId });
-  // 사이트별 D1
-  if (siteD1Id)     bindings.push({ type: 'd1',           name: 'DB',         id: siteD1Id });
-  // 사이트별 KV (WordPress 파일 저장)
-  if (siteKvId)     bindings.push({ type: 'kv_namespace', name: 'SITE_KV',    namespace_id: siteKvId });
-
-  // 플레인 텍스트
-  bindings.push({ type: 'plain_text', name: 'CP_SITE_NAME',  text: siteName    || '' });
-  bindings.push({ type: 'plain_text', name: 'CP_SITE_URL',   text: 'https://' + (siteDomain || '') });
-  bindings.push({ type: 'plain_text', name: 'SITE_PREFIX',   text: sitePrefix  || '' });
-  bindings.push({ type: 'plain_text', name: 'CF_ACCOUNT_ID', text: cfAccountId || '' });
-  bindings.push({ type: 'plain_text', name: 'WP_VERSION',    text: wpVersion   || '6.7.1' });
-  bindings.push({ type: 'plain_text', name: 'WP_ADMIN_USER', text: adminUser   || 'admin' });
-
-  // 시크릿
-  if (adminPass)    bindings.push({ type: 'secret_text', name: 'WP_ADMIN_PASS', text: adminPass });
-  if (adminEmail)   bindings.push({ type: 'plain_text',  name: 'ADMIN_EMAIL',   text: adminEmail });
-  if (supabaseUrl)  bindings.push({ type: 'secret_text', name: 'SUPABASE_URL',  text: supabaseUrl });
-  if (supabaseKey)  bindings.push({ type: 'secret_text', name: 'SUPABASE_KEY',  text: supabaseKey });
-  if (cfApiToken)   bindings.push({ type: 'secret_text', name: 'CF_API_TOKEN',  text: cfApiToken });
-
-  // ── Worker 소스 로드 ──────────────────────────────────────────────────────
-  // opts.workerSource는 provision 핸들러에서 이미 fetch/검증된 소스
-  let src = workerSource || '';
-
-  if (!src || src.length < 200) {
-    return { ok: false, error: 'Worker 소스가 비어 있습니다.' };
-  }
-
-  // ── 메타데이터 ────────────────────────────────────────────────────────────
-  const metadata = {
-    main_module:         'worker.js',
-    compatibility_date:  '2025-04-01',
-    compatibility_flags: ['nodejs_compat'],
-    bindings,
-    // Scheduled Cron: WordPress 자동 업데이트 (매일 02:00 KST)
-    schedules: [{ cron: '0 17 * * *' }], // UTC 17:00 = KST 02:00
-  };
-
-  // ── Multipart 업로드 ──────────────────────────────────────────────────────
-  const boundary = '----CPWPUpload' + Date.now().toString(36) + randSuffix(4);
-  const enc      = new TextEncoder();
-  const CRLF     = '\r\n';
-
-  const metaPart = enc.encode(
-    `--${boundary}${CRLF}` +
-    `Content-Disposition: form-data; name="metadata"${CRLF}` +
-    `Content-Type: application/json${CRLF}${CRLF}` +
-    JSON.stringify(metadata) + CRLF
-  );
-  const scriptPart = enc.encode(
-    `--${boundary}${CRLF}` +
-    `Content-Disposition: form-data; name="worker.js"; filename="worker.js"${CRLF}` +
-    `Content-Type: application/javascript+module${CRLF}${CRLF}` +
-    src + CRLF
-  );
-  const closePart = enc.encode(`--${boundary}--${CRLF}`);
-
-  const total = metaPart.length + scriptPart.length + closePart.length;
-  const body  = new Uint8Array(total);
-  let off = 0;
-  body.set(metaPart,   off); off += metaPart.length;
-  body.set(scriptPart, off); off += scriptPart.length;
-  body.set(closePart,  off);
-
-  try {
-    const res  = await fetch(
-      `${CF_API}/accounts/${accountId}/workers/scripts/${workerName}`,
-      {
-        method:  'PUT',
-        headers: {
-          ...cfHeaders(token, email),
-          'Content-Type': `multipart/form-data; boundary=${boundary}`,
-        },
-        body,
-      }
-    );
-    const json = await res.json();
-    if (!json.success) return { ok: false, error: 'Worker 업로드 실패: ' + cfErrMsg(json) };
-    return { ok: true };
-  } catch (e) {
-    return { ok: false, error: 'Worker 업로드 오류: ' + e.message };
-  }
-}
-
-// ── CF DNS / Route / Custom Domain ───────────────────────────────────────────
-async function cfGetZone(auth, domain) {
-  const root = domain.split('.').slice(-2).join('.');
-  const res  = await cfReq(auth, `/zones?name=${encodeURIComponent(root)}&status=active`);
-  if (res.success && res.result?.length > 0) return { ok: true, zoneId: res.result[0].id };
-  return { ok: false, error: '존 없음: ' + root };
-}
-
-async function cfUpsertDns(auth, zoneId, type, name, content, proxied = true) {
-  const list     = await cfReq(auth, `/zones/${zoneId}/dns_records?type=${type}&name=${encodeURIComponent(name)}`);
-  const existing = list.result?.[0];
-  if (existing) {
-    const res = await cfReq(auth, `/zones/${zoneId}/dns_records/${existing.id}`, 'PATCH', { content, proxied });
-    return { ok: res.success, recordId: existing.id };
-  }
-  const res = await cfReq(auth, `/zones/${zoneId}/dns_records`, 'POST', { type, name, content, proxied, ttl: 1 });
-  if (res.success) return { ok: true, recordId: res.result?.id };
-  return { ok: false, error: cfErrMsg(res) };
-}
-
-async function cfUpsertRoute(auth, zoneId, pattern, workerName) {
-  const list     = await cfReq(auth, `/zones/${zoneId}/workers/routes`);
-  const existing = (list.result || []).find(r => r.pattern === pattern);
-  if (existing) {
-    const res = await cfReq(auth, `/zones/${zoneId}/workers/routes/${existing.id}`, 'PUT', { pattern, script: workerName });
-    return { ok: res.success, routeId: existing.id };
-  }
-  const res = await cfReq(auth, `/zones/${zoneId}/workers/routes`, 'POST', { pattern, script: workerName });
-  if (res.success) return { ok: true, routeId: res.result?.id };
-  return { ok: false, error: cfErrMsg(res) };
-}
-
-async function getWorkerSubdomain(auth, accountId, workerName) {
-  const res = await cfReq(auth, `/accounts/${accountId}/workers/subdomain`);
-  if (res.success && res.result?.subdomain) return `${workerName}.${res.result.subdomain}.workers.dev`;
-  return `${workerName}.workers.dev`;
-}
-
-async function enableWorkersDev(auth, accountId, workerName) {
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const res = await cfReq(auth, `/accounts/${accountId}/workers/scripts/${workerName}/subdomain`, 'POST', { enabled: true });
-    if (res.success) return true;
-    if (attempt < 2) await new Promise(r => setTimeout(r, 1000));
-  }
-  return false;
-}
-
-async function addWorkerCustomDomain(auth, accountId, workerName, hostname) {
-  const res = await cfReq(auth, `/accounts/${accountId}/workers/domains`, 'PUT', {
-    hostname, service: workerName, environment: 'production',
-  });
-  return res.success ? { ok: true, id: res.result?.id } : { ok: false, error: cfErrMsg(res) };
-}
-
-async function resolveMainBindingIds(auth, accountId) {
-  const result = { mainDbId: '', cacheKvId: '', sessionsKvId: '' };
-  try {
-    const pagesRes = await cfReq(auth, `/accounts/${accountId}/pages/projects`);
-    if (!pagesRes.success) return result;
-    const project = (pagesRes.result || []).find(p =>
-      p.name?.toLowerCase().includes('cloudpress') || p.name?.toLowerCase().includes('cp-')
-    );
-    if (!project) return result;
-    const projRes    = await cfReq(auth, `/accounts/${accountId}/pages/projects/${project.name}`);
-    if (!projRes.success) return result;
-    const bindings   = projRes.result?.deployment_configs?.production?.d1_databases || {};
-    const kvBindings = projRes.result?.deployment_configs?.production?.kv_namespaces || {};
-    for (const [name, val] of Object.entries(bindings)) {
-      const id = val?.id || val?.database_id || '';
-      if (!id) continue;
-      if (name === 'DB' || name === 'MAIN_DB') result.mainDbId = id;
-    }
-    for (const [name, val] of Object.entries(kvBindings)) {
-      const id = val?.namespace_id || val?.id || '';
-      if (!id) continue;
-      if (name === 'CACHE')    result.cacheKvId    = id;
-      if (name === 'SESSIONS') result.sessionsKvId = id;
-    }
-  } catch (e) { console.warn('[provision] 바인딩 ID 자동 탐색 실패:', e.message); }
-  return result;
-}
 
 // ── 설치 잠금 확인 ────────────────────────────────────────────────────────────
 async function checkInstallLock(env, siteId) {
@@ -916,209 +658,244 @@ async function checkInstallLock(env, siteId) {
 // ── 메인 핸들러 ───────────────────────────────────────────────────────────────
 export const onRequestOptions = () => new Response(null, { status: 204, headers: CORS });
 
-export async function onRequestPost({ request, env, params }) {
+export async function onRequestPost(ctx) {
+  const { request, env, params } = ctx;
   const user = await getUser(env, request);
   if (!user) return err('로그인이 필요합니다.', 401);
 
   const siteId = params?.id;
   if (!siteId) return err('사이트 ID가 없습니다.', 400);
 
-  // 설치 잠금 확인
-  const alreadyInstalled = await checkInstallLock(env, siteId);
-  if (alreadyInstalled) {
-    return ok({ message: '이미 설치된 사이트입니다.', installed: true });
-  }
-
-  // 데이터 조회
-  let site, settings;
-  try {
-    const [siteRow, settingsRows] = await env.DB.batch([
-      env.DB.prepare(
-        'SELECT s.id, s.user_id, s.name, s.primary_domain, s.site_prefix,'
-        + ' s.status, s.provision_step, s.plan,'
-        + ' s.site_d1_id, s.site_kv_id,'
-        + ' s.supabase_url, s.supabase_key,'
-        + ' u.cf_global_api_key, u.cf_account_email, u.cf_account_id, u.email'
-        + ' FROM sites s JOIN users u ON u.id = s.user_id'
-        + ' WHERE s.id=? AND s.user_id=?'
-      ).bind(siteId, user.id),
-      env.DB.prepare('SELECT key, value FROM settings'),
-    ]);
-
-    site = siteRow.results?.[0] ?? null;
-    const rawSettings = settingsRows.results || [];
-    settings = {};
-    for (const r of rawSettings) settings[r.key] = r.value ?? '';
-  } catch (e) { return err('초기 데이터 조회 오류: ' + e.message, 500); }
-
-  if (!site) return err('사이트를 찾을 수 없습니다.', 404);
-  if (site.status === 'active') return ok({ message: '이미 완료된 사이트입니다.', installed: true });
-
-  // 프로비저닝 상태 설정
-  try {
-    await env.DB.prepare(
-      "UPDATE sites SET status='provisioning', provision_step='starting', error_message=NULL, updated_at=datetime('now') WHERE id=?"
-    ).bind(siteId).run();
-  } catch (e) { console.error('initial status update err:', e.message); }
-
+  // 초기 상태 설정 (try-catch 블록 외부에서, 가능한 빨리)
   const siteState = makeSiteState();
-  const encKey    = env?.ENCRYPTION_KEY || 'cp_enc_default';
+  let currentSiteStatus = 'provisioning';
+  let currentProvisionStep = 'starting';
+  let currentErrorMessage = null;
 
-  // CF 인증 결정
-  const adminCfToken   = settingVal(settings, 'cf_api_token');
-  const adminCfAccount = settingVal(settings, 'cf_account_id');
-
-  let cfAuth = null, cfAccount = null;
-
-  if (site.cf_global_api_key && site.cf_account_id) {
-    const raw = deobfuscate(site.cf_global_api_key, encKey);
-    const key = (raw && raw.length > 5) ? raw : site.cf_global_api_key;
-    cfAuth    = site.cf_account_email ? { token: key, email: site.cf_account_email } : { token: key };
-    cfAccount = site.cf_account_id;
-  }
-
-  if (!cfAuth || !cfAccount) {
-    if (adminCfToken && adminCfAccount) {
-      cfAuth    = { token: adminCfToken };
-      cfAccount = adminCfAccount;
-    }
-  }
-
-  if (!cfAuth || !cfAccount) {
-    const e = 'Cloudflare API 키가 설정되지 않았습니다.';
-    await failSite(env.DB, siteId, 'config_missing', e);
-    return err(e, 400);
-  }
-
-  const domain     = site.primary_domain;
-  const wwwDomain  = 'www.' + domain;
-  const prefix     = site.site_prefix;
-  const workerName = 'cloudpress-site-' + prefix;
-  const siteUrl    = 'https://' + domain;
-
-  // WordPress 버전 결정
-  let wpVersion = '6.7.1';
   try {
-    const verRes = await fetch('https://api.wordpress.org/core/version-check/1.7/');
-    if (verRes.ok) {
-      const verData = await verRes.json();
-      wpVersion = verData?.offers?.[0]?.version || wpVersion;
+    // 설치 잠금 확인
+    const alreadyInstalled = await checkInstallLock(env, siteId);
+    if (alreadyInstalled) {
+      return ok({ message: '이미 설치된 사이트입니다.', installed: true });
     }
-  } catch { /* use default */ }
 
-  console.log(`[provision] WordPress ${wpVersion} 설치 시작: ${domain}`);
-
-  // ── Step 1: D1 + KV 생성 ────────────────────────────────────────────────
-  siteState.set({ provision_step: 'd1_kv_create' });
-
-  let d1Id = site.site_d1_id || null;
-  let kvId = site.site_kv_id || null;
-
-  if (!d1Id || !kvId) {
-    const createTasks = [];
-    if (!d1Id) createTasks.push(createD1(cfAuth, cfAccount, prefix));
-    if (!kvId) createTasks.push(createKV(cfAuth, cfAccount, prefix));
-
-    const results = await Promise.all(createTasks);
-    let ri = 0;
-    if (!d1Id) {
-      const d1Res = results[ri++];
-      if (!d1Res.ok) { await failSite(env.DB, siteId, 'd1_create', d1Res.error); return err(d1Res.error, 500); }
-      d1Id = d1Res.id;
-      siteState.set({ site_d1_id: d1Id, site_d1_name: d1Res.name });
-      console.log(`[provision] D1 생성: ${d1Res.name} (${d1Id})`);
-    }
-    if (!kvId) {
-      const kvRes = results[ri++];
-      if (!kvRes.ok) { await failSite(env.DB, siteId, 'kv_create', kvRes.error); return err(kvRes.error, 500); }
-      kvId = kvRes.id;
-      siteState.set({ site_kv_id: kvId, site_kv_title: kvRes.title });
-      console.log(`[provision] KV 생성: ${kvRes.title} (${kvId})`);
-    }
-  }
-
-  // ── Step 2: WordPress D1 스키마 초기화 ──────────────────────────────────
-  siteState.set({ provision_step: 'd1_schema' });
-  console.log('[provision] WordPress D1 스키마 초기화...');
-
-  const adminUsername = 'admin';
-  const adminPassword = genPassword(16);
-
-  let mainDbId     = settingVal(settings, 'main_db_id',     '');
-  let cacheKvId    = settingVal(settings, 'cache_kv_id',    '');
-  let sessionsKvId = settingVal(settings, 'sessions_kv_id', '');
-
-  const [schemaRes, resolvedIds] = await Promise.all([
-    initWordPressD1Schema(cfAuth, cfAccount, d1Id, {
-      siteName: site.name, siteUrl, adminEmail: site.email || user.email,
-      adminUser: adminUsername, adminPass: adminPassword,
-    }),
-    (!mainDbId || !cacheKvId || !sessionsKvId)
-      ? resolveMainBindingIds(cfAuth, cfAccount)
-      : Promise.resolve(null),
-  ]);
-
-  if (!schemaRes.ok) console.warn('[provision] D1 스키마 초기화 부분 실패');
-
-  if (resolvedIds) {
-    if (!mainDbId)     mainDbId     = resolvedIds.mainDbId     || '';
-    if (!cacheKvId)    cacheKvId    = resolvedIds.cacheKvId    || '';
-    if (!sessionsKvId) sessionsKvId = resolvedIds.sessionsKvId || '';
-    if (resolvedIds.mainDbId || resolvedIds.cacheKvId || resolvedIds.sessionsKvId) {
-      const upsertSql = `INSERT INTO settings (key,value,updated_at) VALUES (?,?,datetime('now'))
-                         ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at`;
-      const stmts = [];
-      if (resolvedIds.mainDbId)     stmts.push(env.DB.prepare(upsertSql).bind('main_db_id',     resolvedIds.mainDbId));
-      if (resolvedIds.cacheKvId)    stmts.push(env.DB.prepare(upsertSql).bind('cache_kv_id',    resolvedIds.cacheKvId));
-      if (resolvedIds.sessionsKvId) stmts.push(env.DB.prepare(upsertSql).bind('sessions_kv_id', resolvedIds.sessionsKvId));
-      if (stmts.length) env.DB.batch(stmts).catch(e => console.warn('[provision] 바인딩 ID 저장 실패:', e.message));
-    }
-  }
-
-  // ── Step 3: WordPress 파일 KV 업로드 (Direct Upload API) ────────────────
-  // 진짜 WordPress 파일들을 하나씩 업로드
-  // Rate limit 방지: 5개 배치, 600ms 간격
-  siteState.set({ provision_step: 'wp_files_upload' });
-  console.log(`[provision] WordPress ${wpVersion} 파일 업로드 시작 (Direct Upload API)...`);
-
-  const uploadRes = await uploadWordPressFilesToKV(
-    cfAuth, cfAccount, kvId, prefix, wpVersion
-  );
-  console.log(`[provision] 파일 업로드 결과: ${uploadRes.uploaded}/${uploadRes.total} 성공`);
-
-  // ── Step 4: WordPress Worker 업로드 ─────────────────────────────────────
-  siteState.set({ provision_step: 'worker_upload' });
-  console.log(`[provision] WordPress Worker 업로드: ${workerName}`);
-
-  // worker.js 소스 로드
-  // 1순위: env.WORKER_SOURCE (secret으로 주입된 경우)
-  // 2순위: Pages 자신의 /worker.js 정적 파일에서 fetch (항상 최신 배포 버전)
-  let workerSource = (env.WORKER_SOURCE && env.WORKER_SOURCE.length > 200)
-    ? env.WORKER_SOURCE
-    : null;
-
-  if (!workerSource) {
+    // 데이터 조회
+    let site, settings;
     try {
-      const baseUrl = new URL(request.url);
-      const workerJsUrl = `${baseUrl.protocol}//${baseUrl.host}/worker.js`;
-      console.log(`[provision] worker.js fetch: ${workerJsUrl}`);
-      const fetchRes = await fetch(workerJsUrl);
-      if (fetchRes.ok) {
-        const text = await fetchRes.text();
-        if (text && text.length > 200) {
-          workerSource = text;
-          console.log(`[provision] worker.js fetch 성공: ${text.length} bytes`);
-        }
+      const [siteRow, settingsRows] = await env.DB.batch([
+        env.DB.prepare(
+          'SELECT s.id, s.user_id, s.name, s.primary_domain, s.site_prefix,'
+          + ' s.status, s.provision_step, s.plan,'
+          + ' s.site_d1_id, s.site_kv_id,'
+          + ' s.supabase_url, s.supabase_key,'
+          + ' u.cf_global_api_key, u.cf_account_email, u.cf_account_id, u.email'
+          + ' FROM sites s JOIN users u ON u.id = s.user_id'
+          + ' WHERE s.id=? AND s.user_id=?'
+        ).bind(siteId, user.id),
+        env.DB.prepare('SELECT key, value FROM settings'),
+      ]);
+
+      site = siteRow.results?.[0] ?? null;
+      const rawSettings = settingsRows.results || [];
+      settings = {};
+      for (const r of rawSettings) settings[r.key] = r.value ?? '';
+    } catch (e) {
+      currentErrorMessage = '초기 데이터 조회 오류: ' + e.message;
+      await failSite(env.DB, siteId, 'data_fetch_error', currentErrorMessage);
+      return err(currentErrorMessage, 500);
+    }
+
+    if (!site) {
+      currentErrorMessage = '사이트를 찾을 수 없습니다.';
+      await failSite(env.DB, siteId, 'site_not_found', currentErrorMessage);
+      return err(currentErrorMessage, 404);
+    }
+    if (site.status === 'active') return ok({ message: '이미 완료된 사이트입니다.', installed: true });
+
+    // 프로비저닝 시작 상태 업데이트
+    currentProvisionStep = 'starting';
+    await flushSiteState(env.DB, siteId, { status: 'provisioning', provision_step: currentProvisionStep, error_message: null });
+
+    const encKey    = env?.ENCRYPTION_KEY || 'cp_enc_default';
+
+    // CF 인증 결정
+    const adminCfToken   = settingVal(settings, 'cf_api_token');
+    const adminCfAccount = settingVal(settings, 'cf_account_id');
+
+    let cfAuth = null, cfAccount = null;
+
+    if (site.cf_global_api_key && site.cf_account_id) {
+      const raw = deobfuscate(site.cf_global_api_key, encKey);
+      const key = (raw && raw.length > 5) ? raw : site.cf_global_api_key;
+      cfAuth    = site.cf_account_email ? { token: key, email: site.cf_account_email } : { token: key };
+      cfAccount = site.cf_account_id;
+    }
+
+    if (!cfAuth || !cfAccount) {
+      if (adminCfToken && adminCfAccount) {
+        cfAuth    = { token: adminCfToken };
+        cfAccount = adminCfAccount;
+      }
+    }
+
+    if (!cfAuth || !cfAccount) {
+      const e = 'Cloudflare API 키가 설정되지 않았습니다.';
+      currentErrorMessage = e;
+      await failSite(env.DB, siteId, 'config_missing', e);
+      return err(e, 400);
+    }
+
+    // 결제 여부 확인 (어드민/매니저는 무료)
+    if (user.role !== 'admin' && user.role !== 'manager') {
+      if (site.billing_status === 'past_due' || (!site.billing_status && site.plan !== 'free')) {
+        await failSite(env.DB, siteId, 'billing_required', '결제가 필요합니다.');
+        return err('호스팅 비용 결제가 필요합니다.', 402);
+      }
+    }
+
+    const domain     = site.primary_domain;
+    const wwwDomain  = 'www.' + domain;
+    const prefix     = site.site_prefix;
+    const workerName = 'cloudpress-site-' + prefix;
+    const siteUrl    = 'https://' + domain;
+
+    // WordPress 버전 결정
+    let wpVersion = '6.7.1'; // Fallback
+    try {
+      const verRes = await fetch('https://api.wordpress.org/core/version-check/1.7/');
+      if (verRes.ok) {
+        const verData = await verRes.json();
+        wpVersion = verData?.offers?.[0]?.version || wpVersion;
       }
     } catch (e) {
-      console.error('[provision] worker.js fetch 실패:', e.message);
+      console.warn(`[provision] WordPress 버전 확인 실패, 기본값 ${wpVersion} 사용: ${e.message}`);
     }
-  }
 
-  if (!workerSource) {
-    // Fallback: 최소 동작 Worker (사이트 도메인 연결은 유지, 콘텐츠는 "구성 중" 표시)
-    console.warn('[provision] worker.js 소스 없음 — fallback minimal worker 사용');
-    workerSource = `
+    console.log(`[provision] WordPress ${wpVersion} 설치 시작: ${domain}`);
+
+    // ── Step 1: D1 + KV 생성 ────────────────────────────────────────────────
+    currentProvisionStep = 'd1_kv_create';
+    await flushSiteState(env.DB, siteId, { provision_step: currentProvisionStep });
+
+    let d1Id = site.site_d1_id || null;
+    let kvId = site.site_kv_id || null;
+
+    if (!d1Id || !kvId) {
+      const createTasks = [];
+      if (!d1Id) createTasks.push(createD1(cfAuth, cfAccount, prefix));
+      if (!kvId) createTasks.push(createKV(cfAuth, cfAccount, prefix));
+
+      const results = await Promise.all(createTasks);
+      let ri = 0;
+      if (!d1Id) {
+        const d1Res = results[ri++];
+        if (!d1Res.ok) { await failSite(env.DB, siteId, 'd1_create', d1Res.error); return err(d1Res.error, 500); }
+        d1Id = d1Res.id;
+        siteState.set({ site_d1_id: d1Id, site_d1_name: d1Res.name });
+        console.log(`[provision] D1 생성: ${d1Res.name} (${d1Id})`);
+      }
+      if (!kvId) {
+        const kvRes = results[ri++];
+        if (!kvRes.ok) { await failSite(env.DB, siteId, 'kv_create', kvRes.error); return err(kvRes.error, 500); }
+        kvId = kvRes.id;
+        siteState.set({ site_kv_id: kvId, site_kv_title: kvRes.title });
+        console.log(`[provision] KV 생성: ${kvRes.title} (${kvId})`);
+      }
+      await flushSiteState(env.DB, siteId, siteState.get()); // D1/KV ID 업데이트
+    }
+
+    // ── Step 2: WordPress D1 스키마 초기화 ──────────────────────────────────
+    currentProvisionStep = 'd1_schema';
+    await flushSiteState(env.DB, siteId, { provision_step: currentProvisionStep });
+    console.log('[provision] WordPress D1 스키마 초기화...');
+
+    const adminUsername = 'admin'; // WordPress admin username
+    const adminPassword = genPassword(16); // Random password for WordPress admin
+
+    let mainDbId     = settingVal(settings, 'main_db_id',     '');
+    let cacheKvId    = settingVal(settings, 'cache_kv_id',    '');
+    let sessionsKvId = settingVal(settings, 'sessions_kv_id', '');
+
+    const [schemaRes, resolvedIds] = await Promise.all([
+      initWordPressD1Schema(cfAuth, cfAccount, d1Id, {
+        siteName: site.name, siteUrl, adminEmail: site.email || user.email,
+        adminUser: adminUsername, adminPass: adminPassword,
+      }),
+      // Only try to resolve main binding IDs if they are not already set in settings
+      (!mainDbId || !cacheKvId || !sessionsKvId)
+        ? resolveMainBindingIds(cfAuth, cfAccount)
+        : Promise.resolve(null),
+    ]);
+
+    if (!schemaRes.ok) {
+      console.warn('[provision] D1 스키마 초기화 부분 실패:', schemaRes.error);
+      // This might not be a fatal error, so we log and continue.
+    }
+
+    if (resolvedIds) {
+      if (!mainDbId)     mainDbId     = resolvedIds.mainDbId     || '';
+      if (!cacheKvId)    cacheKvId    = resolvedIds.cacheKvId    || '';
+      if (!sessionsKvId) sessionsKvId = resolvedIds.sessionsKvId || '';
+      if (resolvedIds.mainDbId || resolvedIds.cacheKvId || resolvedIds.sessionsKvId) {
+        const upsertSql = `INSERT INTO settings (key,value,updated_at) VALUES (?,?,datetime('now'))
+                           ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at`;
+        const stmts = [];
+        if (resolvedIds.mainDbId)     stmts.push(env.DB.prepare(upsertSql).bind('main_db_id',     resolvedIds.mainDbId));
+        if (resolvedIds.cacheKvId)    stmts.push(env.DB.prepare(upsertSql).bind('cache_kv_id',    resolvedIds.cacheKvId));
+        if (resolvedIds.sessionsKvId) stmts.push(env.DB.prepare(upsertSql).bind('sessions_kv_id', resolvedIds.sessionsKvId));
+        if (stmts.length) env.DB.batch(stmts).catch(e => console.warn('[provision] 바인딩 ID 저장 실패:', e.message));
+      }
+    }
+
+    // ── Step 3: WordPress 파일 KV 업로드 (Direct Upload API) ────────────────
+    currentProvisionStep = 'wp_files_upload';
+    await flushSiteState(env.DB, siteId, { provision_step: currentProvisionStep });
+    console.log(`[provision] WordPress ${wpVersion} 파일 업로드 시작 (Direct Upload API)...`);
+
+    const uploadRes = await uploadWordPressFilesToKV(
+      cfAuth, cfAccount, kvId, prefix, wpVersion
+    );
+    if (!uploadRes.ok) {
+      currentErrorMessage = `WordPress 파일 업로드 실패: ${uploadRes.error || '알 수 없는 오류'}`;
+      await failSite(env.DB, siteId, currentProvisionStep, currentErrorMessage);
+      return err(currentErrorMessage, 500);
+    }
+    console.log(`[provision] 파일 업로드 결과: ${uploadRes.uploaded}/${uploadRes.total} 성공`);
+
+    // ── Step 4: WordPress Worker 업로드 ─────────────────────────────────────
+    currentProvisionStep = 'worker_upload';
+    await flushSiteState(env.DB, siteId, { provision_step: currentProvisionStep });
+    console.log(`[provision] WordPress Worker 업로드: ${workerName}`);
+
+    // worker.js 소스 로드
+    // 1순위: env.WORKER_SOURCE (secret으로 주입된 경우)
+    // 2순위: Pages 자신의 /worker.js 정적 파일에서 fetch (항상 최신 배포 버전)
+    let workerSource = (env.WORKER_SOURCE && env.WORKER_SOURCE.length > 200)
+      ? env.WORKER_SOURCE
+      : null;
+
+    if (!workerSource) {
+      try {
+        const baseUrl = new URL(request.url);
+        const workerJsUrl = `${baseUrl.protocol}//${baseUrl.host}/worker.js`;
+        console.log(`[provision] worker.js fetch: ${workerJsUrl}`);
+        const fetchRes = await fetch(workerJsUrl);
+        if (fetchRes.ok) {
+          const text = await fetchRes.text();
+          if (text && text.length > 200) {
+            workerSource = text;
+            console.log(`[provision] worker.js fetch 성공: ${text.length} bytes`);
+          }
+        }
+      } catch (e) {
+        console.error('[provision] worker.js fetch 실패:', e.message);
+      }
+    }
+
+    if (!workerSource) {
+      // Fallback: 최소 동작 Worker (사이트 도메인 연결은 유지, 콘텐츠는 "구성 중" 표시)
+      console.warn('[provision] worker.js 소스 없음 — fallback minimal worker 사용');
+      workerSource = `
 /**
  * CloudPress Minimal Fallback Worker
  * worker.js 소스를 불러올 수 없어 최소 동작 Worker로 배포됩니다.
@@ -1285,15 +1062,18 @@ export default {
     wp_version:        wpVersion,
     error_message:     domainStatus === 'manual_required'
       ? `외부 DNS 설정 필요 — CNAME ${domain} → ${workerDevUrl}`
-      : null,
+        : (site.error_message || null),
   });
 
   await flushSiteState(env.DB, siteId, siteState.get());
+    finalStatus = 'active';
 
   const finalSite = await env.DB.prepare(
     'SELECT status, provision_step, error_message, wp_admin_url, primary_domain,'
     + ' site_d1_id, site_kv_id, domain_status, worker_name, name, wp_version FROM sites WHERE id=?'
   ).bind(siteId).first();
+    
+    await env.DB.prepare("UPDATE sites SET wp_installed=1, status='active' WHERE id=?").bind(siteId).run();
 
   return ok({
     message: `WordPress ${wpVersion} 프로비저닝 완료`,
