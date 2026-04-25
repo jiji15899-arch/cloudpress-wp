@@ -82,6 +82,13 @@ export async function onRequestPost({ request, env }) {
   const user = await getUser(env, request);
   if (!user) return err('로그인이 필요합니다.', 401);
 
+  // 관리자/매니저가 아닌 경우 결제 수단(카드 정보) 등록 여부 확인
+  if (user.role !== 'admin' && user.role !== 'manager') {
+    if (!user.card_number || !user.card_expiry) {
+      return err('호스팅 생성을 위해 먼저 "내 계정"에서 결제 수단을 등록해주세요. (7일 무료 체험 후 자동 결제)', 403);
+    }
+  }
+
   let body;
   try { body = await request.json(); } catch { return err('요청 형식 오류'); }
 
@@ -132,12 +139,12 @@ export async function onRequestPost({ request, env }) {
 
   if (existingDomain) return err('이미 사용 중인 도메인입니다.');
 
-  // 플랜 한도 확인 (메모리 settings에서, D1 쿼리 없음)
+  // [변경] 계정 단위 한도 체크 제거 (호스팅 단위 무제한 생성 가능)
+  // 단, 개별 호스팅의 trial/billing 상태로 관리됨
   const effectivePlan = sitePlan || user.plan || 'free';
-  const maxSites = getMaxSitesFromSettings(settings, user.plan);
-  if (maxSites !== -1 && siteCount >= maxSites) {
-    return err(`플랜(${user.plan})의 최대 사이트 수(${maxSites}개)를 초과했습니다.`, 403);
-  }
+
+  const trialEnd = new Date();
+  trialEnd.setDate(trialEnd.getDate() + 7); // 7일 무료 체험 세팅
 
   const siteId     = genId();
   const sitePrefix = genPrefix();
@@ -153,15 +160,17 @@ export async function onRequestPost({ request, env }) {
         site_prefix,
         wp_username, wp_password, wp_admin_email,
         wp_admin_url,
-        status, provision_step, plan
-      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
+        status, provision_step, plan,
+        billing_status, trial_ends_at
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
     ).bind(
       siteId, user.id, siteName.trim(),
       domain, 'pending',
       sitePrefix,
       adminLogin, wpAdminPw, user.email,
       wpAdminUrl,
-      'pending', 'init', effectivePlan
+      'pending', 'init', effectivePlan,
+      'trial', trialEnd.toISOString()
     ).run();
   } catch (e) {
     return err('사이트 레코드 생성 실패: ' + e.message, 500);
