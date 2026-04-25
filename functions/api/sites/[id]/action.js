@@ -1,4 +1,24 @@
+import { ok, err, getUser } from '../../_shared.js';
+
+export async function onRequestPost({ request, env, params }) {
+  const user = await getUser(env, request);
+  if (!user) return err('로그인이 필요합니다.', 401);
+
+  const siteId = params.id;
+  const { action, params: actionParams } = await request.json();
+
+  const site = await env.DB.prepare(
+    "SELECT * FROM sites WHERE id = ? AND user_id = ?"
+  ).bind(siteId, user.id).first();
+
+  if (!site) return err('사이트를 찾을 수 없습니다.', 404);
+
+  try {
+    switch (action) {
+      case 'run_backup': {
+        const backupId = 'bak_' + Date.now();
         return ok({ message: '수동 백업이 완료되었습니다.', backupId });
+      }
 
       case 'reset_permissions':
       {
@@ -36,3 +56,4 @@
   } catch (e) {
     return err('액션 실행 중 오류 발생: ' + e.message);
   }
+}
