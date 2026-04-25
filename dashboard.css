@@ -10,7 +10,7 @@
   --sidebar-w:240px;--hh:60px;
   --tr:.18s ease;
 }
-html,body{height:100%;font-family:var(--font-body);background:var(--bg);color:var(--text);overflow-x:hidden;cursor:auto !important;}
+html,body{min-height:100vh;font-family:var(--font-body);background:var(--bg);color:var(--text);overflow-x:hidden;cursor:auto !important;}
 
 /* ── Layout ── */
 .app-wrap{display:flex;min-height:100vh}
@@ -18,7 +18,7 @@ html,body{height:100%;font-family:var(--font-body);background:var(--bg);color:va
 /* ── Sidebar ── */
 .sidebar{
   width:var(--sidebar-w);flex-shrink:0;
-  background:#ffffff;border-right:1px solid var(--border); /* Cloudways sidebar background */
+  background:var(--surface);border-right:1px solid var(--border);
   display:flex;flex-direction:column;
   position:fixed;top:0;left:0;height:100vh;z-index:100;
   box-shadow: 2px 0 4px rgba(0,0,0,0.02); /* Subtle shadow */
