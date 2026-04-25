@@ -23,10 +23,10 @@
 
 // ── 상수 ────────────────────────────────────────────────────────────────────
 const VERSION          = '21.0';
-const CACHE_TTL_STATIC = 86400;      // 정적 파일 1일
-const CACHE_TTL_HTML   = 300;        // HTML 5분
+const CACHE_TTL_STATIC = 31536000;   // 1년 (불변 자산)
+const CACHE_TTL_HTML   = 60;         // 실시간성 유지
 const CACHE_TTL_API    = 30;         // REST API 30초
-const CACHE_TTL_STALE  = 86400;
+const CACHE_TTL_STALE  = 31536000;   // 캐시 만료 후에도 즉시 서빙 (백그라운드 갱신)
 const KV_WP_PREFIX     = 'wp_file:'; // WordPress 파일 KV 키
 const KV_SITE_PREFIX   = 'site_domain:';
 const KV_OPT_PREFIX    = 'opt:';
@@ -187,15 +187,18 @@ async function proxyToWordPressOrigin(env, siteInfo, request, url) {
   headers.set('Host', url.hostname);
 
   try {
-    const originReq = new Request(originUrl, {
-      method:  request.method,
-      headers,
-      body:    ['GET','HEAD'].includes(request.method) ? undefined : request.body,
-      redirect: 'manual',
-    });
+    const originReq = new Request(originUrl, request);
+    // 오리진 요청 시 압축 알고리즘 강제 (성능 최적화)
+    headers.set('Accept-Encoding', 'br, gzip');
+
     const originRes = await fetch(originReq);
-    // 응답 헤더에서 내부 IP 노출 제거
     const resHeaders = new Headers(originRes.headers);
+    
+    // AWS CloudFront보다 빠른 서빙을 위한 캐시 헤더 재작성
+    if (originRes.ok && method === 'GET') {
+      resHeaders.set('Cache-Control', `public, max-age=${CACHE_TTL_HTML}, stale-while-revalidate=${CACHE_TTL_STALE}`);
+    }
+
     resHeaders.delete('X-Powered-By');
     resHeaders.delete('Server');
     resHeaders.set('X-CP-Version', VERSION);
