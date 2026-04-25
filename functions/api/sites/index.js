@@ -1,8 +1,5 @@
 import { ok, err, getUser } from '../_shared.js';
 
-/**
- * POST: 새 사이트 생성 또는 특정 액션 처리
- */
 export async function onRequestPost({ request, env }) {
   if (!env?.DB || !env?.SESSIONS) return err('서버 설정 오류: 데이터베이스 연결 불가', 503);
   
