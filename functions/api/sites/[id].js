@@ -35,6 +35,8 @@ export async function onRequest({ request, env, params }) {
                 site_prefix, worker_name, worker_route, worker_route_www,
                 worker_route_id, worker_route_www_id, cf_zone_id,
                 site_d1_id, site_kv_id,
+                supabase_url, supabase_key, storage_bucket,
+                supabase_url2, supabase_key2, storage_bucket2,
                 wp_admin_url, wp_admin_username, wp_admin_password,
                 status, provision_step, error_message,
                 suspended, suspension_reason, disk_used, bandwidth_used,
@@ -88,6 +90,32 @@ export async function onRequest({ request, env, params }) {
       ]);
     }
 
+    // 1-b. CF Worker Script 삭제
+    if (cfToken && cfAccount && site.worker_name) {
+      fetch(`https://api.cloudflare.com/client/v4/accounts/${cfAccount}/workers/scripts/${site.worker_name}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': 'Bearer ' + cfToken },
+      }).catch(() => {});
+    }
+
+    // 1-c. CF Worker Custom Domain 삭제 (있는 경우)
+    if (cfToken && cfAccount && site.primary_domain && site.worker_name) {
+      // Worker Custom Domains 목록 조회 후 삭제
+      fetch(`https://api.cloudflare.com/client/v4/accounts/${cfAccount}/workers/domains`, {
+        headers: { 'Authorization': 'Bearer ' + cfToken },
+      }).then(async r => {
+        const j = await r.json().catch(() => ({}));
+        for (const d of j.result || []) {
+          if (d.service === site.worker_name) {
+            fetch(`https://api.cloudflare.com/client/v4/accounts/${cfAccount}/workers/domains/${d.id}`, {
+              method: 'DELETE',
+              headers: { 'Authorization': 'Bearer ' + cfToken },
+            }).catch(() => {});
+          }
+        }
+      }).catch(() => {});
+    }
+
     // 2. 전역 CACHE KV 도메인 매핑 삭제
     try {
       await env.CACHE.delete(`site_domain:${site.primary_domain}`);
@@ -110,6 +138,36 @@ export async function onRequest({ request, env, params }) {
         }).catch(() => {});
       }
     }
+
+    // 3-b. Supabase 스토리지 버킷 삭제
+    const supaDeleteBucket = async (url, key, bucket) => {
+      if (!url || !key || !bucket) return;
+      try {
+        // 버킷 내 파일 전체 삭제
+        await fetch(`${url}/storage/v1/object/list/${bucket}`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${key}`, 'apikey': key, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prefix: '', limit: 1000 }),
+        }).then(async r => {
+          const j = await r.json().catch(() => ({}));
+          const files = (j || []).map(f => f.name).filter(Boolean);
+          if (files.length) {
+            await fetch(`${url}/storage/v1/object/${bucket}`, {
+              method: 'DELETE',
+              headers: { 'Authorization': `Bearer ${key}`, 'apikey': key, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ prefixes: files }),
+            }).catch(() => {});
+          }
+        }).catch(() => {});
+        // 버킷 자체 삭제
+        await fetch(`${url}/storage/v1/bucket/${bucket}`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${key}`, 'apikey': key },
+        }).catch(() => {});
+      } catch (_) {}
+    };
+    supaDeleteBucket(site.supabase_url,  site.supabase_key,  site.storage_bucket  || 'media');
+    supaDeleteBucket(site.supabase_url2, site.supabase_key2, site.storage_bucket2 || 'media');
 
     // 4. DB soft delete
     await env.DB.prepare(
