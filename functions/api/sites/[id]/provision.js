@@ -746,7 +746,7 @@ export async function onRequestPost(ctx) {
 
     // 결제 여부 확인 (어드민/매니저는 무료)
     if (user.role !== 'admin' && user.role !== 'manager') {
-      if (site.billing_status === 'past_due' || (!site.billing_status && site.plan !== 'free')) {
+      if (site.billing_status === 'past_due') {
         await failSite(env.DB, siteId, 'billing_required', '결제가 필요합니다.');
         return err('호스팅 비용 결제가 필요합니다.', 402);
       }
