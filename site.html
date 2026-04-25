@@ -188,7 +188,7 @@
   </main>
 </div>
 
-<script src="app.js"></script>
+<script src="/app.js?v=20.1"></script>
 <script>
 const STATUS_LABELS = {
   pending:'대기 중',provisioning:'호스팅 생성 중',installing_wp:'WordPress 설치 중',
@@ -196,6 +196,18 @@ const STATUS_LABELS = {
 };
 let currentSite=null, currentDomains=[];
 function esc(s){return String(s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
+function showToast(msg, type) {
+  type = type || 'info';
+  var t = document.getElementById('cpToast');
+  if (!t) return;
+  t.textContent = msg;
+  var colors = { success:'#22c55e', error:'#ef4444', info:'#6366f1', warning:'#f59e0b' };
+  t.style.background = colors[type] || colors.info;
+  t.style.opacity = '1';
+  t.style.transform = 'translateY(0)';
+  clearTimeout(t._tid);
+  t._tid = setTimeout(function() { t.style.opacity='0'; t.style.transform='translateY(8px)'; }, 3000);
+}
 let resourceChart = null;
 
 function switchTab(tabId) {
@@ -674,5 +686,6 @@ async function deleteSite(id,name){
   await loadSite();
 })();
 </script>
+<div id="cpToast" style="position:fixed;bottom:24px;right:24px;padding:12px 20px;border-radius:10px;font-size:.88rem;font-weight:500;color:#fff;opacity:0;transform:translateY(8px);transition:all .3s;pointer-events:none;z-index:9999;max-width:320px"></div>
 </body>
 </html>
