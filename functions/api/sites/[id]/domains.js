@@ -45,4 +45,7 @@ export async function onRequestPost(ctx) {
     }
     return err('DNS 반영 실패: ' + dnsData.errors[0].message);
   }
+
+  return err('잘못된 요청(Action)입니다.', 400);
+}
   
