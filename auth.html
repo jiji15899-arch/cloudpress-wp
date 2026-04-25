@@ -13,7 +13,7 @@
     html,body{height:100%;font-family:var(--font-body);background:var(--bg);color:var(--text)}
     .bg{position:fixed;inset:0;background:radial-gradient(ellipse 80% 60% at 20% 0%,rgba(249,115,22,.12),transparent 60%),radial-gradient(ellipse 60% 60% at 80% 100%,rgba(236,72,153,.08),transparent 60%)}
     .grid{position:fixed;inset:0;background-image:linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px);background-size:48px 48px}
-    .page{position:relative;z-index:1;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+    .page{position:relative;z-index:1;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;cursor:auto;}
     .card{width:100%;max-width:440px;background:var(--surface);border:1px solid var(--border2);border-radius:20px;padding:44px 40px;box-shadow:0 40px 80px rgba(0,0,0,.5)}
     .logo{display:flex;align-items:center;gap:8px;font-family:var(--font-head);font-size:1.1rem;font-weight:700;text-decoration:none;color:var(--text);margin-bottom:36px}
     .tabs{display:flex;gap:4px;background:var(--bg);border-radius:10px;padding:4px;margin-bottom:28px}
@@ -33,6 +33,7 @@
     .cp-toast.error{background:#ef4444}.cp-toast.success{background:#22c55e}
     @media(max-width:480px){.card{padding:32px 22px}}
   </style>
+  <style>.cursor, .cursor-follower { display: none; }</style>
 </head>
 <body>
   <div class="cursor" id="cursor"></div>
