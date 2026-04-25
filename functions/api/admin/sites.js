@@ -100,3 +100,54 @@ export async function onRequest({ request, env }) {
 
   return err('지원하지 않는 메서드', 405);
 }
+
+import { ok, err, requireAdminOrMgr, CORS } from '../_shared.js';
+
+export async function onRequestGet({ request, env }) {
+  const admin = await requireAdminOrMgr(env, request);
+  if (!admin) return err('Forbidden', 403);
+
+  const { results } = await env.DB.prepare(
+    "SELECT s.*, u.email as owner_email FROM sites s JOIN users u ON s.user_id = u.id WHERE s.deleted_at IS NULL ORDER BY s.created_at DESC"
+  ).all();
+  return ok({ sites: results });
+}
+
+export async function onRequestPut({ request, env }) {
+  const admin = await requireAdminOrMgr(env, request);
+  if (!admin) return err('Forbidden', 403);
+
+  const body = await request.json();
+  const { id, action, reason } = body;
+
+  if (action === 'suspend') {
+    await env.DB.prepare(
+      "UPDATE sites SET suspended = 1, status = 'suspended', suspension_reason = ? WHERE id = ?"
+    ).bind(reason || '관리자에 의해 정지됨', id).run();
+    
+    // Cache 무효화
+    const site = await env.DB.prepare("SELECT primary_domain FROM sites WHERE id = ?").bind(id).first();
+    if (site && env.CACHE) await env.CACHE.delete(`site_domain:${site.primary_domain}`);
+    
+    return ok({ message: '사이트가 정지되었습니다.' });
+  }
+
+  if (action === 'resume') {
+    await env.DB.prepare(
+      "UPDATE sites SET suspended = 0, status = 'active' WHERE id = ?"
+    ).bind(id).run();
+    return ok({ message: '사이트가 다시 활성화되었습니다.' });
+  }
+
+  return err('Invalid action');
+}
+
+export async function onRequestDelete({ request, env }) {
+  const admin = await requireAdminOrMgr(env, request);
+  if (!admin) return err('Forbidden', 403);
+  const { id } = await request.json();
+  await env.DB.prepare("UPDATE sites SET deleted_at = datetime('now'), status = 'deleted' WHERE id = ?").bind(id).run();
+  return ok({ message: '사이트가 완전히 삭제되었습니다.' });
+}
+
+export const onRequestOptions = () => new Response(null, { status: 204, headers: CORS });
