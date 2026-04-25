@@ -2,17 +2,17 @@
 
 /* ─── Variables ─────────────────────────── */
 :root {
-  --bg:        #f5f7fa; /* Cloudways background */
-  --bg2:       #f8fafc; /* Slightly darker background */
+  --bg:        #ffffff; /* Cloudways main is clean white */
+  --bg2:       #f9faff; /* Light blueish tint for sections */
   --surf:      #ffffff; /* Card/surface background */
   --surf2:     #f1f5f9; /* Lighter surface for hover/active states */
-  --border:    #e2e8f0; /* Light border */
+  --border:    #dde4ee; /* Refined border color */
   --border2:   #cbd5e1; /* Slightly darker border */
-  --accent:    #2c33d8; /* Cloudways blue accent */
-  --accent2:   #4c51bf; /* Darker blue accent */
+  --accent:    #2c33d8; /* Cloudways Blue */
+  --accent2:   #1a20b0; /* Deep Blue */
   --aglow:     rgba(44,51,216,0.22); /* Blue glow */
-  --t1:        #2d3748; /* Dark text */
-  --t2:        #718096; /* Muted text */
+  --t1:        #111827; /* Deep charcoal for headers */
+  --t2:        #4b5563; /* Neutral gray for body */
   --grad:      linear-gradient(135deg,var(--accent) 0%,var(--accent2) 100%); /* Blue gradient */
   --r:         14px;
   --r2:        22px;
@@ -27,11 +27,11 @@ html{scroll-behavior:smooth;-webkit-font-smoothing:antialiased;text-size-adjust:
 body{
   background:var(--bg); /* Cloudways background */
   color:var(--t1); /* Cloudways text */
-  font-family:'Inter',system-ui,sans-serif; /* Cloudways font */
+  font-family:'DM Sans','Inter',system-ui,sans-serif;
   font-size:16px;
-  line-height:1.65;
+  line-height:1.6;
   overflow-x:hidden;
-  cursor:auto; /* Default cursor */
+  cursor: default !important; /* Force default cursor to fix visibility issues */
 }
 a{color:inherit;text-decoration:none}
 ul{list-style:none}
@@ -45,8 +45,8 @@ button{cursor:pointer;border:none;background:none;font:inherit;color:inherit} /*
 ::-webkit-scrollbar-thumb:hover{background:var(--accent)} /* Cloudways thumb hover */
 ::selection{background:rgba(44,51,216,.28);color:var(--t1)} /* Blue selection */
 
-/* ─── Custom Cursor (Removed for Cloudways style) ──────────────────────── */
-.cursor, .cursor-follower { display: none; }
+/* Force hide custom cursor to prevent display issues */
+.cursor, .cursor-follower { display: none !important; pointer-events: none; }
 
 /* ─── Noise (Removed for Cloudways clean style) ──────────────────────────────── */
 .noise { display: none; }
@@ -55,7 +55,7 @@ button{cursor:pointer;border:none;background:none;font:inherit;color:inherit} /*
 .container{max-width:var(--max);margin:0 auto;padding:0 24px}
 
 /* ─── Section ────────────────────────────── */
-.section{padding:112px 0}
+.section{padding:100px 0; background-color: inherit;}
 
 /* ─── Buttons ────────────────────────────── */
 .btn{
@@ -110,10 +110,10 @@ button{cursor:pointer;border:none;background:none;font:inherit;color:inherit} /*
 
 /* ─── Hero ───────────────────────────────── */
 .hero{
-  min-height:100vh;
+  min-height:90vh;
   display:flex;flex-direction:column;align-items:center;justify-content:center;
   position:relative;overflow:hidden;
-  padding-top:var(--hh);
+  background: radial-gradient(circle at top right, #f0f4ff, transparent);
 }
 .hero-bg{position:absolute;inset:0;overflow:hidden}
 .grid-overlay{
@@ -146,7 +146,7 @@ button{cursor:pointer;border:none;background:none;font:inherit;color:inherit} /*
 
 .hero-title{
   font-family:'Syne',sans-serif;
-  font-size:clamp(46px,6.5vw,90px);
+  font-size:clamp(36px,5vw,64px);
   font-weight:800;line-height:1.05;letter-spacing:-2.5px; /* Large, bold title */
 }
 .grad{background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
