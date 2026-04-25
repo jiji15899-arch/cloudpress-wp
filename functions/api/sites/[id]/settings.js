@@ -4,7 +4,7 @@
 import { ok, err, getUser, loadAllSettings, settingVal } from '../../_shared.js';
 import { uploadWordPressWorker, deobfuscate, cfGetZone, cfUpdateWafRules } from '../../_shared_cloudflare.js';
 
-export async function onRequestPut(ctx) {
+export async function onRequestPut(ctx) { // Closing brace for this function was missing
   const { request, env, params } = ctx;
   const user = await getUser(env, request);
   if (!user) return err('로그인이 필요합니다.', 401);
@@ -14,7 +14,7 @@ export async function onRequestPut(ctx) {
 
   const body = await request.json();
   const { php_version, waf_enabled } = body; 
-
+  
   const site = await env.DB.prepare('SELECT * FROM sites WHERE id=? AND user_id=?').bind(siteId, user.id).first();
   if (!site) return err('사이트를 찾을 수 없습니다.', 404);
 
@@ -73,8 +73,3 @@ export async function onRequestPut(ctx) {
   } catch (e) {
     return err('설정 반영 중 오류: ' + e.message);
   }
-}
-
-  // 현재 사이트 정보 조회
-  const site = await env.DB.prepare(
-    'SELECT * FROM sites WHERE id=? AND user_id=?'
