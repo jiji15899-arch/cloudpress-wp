@@ -19,13 +19,16 @@ export async function onRequestPut({ request, env }) {
 
   // 카드 정보 업데이트 전용 로직
   if (body.action === 'update_payment') {
-    const { card_number, card_expiry } = body;
-    if (!card_number || !card_expiry) return err('카드 정보를 모두 입력해주세요.');
+    const cardNumber = String(body.card_number || '').replace(/\s/g, '');
+    const cardExpiry = String(body.card_expiry || '').trim();
+
+    if (!cardNumber || !cardExpiry) return err('카드 정보를 모두 입력해주세요.');
 
     try {
       await env.DB.prepare(
         "UPDATE users SET card_number = ?, card_expiry = ?, updated_at = datetime('now') WHERE id = ?"
-      ).bind(card_number, card_expiry, user.id).run();
+      ).bind(cardNumber, cardExpiry, user.id).run();
+      
       return ok({ message: '결제 수단이 저장되었습니다.' });
     } catch (e) {
       return err('저장 실패: ' + e.message);
