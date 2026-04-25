@@ -2,21 +2,24 @@ import { ok, err, getUser } from '../_shared.js';
 
 export async function onRequestPost({ request, env }) {
   if (!env?.DB || !env?.SESSIONS) return err('서버 설정 오류: 데이터베이스 연결 불가', 503);
-  
+
   const user = await getUser(env, request);
   if (!user) return err('로그인이 필요합니다.', 401);
 
   let body;
   try { body = await request.json(); } catch { return err('요청 형식 오류'); }
 
-  // ── 사이트 생성 시 결제 수단 확인 ───────────────────────────
+  // ── 사이트 생성 ──────────────────────────────────────────────────
   if (!body.action || body.action === 'create') {
+    const isPrivileged = user.role === 'admin' || user.role === 'manager';
+
     // DB에서 최신 사용자 정보(카드 및 Cloudflare API 정보) 조회
     const fullUser = await env.DB.prepare(
-      "SELECT card_number, cf_global_api_key, cf_account_id, cf_account_email FROM users WHERE id=?"
+      'SELECT card_number, cf_global_api_key, cf_account_id, cf_account_email FROM users WHERE id=?'
     ).bind(user.id).first();
 
-    if (user.role !== 'admin' && user.role !== 'manager' && !fullUser?.card_number) {
+    // 어드민/매니저는 결제 수단 없이 사이트 생성 가능
+    if (!isPrivileged && !fullUser?.card_number) {
       return err('사이트 생성을 위해 먼저 "내 계정" 탭에서 결제용 카드를 등록해주세요.', 403);
     }
 
@@ -31,9 +34,9 @@ export async function onRequestPost({ request, env }) {
 
     try {
       await env.DB.prepare(
-        "INSERT INTO sites (id, user_id, name, site_prefix, plan, status, created_at, billing_status) VALUES (?, ?, ?, ?, ?, 'pending', datetime('now'), 'trial')"
+        "INSERT INTO sites (id, user_id, name, site_prefix, plan, status, created_at) VALUES (?, ?, ?, ?, ?, 'pending', datetime('now'))"
       ).bind(siteId, user.id, body.name || 'My Site', prefix, body.plan || 'starter').run();
-      
+
       return ok({ siteId, prefix, message: '사이트 레코드가 생성되었습니다.' });
     } catch (e) {
       return err('데이터베이스 저장 실패: ' + e.message);
@@ -41,4 +44,30 @@ export async function onRequestPost({ request, env }) {
   }
 
   return err('지원되지 않는 액션입니다.');
+}
+
+export async function onRequestGet({ request, env }) {
+  if (!env?.DB || !env?.SESSIONS) return err('서버 설정 오류: 데이터베이스 연결 불가', 503);
+
+  const user = await getUser(env, request);
+  if (!user) return err('로그인이 필요합니다.', 401);
+
+  try {
+    const isAdmin = user.role === 'admin' || user.role === 'manager';
+    let rows;
+    if (isAdmin) {
+      rows = await env.DB.prepare(
+        `SELECT id, user_id, name, primary_domain, site_prefix, status, plan, created_at, updated_at
+         FROM sites WHERE deleted_at IS NULL ORDER BY created_at DESC`
+      ).all();
+    } else {
+      rows = await env.DB.prepare(
+        `SELECT id, user_id, name, primary_domain, site_prefix, status, plan, created_at, updated_at
+         FROM sites WHERE user_id=? AND deleted_at IS NULL ORDER BY created_at DESC`
+      ).bind(user.id).all();
+    }
+    return ok({ sites: rows.results || [] });
+  } catch (e) {
+    return err('사이트 목록 조회 실패: ' + e.message, 500);
+  }
 }
