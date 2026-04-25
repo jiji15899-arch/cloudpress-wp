@@ -23,8 +23,21 @@ async function cfReq(auth, path, method = 'GET', body) {
   }
 }
 
+// Cloudflare 에러 코드 한국어 매핑
+const CF_ERROR_MAP = {
+  '1061': '이미 Cloudflare에 등록된 도메인입니다.',
+  '1049': '올바른 도메인 형식이 아니거나 권한이 없는 도메인입니다.',
+  '10000': '인증 오류: API 키를 다시 확인해주세요.',
+  '6003': '잘못된 이메일 또는 API 키 형식입니다.',
+  '81057': '동일한 이름의 레코드가 이미 존재합니다.',
+  'default': 'Cloudflare 통신 중 오류가 발생했습니다.'
+};
+
 function cfErrMsg(json) {
-  return (json?.errors || []).map(e => (e.code ? `[${e.code}] ` : '') + (e.message || '')).join('; ') || 'unknown';
+  if (!json?.errors?.length) return CF_ERROR_MAP.default;
+  return json.errors.map(e => {
+    return CF_ERROR_MAP[String(e.code)] || e.message || CF_ERROR_MAP.default;
+  }).join(', ');
 }
 
 export async function onRequest({ request, env }) {
