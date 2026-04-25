@@ -1,10 +1,9 @@
 // functions/api/support.js
-import { ok, err, getUser, loadAllSettings, settingVal } from '../_shared.js';
+import { ok, err, getUser, loadAllSettings, settingVal } from '../../_shared.js';
 
 export async function onRequestPost(ctx) {
-  const { request, env, db } = ctx;
+  const { request, env } = ctx;
   const user = await getUser(env, request); // User might be logged in or not
-
   const { subject, message, email } = await request.json();
 
   if (!subject || !message || !email) {
@@ -13,15 +12,16 @@ export async function onRequestPost(ctx) {
 
   try {
     const userId = user ? user.id : null;
-    await db.prepare(
+
+    await env.DB.prepare(
       'INSERT INTO support_tickets (user_id, subject, message, email, created_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)'
     ).bind(userId, subject, message, email).run();
 
     // --- Email Notification to Admin ---
-    const settings = await loadAllSettings(db);
-    const adminEmail = settingVal(settings, 'admin_contact_email', 'admin@cloudpress.site'); 
+    const settings = await loadAllSettings(env.DB);
+    const adminEmail = settingVal(settings, 'admin_contact_email', 'admin@cloudpress.site');
 
-    await fetch('https://your-email-sending-service.workers.dev/send', { 
+    await fetch('https://your-email-sending-service.workers.dev/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
