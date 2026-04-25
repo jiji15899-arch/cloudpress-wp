@@ -206,37 +206,58 @@ function switchTab(tabId) {
 
 /* 실시간 로그 스트리밍 기능 */
 let logSocket = null;
+let reconnectAttempts = 0;
+let reconnectTimeout = null;
+
 async function startLogStreaming() {
   const consoleEl = document.getElementById('logConsole');
   if (!consoleEl) return;
   
+  if (reconnectTimeout) clearTimeout(reconnectTimeout);
+
   const res = await CP.initLogTail(currentSite.id);
   if (!res.ok) {
     consoleEl.innerHTML += `<div class="log-entry error">로그 세션 연결 실패: ${res.error}</div>`;
+    // API 실패 시에도 백오프 재시도
+    retryConnection();
     return;
   }
 
   logSocket = new WebSocket(res.url, ['cloudflare-worker-tail']);
   logSocket.onopen = () => {
+    reconnectAttempts = 0; // 연결 성공 시 시도 횟수 초기화
     consoleEl.innerHTML += `<div class="log-entry info">WebSocket 연결 성공. 실시간 스트리밍 중...</div>`;
   };
   logSocket.onmessage = (event) => {
-    const data = JSON.parse(event.data);
-    const entry = document.createElement('div');
-    entry.className = `log-entry ${data.level === 'error' ? 'error' : 'info'}`;
-    const time = new Date(data.timestamp).toLocaleTimeString();
-    const msg = data.logs.map(l => l.message).join(' ') || `${data.event.request.method} ${data.event.request.url}`;
-    entry.innerHTML = `<span class="log-time">${time}</span> ${esc(msg)}`;
-    consoleEl.appendChild(entry);
-    if (consoleEl.childNodes.length > 100) consoleEl.removeChild(consoleEl.firstChild);
-    consoleEl.scrollTop = consoleEl.scrollHeight;
+    try {
+      const data = JSON.parse(event.data);
+      const entry = document.createElement('div');
+      entry.className = `log-entry ${data.level === 'error' ? 'error' : 'info'}`;
+      const time = new Date(data.timestamp).toLocaleTimeString();
+      const msg = data.logs?.map(l => l.message).join(' ') || `${data.event?.request?.method || 'GET'} ${data.event?.request?.url || ''}`;
+      entry.innerHTML = `<span class="log-time">${time}</span> ${esc(msg)}`;
+      consoleEl.appendChild(entry);
+      if (consoleEl.childNodes.length > 100) consoleEl.removeChild(consoleEl.firstChild);
+      consoleEl.scrollTop = consoleEl.scrollHeight;
+    } catch(e) {}
   };
-  logSocket.onclose = () => {
-    consoleEl.innerHTML += `<div class="log-entry">연결이 종료되었습니다.</div>`;
+  logSocket.onclose = (e) => {
+    consoleEl.innerHTML += `<div class="log-entry">연결이 종료되었습니다. 재연결을 시도합니다...</div>`;
+    retryConnection();
+  };
+  logSocket.onerror = () => {
+    logSocket.close();
   };
 }
 
+function retryConnection() {
+  const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000); // 최대 30초 백오프
+  reconnectAttempts++;
+  reconnectTimeout = setTimeout(startLogStreaming, delay);
+}
+
 function stopLogStreaming() {
+  if (reconnectTimeout) clearTimeout(reconnectTimeout);
   if (logSocket) logSocket.close();
 }
 
