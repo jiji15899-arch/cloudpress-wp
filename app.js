@@ -138,8 +138,6 @@ Object.assign(CP, {
   updateSite:  (id, b) => CP.put(`/sites/${id}`, b),
   updateSiteSettings: (id, b) => CP.put(`/sites/${id}/settings`, b),
   pollSite:    (id)    => CP.get(`/sites/${id}`),
-  // 사이트 생성 시 결제/할인 코드 포함
-  createSite: (b) => CP.post('/sites', b),
   
   // [사이트 상세 20+ 기능 핵심 API]
   siteAction: (id, action, params = {}) => CP.post(`/sites/${id}/action`, { action, ...params }),
