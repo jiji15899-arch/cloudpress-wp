@@ -12,7 +12,12 @@
     .plan-card { border: 2px solid var(--border); border-radius: 12px; padding: 24px; cursor: pointer; transition: all .2s; }
     .plan-card:hover { border-color: var(--accent); }
     .plan-card.selected { border-color: var(--accent); background: rgba(44, 51, 216, 0.05); }
+    .payment-options { display: flex; gap: 12px; margin-top: 16px; }
+    .pay-btn { flex:1; padding: 12px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; text-align: center; font-size: 0.9rem; font-weight: 600; }
+    .pay-btn.selected { border-color: var(--accent); background: rgba(44, 51, 216, 0.05); color: var(--accent); }
     .review-box { background: var(--surface2); border-radius: 10px; padding: 20px; margin-top: 20px; }
+    .promo-wrap { display: flex; gap: 8px; margin-top: 12px; }
+    .promo-wrap input { flex:1; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; }
   </style>
 </head>
 <body>
@@ -39,6 +44,14 @@
           </div>
           <div class="plan-card" onclick="selectPlan('business', 99000)">
             <h3>Business</h3><p>₩99,000/mo</p>
+          </div>
+        </div>
+        <div style="margin-top:24px">
+          <label class="cw-input-label">결제 수단 선택</label>
+          <div class="payment-options">
+            <div class="pay-btn selected" id="pay-card" onclick="selectPayment('card')">신용카드</div>
+            <div class="pay-btn" id="pay-vbank" onclick="selectPayment('vbank')">가상계좌</div>
+            <div class="pay-btn" id="pay-toss" onclick="selectPayment('toss')">토스페이</div>
           </div>
         </div>
         <div style="margin-top:32px; text-align:right">
@@ -76,6 +89,11 @@
           <div class="info-row"><span class="label">사이트 이름</span><span class="value" id="rName">-</span></div>
           <div class="info-row"><span class="label">위치</span><span class="value" id="rLoc">Seoul</span></div>
           <div class="info-row"><span class="label">월 결제 금액</span><span class="value" id="rPrice">₩9,900</span></div>
+          <div class="info-row"><span class="label">결제 수단</span><span class="value" id="rPayment">신용카드</span></div>
+        </div>
+        <div class="promo-wrap">
+          <input type="text" id="promoCode" placeholder="할인 코드 입력"/>
+          <button class="btn btn-ghost btn-sm" onclick="applyPromo()">적용</button>
         </div>
         <p style="margin-top:20px; font-size:.85rem; color:var(--muted)">'서버 생성' 클릭 시 즉시 프로비저닝이 시작됩니다.</p>
         <div style="margin-top:32px; display:flex; justify-content:space-between">
@@ -88,12 +106,23 @@
 </div>
 <script src="app.js"></script>
 <script>
-  let config = { plan: 'starter', price: 9900, name: '', loc: 'Seoul' };
+  let config = { plan: 'starter', price: 9900, name: '', loc: 'Seoul', payment_method: 'card', promo_code: '' };
 
   function selectPlan(p, price) {
     config.plan = p; config.price = price;
     document.querySelectorAll('.plan-card').forEach(c => c.classList.remove('selected'));
     event.currentTarget.classList.add('selected');
+  }
+
+  function selectPayment(m) {
+    config.payment_method = m;
+    document.querySelectorAll('.pay-btn').forEach(b => b.classList.remove('selected'));
+    document.getElementById('pay-' + m).classList.add('selected');
+  }
+
+  function applyPromo() {
+    config.promo_code = document.getElementById('promoCode').value.trim();
+    alert('할인 코드가 적용되었습니다: ' + config.promo_code);
   }
 
   function goStep(n) {
@@ -103,6 +132,7 @@
       document.getElementById('rPlan').textContent = config.plan.toUpperCase();
       document.getElementById('rName').textContent = config.name;
       document.getElementById('rPrice').textContent = `₩${config.price.toLocaleString()}`;
+      document.getElementById('rPayment').textContent = config.payment_method === 'card' ? '신용카드' : (config.payment_method === 'vbank' ? '가상계좌' : '토스페이');
     }
     document.querySelectorAll('.step-content, .step').forEach(el => el.classList.remove('active', 'done'));
     document.getElementById('step' + n).classList.add('active');
@@ -114,7 +144,12 @@
   async function createSite() {
     const btn = document.getElementById('btnCreate');
     btn.disabled = true; btn.textContent = '프로비저닝 중...';
-    const res = await CP.createSite({ name: config.name, plan: config.plan });
+    const res = await CP.createSite({ 
+      name: config.name, 
+      plan: config.plan,
+      payment_method: config.payment_method,
+      promo_code: config.promo_code
+    });
     if (res.ok) {
       location.href = '/dashboard.html?new=true';
     } else {
