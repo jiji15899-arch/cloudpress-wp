@@ -1,9 +1,11 @@
 /* CloudPress CMS app.js v4.0 */
 'use strict';
 
-window.CP = window.CP || {};
+// 전역 CP 객체 즉시 선언 및 window 할당 (로드 즉시 사용 가능하도록)
+const CP = window.CP || {};
+window.CP = CP;
 
-Object.assign(window.CP, {
+Object.assign(CP, {
   TOKEN_KEY: 'cp_token',
   USER_KEY:  'cp_user',
 
@@ -37,7 +39,8 @@ Object.assign(window.CP, {
       },
     });
     let data;
-    try { data = await res.json(); } catch { data = { ok: false, error: '서버 오류' }; }
+    try { data = await res.json(); } catch { data = { ok: false, error: '서버 응답 형식이 올바르지 않습니다.' }; }
+    if (!res.ok) data.ok = false; // HTTP 에러 코드 대응
     if (res.status === 401) { this.clearAuth(); this._redirectToLogin(); }
     return data;
   },
@@ -128,13 +131,14 @@ Object.assign(window.CP, {
   // Sites
   getSites:    ()      => CP.get('/sites'),
   getSite:     (id)    => CP.get(`/sites/${id}`),
-  createSite:  (b)     => CP.post('/sites', b),
   deleteSite:  (id)    => CP.del(`/sites/${id}`),
   updateSite:  (id, b) => CP.put(`/sites/${id}`, b),
   updateSiteSettings: (id, b) => CP.put(`/sites/${id}/settings`, b),
   pollSite:    (id)    => CP.get(`/sites/${id}`),
-  // 사이트 생성 시 결제/할인 코드 포함
+
+  // 사이트 생성 및 프로비저닝 통합 로직
   createSite: (b) => CP.post('/sites', b),
+  startProvision: (id) => CP.post(`/sites/${id}/provision`, {}),
   
   // [사이트 상세 20+ 기능 핵심 API]
   siteAction: (id, action, params = {}) => CP.post(`/sites/${id}/action`, { action, ...params }),
