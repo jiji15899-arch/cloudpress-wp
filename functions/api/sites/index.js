@@ -1,5 +1,12 @@
-       WHERE user_id=? AND deleted_at IS NULL
-       ORDER BY created_at DESC`
+import { ok, err, getUser } from '../_shared.js';
+
+export async function onRequestGet({ request, env }) {
+  const user = await getUser(env, request);
+  if (!user) return err('로그인이 필요합니다.', 401);
+
+  try {
+    const { results } = await env.DB.prepare(
+      `SELECT * FROM sites WHERE user_id=? AND deleted_at IS NULL ORDER BY created_at DESC`
     ).bind(user.id).all();
     return ok({ sites: results ?? [] });
   } catch (e) {
