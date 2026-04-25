@@ -1,8 +1,9 @@
 /* CloudPress CMS app.js v4.0 */
 'use strict';
 
-window.CP = window.CP || {};
-const CP = window.CP;
+// 전역 CP 객체 즉시 선언 (CP is not defined 방지)
+const CP = {};
+window.CP = CP;
 
 Object.assign(CP, {
   TOKEN_KEY: 'cp_token',
@@ -49,9 +50,11 @@ Object.assign(CP, {
   del:  (p, b) => CP.api(p, { method: 'DELETE', body: JSON.stringify(b || {}) }),
 
   async apiFetch(path, opts = {}) {
+    if (typeof fetch === 'undefined') return;
     const token = this.getToken();
     // 경로가 /api 로 시작하지 않으면 자동으로 붙여줌
-    const url = path.startsWith('http') || path.startsWith('/') ? path : '/api/' + path;
+    const url = (path.startsWith('http') || path.startsWith('/')) ? path : '/api' + (path.startsWith('/') ? '' : '/') + path;
+    
     const headers = {
       'Content-Type': 'application/json',
       ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
