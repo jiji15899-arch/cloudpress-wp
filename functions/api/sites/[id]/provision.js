@@ -640,9 +640,8 @@ async function uploadWordPressFilesToKV(auth, accountId, kvId, sitePrefix, wpVer
   let uploaded = 0;
   let failed   = 0;
   const BATCH_SIZE = 5;   // 한 번에 최대 5개 병렬
-  const DELAY_MS   = 600; // 배치 간 간격 (rate limit 방지)
-  const FILE_DELAY = 100; // 파일 간 개별 간격
-
+  const DELAY_MS   = 3000; // 배치 간 간격 (3초 — rate limit 방지)
+  const FILE_DELAY = 500;  // 파일 간 개별 간격
   for (let i = 0; i < allFiles.length; i += BATCH_SIZE) {
     const batch = allFiles.slice(i, i + BATCH_SIZE);
 
