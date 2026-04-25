@@ -1,12 +1,12 @@
 /* CloudPress — dashboard.css */
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --bg:#f5f7fa;--surface:#ffffff;--surface2:#f8fafc;--surface3:#f1f5f9;
-  --border:#e2e8f0;--border2:#cbd5e1;
-  --text:#2d3748;--muted:#718096;--muted2:#a0aec0;
-  --accent:#2c33d8;--accent2:#4c51bf;
-  --success:#38a169;--warning:#dd6b20;--error:#e53e3e;--info:#3182ce;
-  --font-head:'Inter',sans-serif;--font-body:'Inter',sans-serif;
+  --bg:#f5f7fa;--surface:#ffffff;--surface2:#f8fafc;--surface3:#f1f5f9; /* Cloudways light theme */
+  --border:#e2e8f0;--border2:#cbd5e1; /* Cloudways borders */
+  --text:#2d3748;--muted:#718096;--muted2:#a0aec0; /* Cloudways text colors */
+  --accent:#2c33d8;--accent2:#4c51bf; /* Cloudways blue accent */
+  --success:#38a169;--warning:#dd6b20;--error:#e53e3e;--info:#3182ce; /* Standard status colors */
+  --font-head:'Inter',sans-serif;--font-body:'Inter',sans-serif; /* Cloudways font */
   --sidebar-w:240px;--hh:60px;
   --tr:.18s ease;
 }
@@ -18,10 +18,10 @@ html,body{height:100%;font-family:var(--font-body);background:var(--bg);color:va
 /* ── Sidebar ── */
 .sidebar{
   width:var(--sidebar-w);flex-shrink:0;
-  background:#ffffff;border-right:1px solid var(--border);
+  background:#ffffff;border-right:1px solid var(--border); /* Cloudways sidebar background */
   display:flex;flex-direction:column;
   position:fixed;top:0;left:0;height:100vh;z-index:100;
-  box-shadow: 2px 0 4px rgba(0,0,0,0.02);
+  box-shadow: 2px 0 4px rgba(0,0,0,0.02); /* Subtle shadow */
   transition:transform var(--tr);
 }
 .sb-logo{
@@ -36,14 +36,14 @@ html,body{height:100%;font-family:var(--font-body);background:var(--bg);color:va
 .sb-link{
   display:flex;align-items:center;gap:10px;
   padding:9px 10px;border-radius:8px;
-  color:#4a5568;font-size:.88rem;font-weight:500;
+  color:#4a5568;font-size:.88rem;font-weight:500; /* Cloudways link color */
   text-decoration:none;transition:all var(--tr);cursor:pointer;
   border:none;background:none;width:100%;text-align:left;
 }
 .sb-link svg{flex-shrink:0;opacity:.7}
 .sb-link:hover,.sb-link.active{background:var(--surface2);color:var(--text)}
 .sb-link.active svg,.sb-link:hover svg{opacity:1}
-.sb-link.active{background:rgba(44,51,216,0.05);color:var(--accent)}
+.sb-link.active{background:rgba(44,51,216,0.05);color:var(--accent)} /* Cloudways active link */
 .sb-link.active svg{color:var(--accent)}
 .sb-link.danger:hover{background:rgba(239,68,68,.1);color:var(--error)}
 
@@ -66,7 +66,7 @@ html,body{height:100%;font-family:var(--font-body);background:var(--bg);color:va
 .topbar{
   height:var(--hh);display:flex;align-items:center;justify-content:space-between;
   padding:0 32px;border-bottom:1px solid var(--border);
-  background:rgba(255,255,255,0.8);backdrop-filter:blur(12px);
+  background:rgba(255,255,255,0.8);backdrop-filter:blur(12px); /* Cloudways topbar background */
   position:sticky;top:0;z-index:50;
 }
 .topbar-title{font-family:var(--font-head);font-size:1rem;font-weight:700}
