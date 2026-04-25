@@ -1,7 +1,7 @@
 import { ok, err, getUser } from '../_shared.js';
 
 export async function onRequestPost(ctx) {
-  const { request, env } = ctx; // ctx.data contains user/db from middleware
+  const { request, env, db } = ctx.data; // Assuming ctx.data is populated by middleware with db and user
   const user = await getUser(env, request);
   const { siteId, planId, cardNumber, cardExpiry, tossVirtualAccount } = await request.json();
 
@@ -9,14 +9,14 @@ export async function onRequestPost(ctx) {
 
   // 1. 어드민/매니저 체크 (결제 면제)
   if (user.role === 'admin' || user.role === 'manager') {
-    await env.DB.prepare("UPDATE sites SET billing_status = 'active', plan = ? WHERE id = ?")
+    await db.prepare("UPDATE sites SET billing_status = 'active', plan = ? WHERE id = ?")
       .bind(planId || 'pro', siteId).run();
     return ok({ message: '관리자 권한으로 즉시 활성화되었습니다.' });
   }
 
   // 2. 카드 정보 저장 (검증 서버 연동 전 임시 저장)
   if (cardNumber) {
-    await env.DB.prepare("UPDATE users SET card_number = ?, card_expiry = ? WHERE id = ?") // db 대신 env.DB 사용
+    await db.prepare("UPDATE users SET card_number = ?, card_expiry = ? WHERE id = ?")
       .bind(cardNumber, cardExpiry, user.id).run();
   }
 
@@ -24,7 +24,7 @@ export async function onRequestPost(ctx) {
   const trialEnd = new Date();
   trialEnd.setDate(trialEnd.getDate() + 7);
 
-  await env.DB.prepare(` // db 대신 env.DB 사용
+  await db.prepare(`
     UPDATE sites 
     SET billing_status = 'trial',
         plan = ?,
