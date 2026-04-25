@@ -64,6 +64,22 @@
         <button class="btn btn-primary btn-sm" id="saveBtn" onclick="saveProfile()">저장</button>
       </div>
 
+      <!-- 결제 수단 추가 -->
+      <div class="section-card">
+        <div class="section-title">💳 결제 수단 관리</div>
+        <p style="font-size:.84rem;color:var(--muted);margin-bottom:16px">사이트 호스팅 비용 결제를 위한 카드를 등록합니다. (7일 무료 체험 종료 후 자동 결제)</p>
+        <div class="field">
+          <label>카드 번호</label>
+          <input type="text" id="cardNumber" placeholder="1234 5678 1234 5678" maxlength="19"/>
+        </div>
+        <div class="field">
+          <label>만료일 (MM/YY)</label>
+          <input type="text" id="cardExpiry" placeholder="MM/YY" maxlength="5"/>
+        </div>
+        <div id="cardErr" style="font-size:.82rem;color:var(--error);margin-bottom:10px;display:none"></div>
+        <button class="btn btn-primary btn-sm" id="paySaveBtn" onclick="savePaymentMethod()">결제 수단 저장</button>
+      </div>
+
       <!-- Cloudflare Global API 키 (핵심 기능) -->
       <div class="section-card" style="border-color:rgba(249,115,22,.2)">
         <div class="section-title" style="display:flex;align-items:center;gap:10px">
@@ -177,16 +193,37 @@ async function init(){
   document.getElementById('sbAvatar').textContent=currentUser.name[0].toUpperCase();
   document.getElementById('sbName').textContent=currentUser.name;
   document.getElementById('sbEmail').textContent=currentUser.email;
-  const d=await CP.getProfile();if(!d.ok)return;
+  
+  // 프로필 정보 로드
+  const d=await CP.getProfile();
+  if(!d.ok){
+    showToast('프로필 정보를 불러오지 못했습니다.', 'error');
+    return;
+  }
+  
   const u=d.user;
-  document.getElementById('pName').value=u.name;
-  document.getElementById('pEmail').value=u.email;
-  document.getElementById('siteCount').textContent=u.site_count||0;
-  const plan=CP.planInfo(u.plan);
-  document.getElementById('planInfo').innerHTML=`<span class="plan-badge" style="background:${plan.color}18;color:${plan.color}">${plan.name}</span>${u.plan!=='free'?` <a href="/pricing.html" style="font-size:.78rem;color:var(--accent);text-decoration:none;margin-left:8px">변경 →</a>`:'<a href="/pricing.html" style="font-size:.78rem;color:var(--accent);text-decoration:none;margin-left:8px">업그레이드 →</a>'}`;
+  
+  // UI 필드 채우기
+  const nameEl = document.getElementById('pName');
+  const emailEl = document.getElementById('pEmail');
+  const siteCountEl = document.getElementById('siteCount');
+  
+  if(nameEl) nameEl.value = u.name || '';
+  if(emailEl) emailEl.value = u.email || '';
+  if(siteCountEl) siteCountEl.textContent = u.site_count || 0;
+  if(u.card_number) {
+    document.getElementById('cardNumber').placeholder = '**** **** **** ' + u.card_number.slice(-4);
+    document.getElementById('cardExpiry').value = u.card_expiry || '';
+  }
 
-  // 🔧 CF API 상태 표시 개선
-  if(u.has_cf_api){
+  const plan=CP.planInfo(u.plan);
+  const planInfoEl = document.getElementById('planInfo');
+  if(planInfoEl) {
+    planInfoEl.innerHTML=`<span class="plan-badge" style="background:${plan.color}18;color:${plan.color}">${plan.name}</span>${u.plan!=='free'?` <a href="/pricing.html" style="font-size:.78rem;color:var(--accent);text-decoration:none;margin-left:8px">변경 →</a>`:'<a href="/pricing.html" style="font-size:.78rem;color:var(--accent);text-decoration:none;margin-left:8px">업그레이드 →</a>'}`;
+  }
+
+  // Cloudflare API 상태 업데이트
+  if(u.cf_account_id || u.has_cf_api){
     savedCfEmail = u.cf_account_email || '';
     document.getElementById('cfApiStatus').textContent='✓ 연결됨';
     document.getElementById('cfApiStatus').className='cf-api-status connected';
@@ -218,6 +255,28 @@ async function saveProfile(){
   const r=await CP.updateProfile({name});
   document.getElementById('saveBtn').disabled=false;document.getElementById('saveBtn').textContent='저장';
   if(r.ok){CP.setUser(r.user);showToast('저장 완료','success');}else showToast(r.error||'실패','error');
+}
+
+async function savePaymentMethod(){
+  const num = document.getElementById('cardNumber').value.replace(/\s/g,'');
+  const exp = document.getElementById('cardExpiry').value.trim();
+  const errEl = document.getElementById('cardErr');
+  errEl.style.display = 'none';
+
+  if(!CP.validateCardNumber(num)){
+    errEl.textContent = '유효하지 않은 카드 번호입니다.';
+    errEl.style.display = ''; return;
+  }
+  if(!/^\d{2}\/\d{2}$/.test(exp)){
+    errEl.textContent = '만료일을 MM/YY 형식으로 입력해주세요.';
+    errEl.style.display = ''; return;
+  }
+
+  document.getElementById('paySaveBtn').disabled = true;
+  const r = await CP.updatePaymentMethod(num, exp);
+  document.getElementById('paySaveBtn').disabled = false;
+  if(r.ok) showToast('결제 수단이 저장되었습니다.', 'success');
+  else showToast(r.error || '저장 실패', 'error');
 }
 
 // 🔧 CF API 편집 모드 활성화
