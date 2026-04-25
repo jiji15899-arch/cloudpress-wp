@@ -591,7 +591,7 @@ function updateProvisionSteps(provStep, status) {
 function startPolling(siteId) {
   let prevStep = null;
   let count    = 0;
-  const MAX    = 90; // provision await 중 UI 업데이트용 (90 * 2s = 3분)
+  const MAX    = 450; // provision await 중 UI 업데이트용 (450 * 2s = 15분)
 
   pollInterval = setInterval(async () => {
     count++;
