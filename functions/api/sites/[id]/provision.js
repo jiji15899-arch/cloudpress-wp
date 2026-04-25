@@ -1116,9 +1116,19 @@ export async function onRequestPost({ request, env, params }) {
   }
 
   if (!workerSource) {
-    await failSite(env.DB, siteId, 'worker_upload', 'worker.js 소스를 불러올 수 없습니다.');
-    return err('worker.js 소스 로드 실패: Pages에 worker.js가 배포되어 있는지 확인하세요.', 500);
-  }
+  // fallback: 빈 worker라도 배포해서 도메인 연결은 진행
+  console.warn('[provision] worker.js 소스 없음 — 최소 fallback worker 사용');
+  workerSource = `
+addEventListener('fetch', event => {
+  event.respondWith(handleRequest(event.request));
+});
+async function handleRequest(request) {
+  return new Response('<html><body><h1>Site is being set up...</h1><p>Please wait a few minutes and refresh.</p></body></html>', {
+    headers: { 'Content-Type': 'text/html; charset=utf-8' }
+  });
+}
+`.trim();
+}
 
   const cfApiTokenForWorker = typeof cfAuth === 'string' ? '' : cfAuth.token;
 
