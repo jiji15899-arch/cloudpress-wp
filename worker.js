@@ -699,3 +699,13 @@ a:hover{text-decoration:underline}
     headers: { 'Content-Type': 'text/html; charset=utf-8', 'Retry-After': '300' },
   });
 }
+
+addEventListener('scheduled', event => {
+  event.waitUntil(handleScheduled(event));
+});
+
+async function handleScheduled(event) {
+  // 5분마다 실행 — KV에 메모리 백업
+  const backupKey = `auto_backup:${Date.now()}`;
+  // 여기서 중요 데이터 KV 백업 로직
+}
