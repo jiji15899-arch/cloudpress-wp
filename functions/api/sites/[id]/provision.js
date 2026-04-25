@@ -639,9 +639,10 @@ async function uploadWordPressFilesToKV(auth, accountId, kvId, sitePrefix, wpVer
 
   let uploaded = 0;
   let failed   = 0;
-  const BATCH_SIZE = 5;   // 한 번에 최대 5개 병렬
-  const DELAY_MS   = 3000; // 배치 간 간격 (3초 — rate limit 방지)
-  const FILE_DELAY = 500;  // 파일 간 개별 간격
+  const BATCH_SIZE = 3;    // 한 번에 최대 3개 처리 (rate limit 방지)
+  const DELAY_MS   = 4000; // 배치 간 간격 4초 (총 13-15분 확보)
+  const FILE_DELAY = 800;  // 파일 간 개별 간격 0.8초
+
   for (let i = 0; i < allFiles.length; i += BATCH_SIZE) {
     const batch = allFiles.slice(i, i + BATCH_SIZE);
 
@@ -1115,19 +1116,47 @@ export async function onRequestPost({ request, env, params }) {
   }
 
   if (!workerSource) {
-  // fallback: 빈 worker라도 배포해서 도메인 연결은 진행
-  console.warn('[provision] worker.js 소스 없음 — 최소 fallback worker 사용');
-  workerSource = `
-addEventListener('fetch', event => {
-  event.respondWith(handleRequest(event.request));
-});
-async function handleRequest(request) {
-  return new Response('<html><body><h1>Site is being set up...</h1><p>Please wait a few minutes and refresh.</p></body></html>', {
-    headers: { 'Content-Type': 'text/html; charset=utf-8' }
-  });
-}
+    // Fallback: 최소 동작 Worker (사이트 도메인 연결은 유지, 콘텐츠는 "구성 중" 표시)
+    console.warn('[provision] worker.js 소스 없음 — fallback minimal worker 사용');
+    workerSource = `
+/**
+ * CloudPress Minimal Fallback Worker
+ * worker.js 소스를 불러올 수 없어 최소 동작 Worker로 배포됩니다.
+ * Pages에 worker.js 배포 후 사이트를 다시 프로비저닝하거나 재시도해주세요.
+ */
+export default {
+  async fetch(request, env) {
+    const url = new URL(request.url);
+    const html = \`<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>사이트 구성 중...</title>
+  <style>
+    body{margin:0;font-family:system-ui,sans-serif;background:#0a0a0f;color:#f0f0fa;display:flex;align-items:center;justify-content:center;min-height:100vh}
+    .box{text-align:center;padding:40px}
+    h1{font-size:1.5rem;margin-bottom:12px}
+    p{color:#9090aa;font-size:.95rem}
+    .spinner{width:40px;height:40px;border:3px solid rgba(249,115,22,.2);border-top-color:#f97316;border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 20px}
+    @keyframes spin{to{transform:rotate(360deg)}}
+  </style>
+</head>
+<body>
+  <div class="box">
+    <div class="spinner"></div>
+    <h1>🚀 사이트 구성 중...</h1>
+    <p>WordPress 사이트가 준비되고 있습니다.<br>잠시 후 새로고침해 주세요.</p>
+  </div>
+</body>
+</html>\`;
+    return new Response(html, {
+      headers: { 'Content-Type': 'text/html; charset=utf-8' }
+    });
+  }
+};
 `.trim();
-}
+  }
 
   const cfApiTokenForWorker = typeof cfAuth === 'string' ? '' : cfAuth.token;
 
