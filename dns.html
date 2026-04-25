@@ -544,7 +544,8 @@ function esc(s){ return String(s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&
   document.getElementById('sbAvatar').textContent = (u.name||u.email||'?')[0].toUpperCase();
   document.getElementById('sbName').textContent = u.name || '사용자';
   document.getElementById('sbEmail').textContent = u.email || '';
-  if (u.role === 'admin') document.getElementById('adminMenu').style.display = '';
+  const adminMenuEl = document.getElementById('adminMenu');
+  if (u.role === 'admin' && adminMenuEl) adminMenuEl.style.display = '';
   await loadZones();
 })();
 </script>
