@@ -14,12 +14,18 @@ export async function onRequestPost({ request, env }) {
 
   // ── 사이트 생성 시 결제 수단 확인 ───────────────────────────
   if (!body.action || body.action === 'create') {
-    if (user.role !== 'admin' && user.role !== 'manager') {
-      // DB에서 최신 사용자 정보(카드 정보 포함) 다시 조회
-      const fullUser = await env.DB.prepare("SELECT card_number FROM users WHERE id=?").bind(user.id).first();
-      if (!fullUser?.card_number) {
-        return err('사이트 생성을 위해 먼저 "내 계정" 탭에서 결제용 카드를 등록해주세요. (7일 무료 체험 후 자동 결제)', 403);
-      }
+    // DB에서 최신 사용자 정보(카드 및 Cloudflare API 정보) 조회
+    const fullUser = await env.DB.prepare(
+      "SELECT card_number, cf_global_api_key, cf_account_id, cf_account_email FROM users WHERE id=?"
+    ).bind(user.id).first();
+
+    if (user.role !== 'admin' && user.role !== 'manager' && !fullUser?.card_number) {
+      return err('사이트 생성을 위해 먼저 "내 계정" 탭에서 결제용 카드를 등록해주세요.', 403);
+    }
+
+    // Cloudflare API 정보 검증
+    if (!fullUser?.cf_global_api_key || !fullUser?.cf_account_id) {
+      return err('Cloudflare API 설정이 누락되었습니다. "내 계정"에서 Global API Key와 Account ID를 등록해주세요.', 400);
     }
 
     const siteId = 'site_' + Math.random().toString(36).slice(2, 11);
