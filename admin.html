@@ -24,7 +24,7 @@
         <div class="sb-label">시스템 관리</div>
         <a href="#overview" class="sb-link active">전체 현황</a>
         <a href="#users" class="sb-link">사용자 관리</a>
-        <a href="#sites" class="sb-link">전체 사이트</a>
+        <a href="#sites" class="sb-link" onclick="showTab('sites')">전체 사이트 관리</a>
         <a href="#settings" class="sb-link">글로벌 설정</a>
       </div>
       <div class="sb-section">
@@ -59,9 +59,28 @@
         </div>
       </div>
 
+      <!-- Global Site Management Table -->
+      <div id="tab-sites" style="display:none">
+        <h2 style="font-size:1.1rem;margin-bottom:16px;font-weight:700">전체 호스팅 사이트 현황</h2>
+        <div class="table-card">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>사이트명 / 소유자</th>
+                <th>플랜 / 빌링</th>
+                <th>상태</th>
+                <th>생성일</th>
+                <th>작업</th>
+              </tr>
+            </thead>
+            <tbody id="globalSiteList"></tbody>
+          </table>
+        </div>
+      </div>
+
       <!-- User Management Table -->
-      <h2 style="font-size:1.1rem;margin-bottom:16px;font-weight:700">최근 가입 사용자</h2>
-      <div class="table-card">
+      <div id="tab-users">
+        <h2 style="font-size:1.1rem;margin-bottom:16px;font-weight:700">최근 가입 사용자</h2>
         <table class="admin-table">
           <thead>
             <tr>
@@ -76,6 +95,7 @@
             <tr><td colspan="5" style="text-align:center;padding:40px;color:var(--muted)">데이터를 불러오는 중...</td></tr>
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   </main>
@@ -83,6 +103,55 @@
 
   <script src="app.js"></script>
   <script>
+    function showTab(tab) {
+      document.getElementById('tab-users').style.display = tab === 'users' ? '' : 'none';
+      document.getElementById('tab-sites').style.display = tab === 'sites' ? '' : 'none';
+      if(tab === 'sites') loadGlobalSites();
+    }
+
+    async function loadGlobalSites() {
+      const res = await CP.apiFetch('/admin/sites');
+      const data = await res.json();
+      const list = document.getElementById('globalSiteList');
+      if (!data.sites?.length) {
+        list.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px">생성된 사이트가 없습니다.</td></tr>';
+        return;
+      }
+      list.innerHTML = data.sites.map(s => {
+        const st = CP.statusBadge(s.status);
+        return `
+          <tr>
+            <td>
+              <div style="font-weight:700">${esc(s.name)}</div>
+              <div style="font-size:.75rem;color:var(--muted)">Owner ID: ${s.user_id}</div>
+            </td>
+            <td>
+              <span class="user-badge" style="background:var(--surface2)">${s.plan.toUpperCase()}</span>
+              <div style="font-size:.72rem;margin-top:4px;color:var(--muted)">${s.billing_status}</div>
+            </td>
+            <td><span class="badge" style="background:${st.color}18;color:${st.color}">${st.label}</span></td>
+            <td style="color:var(--muted)">${new Date(s.created_at).toLocaleDateString()}</td>
+            <td>
+              <button class="btn btn-ghost btn-sm" onclick="manageSite('${s.id}')">제어</button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    async function manualAdjust(userId) {
+      const action = prompt('실행할 작업을 입력하세요 (plan: 플랜변경, promo: 할인코드 발급)');
+      if (action === 'plan') {
+        const newPlan = prompt('변경할 플랜 (free, starter, pro, enterprise)');
+        const r = await CP.apiFetch('/admin/users', { method: 'PUT', body: JSON.stringify({ id: userId, action: 'update_plan', plan: newPlan }) });
+        if((await r.json()).ok) alert('변경 완료');
+      } else if (action === 'promo') {
+        const code = prompt('발급할 코드명');
+        const r = await CP.apiFetch('/admin/users', { method: 'PUT', body: JSON.stringify({ id: userId, action: 'issue_promo', code }) });
+        if((await r.json()).ok) alert('발급 완료');
+      }
+    }
+
     async function initAdmin() {
       const user = await CP.requireAdmin();
       if (!user) return;
