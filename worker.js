@@ -23,8 +23,8 @@
 
 // ── 상수 ────────────────────────────────────────────────────────────────────
 const VERSION          = '21.0';
-const CACHE_TTL_STATIC = 31536000;   // 1년 (불변 자산)
-const CACHE_TTL_HTML   = 60;         // 실시간성 유지
+const CACHE_TTL_STATIC = 31536000;   // 1년 (불변 자산) - Cloudways uses aggressive caching for static assets
+const CACHE_TTL_HTML   = 60;         // Real-time HTML caching - Cloudways balances freshness and speed
 const CACHE_TTL_API    = 30;         // REST API 30초
 const CACHE_TTL_STALE  = 31536000;   // 캐시 만료 후에도 즉시 서빙 (백그라운드 갱신)
 const KV_WP_PREFIX     = 'wp_file:'; // WordPress 파일 KV 키
@@ -187,10 +187,10 @@ async function proxyToWordPressOrigin(env, siteInfo, request, url) {
   headers.set('Host', url.hostname);
 
   try {
-    const originReq = new Request(originUrl, request);
+    const originReq = new Request(originUrl, request); // Use the original request object
     // 오리진 요청 시 압축 알고리즘 강제 (성능 최적화)
     headers.set('Accept-Encoding', 'br, gzip');
-
+    
     const originRes = await fetch(originReq);
     const resHeaders = new Headers(originRes.headers);
     
@@ -570,7 +570,7 @@ export default {
     return new Response('Not Found', { status: 404 });
   },
 
-  // ── Scheduled: WordPress 자동 업데이트 ─────────────────────────────────────
+  // ── Scheduled: WordPress 자동 업데이트 (Cloudways-like auto-updates) ─────────────────────────────────────
   async scheduled(event, env, ctx) {
     ctx.waitUntil(checkAndUpdateWordPress(env));
   },
