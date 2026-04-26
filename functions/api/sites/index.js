@@ -2,6 +2,7 @@
 // 수정: manager도 본인 사이트만 표시, 사이트 생성 후 자동 provision 트리거
 
 import { CORS, ok, err, getUser } from '../_shared.js';
+import { getLiveRegions } from '../_versions.js';
 
 export const onRequestOptions = () => new Response(null, { status: 204, headers: CORS });
 
