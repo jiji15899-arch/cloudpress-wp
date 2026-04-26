@@ -34,11 +34,18 @@ export async function onRequestPost({ request, env, waitUntil }) {
 
     // DB에서 최신 사용자 정보 조회
     const fullUser = await env.DB.prepare(
-      'SELECT card_number, cf_global_api_key, cf_account_id, cf_account_email FROM users WHERE id=?'
+      'SELECT cf_global_api_key, cf_account_id, cf_account_email FROM users WHERE id=?'
     ).bind(user.id).first();
 
+    // card_number는 마이그레이션으로 추가된 컬럼이므로 별도 쿼리로 안전하게 조회
+    let hasCard = false;
+    try {
+      const cardRow = await env.DB.prepare('SELECT card_number FROM users WHERE id=?').bind(user.id).first();
+      hasCard = !!(cardRow?.card_number);
+    } catch (_) { hasCard = false; }
+
     // 어드민/매니저는 결제 수단 없이 사이트 생성 가능
-    if (!isPrivileged && !fullUser?.card_number) {
+    if (!isPrivileged && !hasCard) {
       return err('사이트 생성을 위해 먼저 "내 계정" 탭에서 결제용 카드를 등록해주세요.', 403);
     }
 
@@ -57,13 +64,13 @@ export async function onRequestPost({ request, env, waitUntil }) {
     try {
       await env.DB.prepare(
         `INSERT INTO sites
-           (id, user_id, name, primary_domain, site_prefix, plan, status, provision_step, 
-            wp_username, wp_password, region, edge_ip, wp_version, php_version, wp_auto_update, created_at)
+           (id, user_id, name, primary_domain, site_prefix, plan, status, provision_step,
+            wp_admin_username, wp_admin_password, region, edge_ip, wp_version, php_version, wp_auto_update, created_at)
          VALUES (?, ?, ?, ?, ?, ?, 'pending', 'init', ?, ?, ?, ?, ?, ?, ?, datetime('now'))`
       ).bind(
         siteId, user.id, body.name || 'My Site', domain, prefix, body.plan || 'starter',
-        body.wp_username || 'admin', body.wp_password || '', 
-        regionData.code, regionData.ip, 
+        body.wp_username || 'admin', body.wp_password || '',
+        regionData.code, regionData.ip,
         body.wp_version || 'latest', body.php_version || '8.3', body.wp_auto_update || 'minor'
       ).run();
 
