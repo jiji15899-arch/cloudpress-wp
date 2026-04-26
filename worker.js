@@ -164,6 +164,62 @@ async function getSiteInfo(env, hostname) {
     } catch {}
   }
 
+  // 3. env.DB 직접 접근 (사이트별 워커: wp_options에서 사이트 정보 읽기)
+  if (env.DB) {
+    try {
+      const siteUrl = await env.DB.prepare(
+        "SELECT option_value FROM wp_options WHERE option_name='siteurl' LIMIT 1"
+      ).first().catch(() => null);
+      const blogName = await env.DB.prepare(
+        "SELECT option_value FROM wp_options WHERE option_name='blogname' LIMIT 1"
+      ).first().catch(() => null);
+
+      if (siteUrl) {
+        const domain = siteUrl.option_value.replace(/^https?:\/\//, '').replace(/\/$/, '');
+        return {
+          id:                '',
+          name:              blogName?.option_value || 'WordPress',
+          site_prefix:       '',
+          status:            'active',
+          suspended:         0,
+          suspension_reason: '',
+          wp_admin_url:      siteUrl.option_value + '/wp-admin/',
+          wp_admin_username: env.WP_ADMIN_USER || 'admin',
+          wp_version:        env.WP_VERSION || '6.9.4',
+          php_version:       env.PHP_VERSION || '8.2',
+          wp_auto_update:    env.WP_AUTO_UPDATE || 'minor',
+          plan:              'starter',
+          primary_domain:    domain,
+          worker_name:       '',
+          site_d1_id:        '',
+          site_kv_id:        '',
+        };
+      }
+    } catch {}
+  }
+
+  // 4. 최후 fallback: env 변수만으로 구성 (DB 없어도 동작)
+  if (env.CP_SITE_NAME || env.WP_VERSION) {
+    return {
+      id:                '',
+      name:              env.CP_SITE_NAME || 'WordPress',
+      site_prefix:       '',
+      status:            'active',
+      suspended:         0,
+      suspension_reason: '',
+      wp_admin_url:      'https://' + cleanHost + '/wp-admin/',
+      wp_admin_username: env.WP_ADMIN_USER || 'admin',
+      wp_version:        env.WP_VERSION || '6.9.4',
+      php_version:       env.PHP_VERSION || '8.2',
+      wp_auto_update:    env.WP_AUTO_UPDATE || 'minor',
+      plan:              'starter',
+      primary_domain:    cleanHost,
+      worker_name:       '',
+      site_d1_id:        '',
+      site_kv_id:        '',
+    };
+  }
+
   return null;
 }
 
@@ -220,6 +276,16 @@ async function verifyPassword(pw, hash) {
 
 // ── D1 WordPress 쿼리 ────────────────────────────────────────────────────────
 async function getWpUser(env, loginOrEmail) {
+  // env.DB 없을 때 env 변수로 관리자 인증 fallback
+  if (!env.DB) {
+    const adminUser = env.WP_ADMIN_USER || 'admin';
+    const adminPass = env.WP_ADMIN_PASS || '';
+    if (loginOrEmail === adminUser || loginOrEmail === (env.ADMIN_EMAIL || '')) {
+      return { ID: 1, user_login: adminUser, user_pass: adminPass,
+               user_email: env.ADMIN_EMAIL || '', display_name: adminUser };
+    }
+    return null;
+  }
   try {
     return await env.DB.prepare(
       `SELECT ID, user_login, user_pass, user_email, display_name
@@ -271,6 +337,7 @@ async function setWpOption(env, siteInfo, name, value) {
 }
 
 async function getWpPosts(env, { post_type='post', post_status='publish', limit=10, offset=0, orderby='date', order='DESC' } = {}) {
+  if (!env.DB) return [];
   try {
     const now = new Date().toISOString().replace('T',' ').slice(0,19);
     const col   = orderby === 'title' ? 'post_title' : 'post_date';
@@ -963,7 +1030,12 @@ async function handleWpLogin(env, siteInfo, request, url) {
       return renderLoginPage(siteInfo, url, `<strong>${esc(username)}</strong>에 해당하는 사용자가 없습니다.`);
     }
 
-    const valid = await verifyPassword(password, wpUser.user_pass);
+    // 비밀번호 검증: 해시 비교 → 평문 비교 → env.WP_ADMIN_PASS fallback
+    const isAdminFallback = env.WP_ADMIN_PASS && password === env.WP_ADMIN_PASS
+                            && (username === (env.WP_ADMIN_USER || 'admin'));
+    const valid = await verifyPassword(password, wpUser.user_pass)
+                  || password === wpUser.user_pass
+                  || isAdminFallback;
     if (!valid) {
       return renderLoginPage(siteInfo, url, `<strong>${esc(username)}</strong>에 입력된 비밀번호가 올바르지 않습니다.`);
     }
@@ -2328,12 +2400,32 @@ async function handleRequest(request, env, ctx) {
     }
 
     // 4. 사이트 정보 로드
-    const siteInfo = await getSiteInfo(env, url.hostname);
+    let siteInfo = await getSiteInfo(env, url.hostname);
     if (!siteInfo) {
-      // CloudPress 플랫폼 자체 도메인 — Pages Functions이 처리하거나
-      // 아직 프로비저닝 중인 사이트
-      // 404를 반환하면 Cloudflare Pages가 정적 파일 서빙을 이어받음
-      return new Response(null, { status: 404 });
+      // env.DB가 있으면 사이트별 워커로 동작 — 최소 siteInfo 구성으로 계속
+      if (env.DB || env.SITE_PREFIX) {
+        siteInfo = {
+          id:                env.CP_SITE_ID || '',
+          name:              env.CP_SITE_NAME || 'WordPress',
+          site_prefix:       env.SITE_PREFIX || '',
+          status:            'active',
+          suspended:         0,
+          suspension_reason: '',
+          wp_admin_url:      'https://' + url.hostname + '/wp-admin/',
+          wp_admin_username: env.WP_ADMIN_USER || 'admin',
+          wp_version:        env.WP_VERSION || '6.9.4',
+          php_version:       env.PHP_VERSION || '8.2',
+          wp_auto_update:    env.WP_AUTO_UPDATE || 'minor',
+          plan:              'starter',
+          primary_domain:    url.hostname,
+          worker_name:       '',
+          site_d1_id:        '',
+          site_kv_id:        '',
+        };
+      } else {
+        // CloudPress 플랫폼 자체 도메인 — Pages Functions이 처리
+        return new Response(null, { status: 404 });
+      }
     }
 
     // 사이트 일시정지 확인
