@@ -187,11 +187,11 @@
       </div>
     </div>
 
-    <div class="content" id="content">
-      <!-- 로딩 스피너 -->
-      <div id="loadingSpinner" style="text-align:center;padding:60px;color:var(--muted)">
-        <div style="display:inline-block;width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite"></div><style>@keyframes spin{to{transform:rotate(360deg)}}</style>
-      </div>
+    <!-- 로딩 스피너 (content 바깥) -->
+    <div id="loadingSpinner" style="text-align:center;padding:60px;color:var(--muted)">
+      <div style="display:inline-block;width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite"></div><style>@keyframes spin{to{transform:rotate(360deg)}}</style>
+    </div>
+    <div class="content" id="content" style="display:none">
     </div>
   </main>
 </div>
@@ -332,15 +332,22 @@ async function loadSite(){
   if(!siteId){document.getElementById('content').innerHTML='<p style="color:var(--error);text-align:center;padding:40px">사이트 ID가 없습니다.</p>';return;}
   let data;
   document.getElementById('loadingSpinner').style.display = 'block'; // 로딩 스피너 표시
+  document.getElementById('content').style.display = 'none';
   try{
     const res = await CP.apiFetch(`/api/sites/${siteId}`);
     data = await CP.safeJson(res);
   }catch(e){
-    document.getElementById('content').innerHTML=`<p style="color:var(--error);text-align:center;padding:40px">네트워크 오류: ${esc(e.message)}</p>`;
     document.getElementById('loadingSpinner').style.display = 'none';
+    document.getElementById('content').style.display = '';
+    document.getElementById('content').innerHTML=`<p style="color:var(--error);text-align:center;padding:40px">네트워크 오류: ${esc(e.message)}</p>`;
     return;
   }
-  if(!data.ok){document.getElementById('content').innerHTML=`<p style="color:var(--error);text-align:center;padding:40px">${esc(data.error||'사이트를 불러올 수 없습니다.')}</p>`;document.getElementById('loadingSpinner').style.display = 'none';return;}
+  if(!data.ok){
+    document.getElementById('loadingSpinner').style.display = 'none';
+    document.getElementById('content').style.display = '';
+    document.getElementById('content').innerHTML=`<p style="color:var(--error);text-align:center;padding:40px">${esc(data.error||'사이트를 불러올 수 없습니다.')}</p>`;
+    return;
+  }
 
   currentSite=data.site;
   const site=currentSite;
@@ -382,7 +389,8 @@ async function loadSite(){
       <button class="tab-btn" data-tab="logs" onclick="switchTab('logs')">로그</button>
     </div>`;
 
-  document.getElementById('content').innerHTML=`
+  const contentEl = document.getElementById('content');
+  contentEl.innerHTML=`
     ${suspendedHtml}
     ${tabsHtml}
     <div id="tab-overview" class="tab-pane active info-card">
@@ -666,54 +674,6 @@ async function loadSite(){
         <span id="saveSettingsMsg" style="font-size:.85rem;color:var(--muted)"></span>
       </div>
     </div>
-    </div>          <div class="section-title">모니터링 & 도구</div>
-          <div class="setting-item">
-            <div class="setting-label">서버 리소스 모니터링</div>
-            <div class="setting-control">
-              <button class="btn btn-ghost btn-sm" onclick="switchTab('monitoring')">자세히 보기</button>
-            </div>
-          </div>
-          <div class="setting-item">
-            <div class="setting-label">액세스 로그</div>
-            <div class="setting-control">
-              <button class="btn btn-ghost btn-sm" onclick="alert('액세스 로그 보기')">보기</button>
-            </div>
-          </div>
-          <div class="setting-item">
-            <div class="setting-label">에러 로그</div>
-            <div class="setting-control">
-              <button class="btn btn-ghost btn-sm" onclick="alert('에러 로그 보기')">보기</button>
-            </div>
-          </div>
-          <div class="setting-item">
-            <div class="setting-label">SSH/SFTP 접근</div>
-            <div class="setting-control">
-              <button class="btn btn-ghost btn-sm" onclick="alert('SSH/SFTP 정보 모달')">정보</button>
-            </div>
-          </div>
-          <div class="setting-item">
-            <div class="setting-label">Git 통합</div>
-            <div class="setting-control">
-              <button class="btn btn-ghost btn-sm" onclick="alert('Git 통합 설정')">설정</button>
-            </div>
-          </div>
-          <div class="setting-item">
-            <div class="setting-label">Staging 환경</div>
-            <div class="setting-control">
-              <button class="btn btn-primary btn-sm" onclick="alert('Staging 환경 생성')">생성</button>
-            </div>
-          </div>
-        </div>
-      </div>
-      <!-- 설정 저장 버튼 -->
-      <div style="margin-top:28px;padding-top:20px;border-top:1px solid var(--border);display:flex;align-items:center;gap:12px">
-        <button id="saveSettingsBtn" class="btn btn-primary" onclick="saveAllSettings()">
-          💾 설정 저장하기
-        </button>
-        <button class="btn btn-ghost btn-sm" onclick="loadSettings(currentSite?.id)">↺ 초기화</button>
-        <span id="saveSettingsMsg" style="font-size:.85rem;color:var(--muted)"></span>
-      </div>
-    </div>
     </div>
 
     <div id="tab-monitoring" class="tab-pane">
@@ -752,6 +712,7 @@ async function loadSite(){
   `;
 
   document.getElementById('loadingSpinner').style.display = 'none'; // 로딩 스피너 숨김
+  document.getElementById('content').style.display = '';
 
   if(isActive) {
     await loadDomains(site.id);
@@ -767,18 +728,25 @@ async function loadSettings(siteId) {
   if(!contentEl) return;
 
   try {
-    // 실제 사이트의 WP-API를 통해 설정을 가져오도록 변경 (404 해결)
+    // 사이트의 WP REST API를 통해 설정을 가져옴 (cloudpress/v1/settings-info)
     const siteUrl = currentSite.primary_domain ? `https://${currentSite.primary_domain}` : `https://${currentSite.worker_name}.workers.dev`;
-    const res = await fetch(`${siteUrl}/wp-json/cloudpress/v1/settings-info`);
-    
-    if (!res.ok) {
-       // 대체 경로 시도 (기존 대시보드 API)
-       const fallback = await CP.apiFetch(`/api/sites/${siteId}/settings`);
-       var data = await fallback.json();
-    } else {
-       var data = await res.json();
+    let data = null;
+
+    // 1차: 사이트 직접 API (worker.js의 /cloudpress/v1/settings-info)
+    try {
+      const res = await fetch(`${siteUrl}/wp-json/cloudpress/v1/settings-info`, { credentials: 'include' });
+      if (res.ok) data = await res.json();
+    } catch {}
+
+    // 2차: CloudPress 대시보드 API fallback
+    if (!data || !data.ok) {
+      const fallback = await CP.apiFetch(`/api/sites/${siteId}`);
+      if (fallback && (fallback.ok || fallback.site)) {
+        data = { ok: true, settings: {}, site: fallback.site || fallback };
+      }
     }
-    const s = data.ok ? (data.settings || data.site || {}) : {};
+
+    const s = data && data.ok ? (data.settings || {}) : {};
 
     // PHP
     const phpSel = document.getElementById('phpVersionSelect');
@@ -867,17 +835,32 @@ async function saveAllSettings() {
   try {
     // 사이트의 직접 설정 엔드포인트 호출
     const siteUrl = currentSite.primary_domain ? `https://${currentSite.primary_domain}` : `https://${currentSite.worker_name}.workers.dev`;
-    const res = await fetch(`${siteUrl}/wp-json/cloudpress/v1/update-settings-full`, {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
-    const data = await res.json();
-    if (data.ok) {
+    let data = null;
+    try {
+      const res = await fetch(`${siteUrl}/wp-json/cloudpress/v1/update-settings-full`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        credentials: 'include',
+      });
+      if (res.ok) data = await res.json();
+    } catch {}
+
+    // 대시보드 API fallback
+    if (!data || !data.ok) {
+      const fb = await CP.apiFetch(`/api/sites/${currentSite.id}/settings`, {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      });
+      data = fb;
+    }
+
+    if (data && (data.ok || data.success)) {
       showToast('✅ 설정이 저장되었습니다.', 'success');
       if (msg) { msg.textContent = '✅ 저장 완료'; msg.style.color = '#22c55e'; }
     } else {
-      showToast('저장 실패: ' + (data.error || '알 수 없는 오류'), 'error');
-      if (msg) { msg.textContent = '❌ ' + (data.error || '저장 실패'); msg.style.color = '#ef4444'; }
+      showToast('저장 실패: ' + ((data && data.error) || '알 수 없는 오류'), 'error');
+      if (msg) { msg.textContent = '❌ ' + ((data && data.error) || '저장 실패'); msg.style.color = '#ef4444'; }
     }
   } catch(e) {
     showToast('오류: ' + e.message, 'error');
