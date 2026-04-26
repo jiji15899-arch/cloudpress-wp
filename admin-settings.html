@@ -221,11 +221,9 @@ function showToast(msg, ok = true) {
 let settings = {};
 
 async function loadSettings() {
-  const token = CP.getToken();
-  const res = await fetch('/api/admin/settings', { headers: { 'Authorization': 'Bearer ' + token } });
-  if (!res.ok) { showToast('설정 로드 실패', false); return; }
+  const res = await CP.apiFetch('/api/admin/settings');
   const data = await res.json();
-  if (!data.ok) { showToast('설정 로드 실패: ' + (data.error || ''), false); return; }
+  if (!res.ok || !data.ok) { showToast('설정 로드 실패: ' + (data.error || ''), false); return; }
   settings = data.settings || {};
 
   const setVal = (id, key, def = '') => {
@@ -279,11 +277,9 @@ async function loadSettings() {
 }
 
 async function saveSettings(updates) {
-  const token = CP.getToken();
   try {
-    const res = await fetch('/api/admin/settings', {
+    const res = await CP.apiFetch('/api/admin/settings', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
       body: JSON.stringify({ settings: updates }),
     });
     const data = await res.json();
@@ -320,13 +316,11 @@ async function verifyGithub() {
   el.innerHTML = '<span style="color:var(--muted);font-size:.8rem">검증 중… (tarball 다운로드 및 파일 확인)</span>';
 
   try {
-    const token = CP.getToken();
     const body  = { action: 'verify_github', repo, branch };
     if (tok && !tok.startsWith('••')) body.token = tok;
 
-    const res  = await fetch('/api/admin/settings', {
+    const res  = await CP.apiFetch('/api/admin/settings', {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
       body: JSON.stringify(body),
     });
     const data = await res.json();
