@@ -269,6 +269,84 @@ const CP = {
     return div.innerHTML;
   },
 
+  // 사용자 역할 이름
+  roleName(role) {
+    const map = { admin: '관리자', manager: '매니저', user: '사용자' };
+    return map[role] || role || '사용자';
+  },
+
+  // 관리자/매니저 여부 확인 (동기)
+  isAdminOrMgr(user) {
+    return user && (user.role === 'admin' || user.role === 'manager');
+  },
+
+  // 현재 사용자 캐시 세팅 (로컬스토리지 저장)
+  setUser(user) {
+    if (user) localStorage.setItem('cp_user', JSON.stringify(user));
+    else localStorage.removeItem('cp_user');
+  },
+
+  // 프로필 조회
+  async getProfile() { return await this.get('/user'); },
+
+  // 프로필 업데이트 (이름 변경 / 비밀번호 변경 공용)
+  async updateProfile(data) { return await this.post('/user', data); },
+
+  // 결제 수단 업데이트
+  async updatePaymentMethod(cardNumber, expiry) {
+    return await this.post('/user', { action: 'update_payment', card_number: cardNumber, expiry });
+  },
+
+  // 신용카드 번호 유효성 간단 검사 (Luhn)
+  validateCardNumber(num) {
+    const n = String(num).replace(/\D/g, '');
+    if (n.length < 13 || n.length > 19) return false;
+    let sum = 0;
+    let alt = false;
+    for (let i = n.length - 1; i >= 0; i--) {
+      let d = parseInt(n[i], 10);
+      if (alt) { d *= 2; if (d > 9) d -= 9; }
+      sum += d;
+      alt = !alt;
+    }
+    return sum % 10 === 0;
+  },
+
+  // Cloudflare API 키 저장
+  async saveCfApi(data) { return await this.post('/user', { action: 'save_cf_api', ...data }); },
+
+  // Cloudflare API 키 삭제
+  async removeCfApi() { return await this.post('/user', { action: 'remove_cf_api' }); },
+
+  // 2FA 코드 발송
+  async send2FACode() { return await this.post('/auth/2fa/send', {}); },
+
+  // 2FA 설정 (코드 확인 후 활성화)
+  async setup2FA(data) { return await this.post('/auth/2fa/setup', data); },
+
+  // 2FA 비활성화
+  async disable2FA(password) { return await this.post('/auth/2fa/disable', { password }); },
+
+  // 사이트 메트릭 조회
+  async getMetrics(siteId) { return await this.get(`/sites/${siteId}/metrics`); },
+
+  // 결제 확인
+  async paymentConfirm(data) { return await this.post('/payments/confirm', data); },
+
+  // 로그 테일 초기화 (실시간 로그용 폴링)
+  initLogTail(siteId, onLine, intervalMs = 3000) {
+    let lastTs = Date.now();
+    const poll = async () => {
+      const r = await this.get(`/sites/${siteId}/logs?since=${lastTs}`);
+      if (r.ok && Array.isArray(r.logs)) {
+        r.logs.forEach(line => onLine(line));
+        if (r.logs.length) lastTs = Date.now();
+      }
+    };
+    poll();
+    return setInterval(poll, intervalMs);
+  },
+
   // 리소스 모니터링 시뮬레이션 (실제 데이터 연동 전용)
   initResourceMonitor() {
     const update = () => {
