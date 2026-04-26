@@ -16,13 +16,13 @@ const CP = {
   // API 통신 기본 메소드
   async fetch(path, options = {}) {
     try {
-      const res = await fetch(`${this.apiBase}${path}`, {
+      const res = await fetch(`${this.apiBase}${path.startsWith('/') ? path : '/' + path}`, {
         ...options,
         headers: { ...this.headers(), ...options.headers }
       });
       return await this.safeJson(res);
     } catch (e) {
-      return { ok: false, error: e.message };
+      return { ok: false, error: '네트워크 오류가 발생했습니다.' };
     }
   },
 
@@ -33,28 +33,32 @@ const CP = {
 
   // 안전한 JSON 파싱 (HTML 응답 에러 방지)
   safeJson: async function(res) {
-    if (!res) return { ok: false, error: '응답 없음' };
-    if (typeof res === 'object' && !(res instanceof Response)) {
-      return res;
-    }
     try {
-      const ct = res.headers?.get?.('content-type') || '';
-      if (!ct.includes('application/json')) {
-        const text = await res.text();
-        if (text.trim().startsWith('<') || text.trim().startsWith('<!')) {
-          return { ok: false, error: 'API가 HTML을 반환했습니다. (관리자 설정을 확인하세요)' };
-        }
-        try {
-          const data = JSON.parse(text);
-          return { ok: res.ok, ...data };
-        } catch {
-          return { ok: res.ok, error: text.slice(0, 200) };
-        }
+      if (!res) return { ok: false, error: '응답 객체가 없습니다.' };
+      if (typeof res === 'object' && !(res instanceof Response)) {
+        return { ok: res.ok ?? true, ...res };
       }
-      const data = await res.json();
+
+      const ct = res.headers?.get?.('content-type') || '';
+      const text = await res.text();
+      
+      // HTML 응답 감지 (Unexpected token '<' 방지)
+      if (text.trim().startsWith('<') || text.trim().startsWith('<!')) {
+        if (res.status === 401) return { ok: false, error: '세션이 만료되었습니다. 다시 로그인해주세요.', code: 401 };
+        if (res.status === 404) return { ok: false, error: '요청하신 API 엔드포인트를 찾을 수 없습니다 (404).', code: 404 };
+        return { ok: false, error: `서버 오류가 발생했습니다 (HTTP ${res.status}).`, code: res.status };
+      }
+
+      let data = {};
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        return { ok: false, error: '올바르지 않은 JSON 응답입니다.' };
+      }
+
       return { ok: res.ok, ...data };
     } catch (e) {
-      return { ok: false, error: 'JSON 파싱 오류' };
+      return { ok: false, error: '응답 처리 중 오류가 발생했습니다.' };
     }
   },
 
