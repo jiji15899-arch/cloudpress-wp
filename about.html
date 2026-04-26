@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=5.0"/>
+  <title>소개 — CloudPress</title>
+  <meta name="description" content="CloudPress는 Cloudflare 인프라 위에서 워드프레스와 100% 호환되는 CMS 호스팅 서비스입니다. CloudPress의 철학과 기술 스택을 소개합니다."/>
+  <meta name="keywords" content="CloudPress 소개, 클라우드프레스, Cloudflare 호스팅, 워드프레스 대안, about"/>
+  <link rel="canonical" href="https://cloud-press.co.kr/about.html"/>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:opsz,wght@9..40,400;9..40,500&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="style.css"/>
+  <style>
+    /* About 전용 스타일 */
+    .about-section{padding:80px 0;background:#fff}
+    .about-section:nth-child(even){background:var(--bg2)}
+    .about-grid{display:grid;grid-template-columns:1fr 1fr;gap:64px;align-items:center}
+    .about-grid.reverse{direction:rtl}
+    .about-grid.reverse>*{direction:ltr}
+    .about-text h2{font-family:'Syne',sans-serif;font-size:clamp(1.5rem,3vw,2.2rem);font-weight:800;color:var(--t1);margin-bottom:16px;line-height:1.2}
+    .about-text p{color:var(--t2);line-height:1.8;margin-bottom:14px;font-size:.97rem}
+    .about-text p:last-child{margin-bottom:0}
+    .about-visual{background:linear-gradient(135deg,#0a0a0f,#0f1a2e);border-radius:20px;padding:48px 36px;display:flex;flex-direction:column;gap:20px}
+    .visual-stat{display:flex;flex-direction:column;gap:4px}
+    .visual-stat .num{font-family:'Syne',sans-serif;font-size:2.4rem;font-weight:800;color:#fff;line-height:1}
+    .visual-stat .label{font-size:.8rem;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.08em}
+    .visual-divider{height:1px;background:rgba(255,255,255,.08)}
+
+    .tech-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:20px;margin-top:40px}
+    .tech-card{background:#fff;border:1px solid var(--border);border-radius:14px;padding:24px;transition:.2s}
+    .tech-card:hover{border-color:var(--accent);box-shadow:0 4px 24px rgba(44,51,216,.08)}
+    .tech-icon{font-size:2rem;margin-bottom:12px}
+    .tech-name{font-family:'Syne',sans-serif;font-weight:700;font-size:.95rem;color:var(--t1);margin-bottom:6px}
+    .tech-desc{font-size:.82rem;color:var(--t2);line-height:1.6}
+
+    .value-list{display:flex;flex-direction:column;gap:24px;margin-top:40px}
+    .value-item{display:flex;gap:20px;align-items:flex-start}
+    .value-icon{width:44px;height:44px;border-radius:12px;background:rgba(44,51,216,.08);display:flex;align-items:center;justify-content:center;font-size:1.3rem;flex-shrink:0}
+    .value-body h3{font-family:'Syne',sans-serif;font-weight:700;font-size:1rem;color:var(--t1);margin-bottom:4px}
+    .value-body p{font-size:.88rem;color:var(--t2);line-height:1.65;margin:0}
+
+    .team-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:24px;margin-top:40px}
+    .team-card{background:#fff;border:1px solid var(--border);border-radius:16px;padding:28px 20px;text-align:center;transition:.2s}
+    .team-card:hover{transform:translateY(-4px);box-shadow:0 12px 32px rgba(0,0,0,.07)}
+    .team-avatar{width:72px;height:72px;border-radius:50%;margin:0 auto 16px;display:flex;align-items:center;justify-content:center;font-size:1.8rem;font-weight:800;color:#fff}
+    .team-name{font-family:'Syne',sans-serif;font-weight:700;font-size:.95rem;color:var(--t1);margin-bottom:4px}
+    .team-role{font-size:.78rem;color:var(--accent);font-weight:600;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px}
+    .team-bio{font-size:.82rem;color:var(--t2);line-height:1.6}
+
+    .cta-dark{background:linear-gradient(135deg,#0a0a0f,#0f1a2e);padding:80px 0;text-align:center}
+    .cta-dark h2{font-family:'Syne',sans-serif;font-size:clamp(1.6rem,4vw,2.4rem);font-weight:800;color:#fff;margin-bottom:16px}
+    .cta-dark p{color:rgba(255,255,255,.6);margin-bottom:32px;font-size:1.05rem}
+    .cta-dark .btn.primary{background:#f97316;box-shadow:0 0 0 0 rgba(249,115,22,.3)}
+    .cta-dark .btn.primary:hover{box-shadow:0 0 36px rgba(249,115,22,.4);transform:translateY(-1px)}
+
+    .section-label{font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--accent);margin-bottom:12px}
+    .section-heading{font-family:'Syne',sans-serif;font-size:clamp(1.6rem,4vw,2.4rem);font-weight:800;color:var(--t1);margin-bottom:12px}
+    .section-sub{color:var(--t2);font-size:.97rem}
+
+    @media(max-width:768px){
+      .about-grid{grid-template-columns:1fr;gap:36px}
+      .about-grid.reverse{direction:ltr}
+    }
+  </style>
+</head>
+<body>
+  <div class="noise"></div>
+  <header class="header" id="header">
+    <div class="container header-inner">
+      <a href="/" class="logo">
+        <svg width="26" height="26" viewBox="0 0 28 28" fill="none"><path d="M14 2L26 8V20L14 26L2 20V8L14 2Z" stroke="currentColor" stroke-width="1.5"/><path d="M14 8L20 11V17L14 20L8 17V11L14 8Z" fill="currentColor" opacity="0.5"/><circle cx="14" cy="14" r="2.2" fill="currentColor"/></svg>
+        CloudPress
+      </a>
+      <nav class="nav" id="nav">
+        <a href="/features.html">기능</a>
+        <a href="/pricing.html">요금제</a>
+        <a href="/faq.html">FAQ</a>
+        <a href="/about.html" style="color:#f97316">소개</a>
+      </nav>
+      <div class="header-actions">
+        <a href="/auth.html" class="btn ghost sm">로그인</a>
+        <a href="/auth.html?tab=signup" class="btn primary sm">시작하기</a>
+      </div>
+      <button class="burger" id="burger" aria-label="메뉴"><span></span><span></span><span></span></button>
+    </div>
+  </header>
+
+  <!-- 히어로 -->
+  <section class="page-hero">
+    <div class="container">
+      <div class="breadcrumb" style="font-size:.8rem;color:rgba(255,255,255,.4);margin-bottom:16px"><a href="/" style="color:rgba(255,255,255,.5)">홈</a> › 소개</div>
+      <h1>CloudPress 소개</h1>
+      <p>워드프레스의 호환성, Cloudflare의 인프라. 서버 없이 운영되는 새로운 방식의 CMS 호스팅을 만들고 있습니다.</p>
+    </div>
+  </section>
+
+  <!-- 미션 섹션 -->
+  <section class="about-section">
+    <div class="container">
+      <div class="about-grid">
+        <div class="about-text">
+          <div class="section-label">우리의 미션</div>
+          <h2>복잡한 서버 없이,<br>누구나 빠른 사이트를</h2>
+          <p>CloudPress는 전통적인 LAMP 스택의 복잡함 없이, Cloudflare의 글로벌 엣지 네트워크 위에서 WordPress와 100% 호환되는 CMS를 운영할 수 있는 서비스입니다.</p>
+          <p>VPS 관리, 서버 패치, 보안 설정 없이 버튼 하나로 사이트를 만들고, 전 세계 어디서든 빠르게 접근 가능한 환경을 제공합니다.</p>
+          <p>개발자도, 비개발자도 — 누구나 프로 수준의 인프라를 손쉽게 활용할 수 있도록 만드는 것이 CloudPress의 목표입니다.</p>
+        </div>
+        <div class="about-visual">
+          <div class="visual-stat">
+            <span class="num">300+</span>
+            <span class="label">Cloudflare 글로벌 데이터센터</span>
+          </div>
+          <div class="visual-divider"></div>
+          <div class="visual-stat">
+            <span class="num">197 Tbps</span>
+            <span class="label">DDoS 방어 네트워크 용량</span>
+          </div>
+          <div class="visual-divider"></div>
+          <div class="visual-stat">
+            <span class="num">3~8분</span>
+            <span class="label">사이트 배포 완료 시간</span>
+          </div>
+          <div class="visual-divider"></div>
+          <div class="visual-stat">
+            <span class="num">100%</span>
+            <span class="label">WordPress REST API 호환</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 기술 스택 -->
+  <section class="about-section">
+    <div class="container">
+      <div style="text-align:center;max-width:600px;margin:0 auto">
+        <div class="section-label">기술 스택</div>
+        <h2 class="section-heading">최신 엣지 컴퓨팅 기술로 구축</h2>
+        <p class="section-sub">전통적인 서버 없이, Cloudflare의 분산 인프라를 100% 활용합니다.</p>
+      </div>
+      <div class="tech-grid">
+        <div class="tech-card">
+          <div class="tech-icon">⚡</div>
+          <div class="tech-name">Cloudflare Workers</div>
+          <div class="tech-desc">서버리스 런타임. 전 세계 엣지에서 요청을 처리하여 지연 시간을 최소화합니다.</div>
+        </div>
+        <div class="tech-card">
+          <div class="tech-icon">🗄️</div>
+          <div class="tech-name">Cloudflare D1</div>
+          <div class="tech-desc">SQLite 기반 분산 데이터베이스. 관리형 DB로 별도 설정 없이 즉시 사용 가능합니다.</div>
+        </div>
+        <div class="tech-card">
+          <div class="tech-icon">🗂️</div>
+          <div class="tech-name">Cloudflare KV</div>
+          <div class="tech-desc">글로벌 키-값 스토리지. 세션, 캐시, 설정 데이터를 엣지에서 빠르게 처리합니다.</div>
+        </div>
+        <div class="tech-card">
+          <div class="tech-icon">📄</div>
+          <div class="tech-name">Cloudflare Pages</div>
+          <div class="tech-desc">정적 사이트 및 함수 호스팅 플랫폼. 무한 확장과 자동 배포를 지원합니다.</div>
+        </div>
+        <div class="tech-card">
+          <div class="tech-icon">🛡️</div>
+          <div class="tech-name">Cloudflare WAF</div>
+          <div class="tech-desc">L7 애플리케이션 방화벽. 악성 트래픽, 봇, DDoS를 자동으로 차단합니다.</div>
+        </div>
+        <div class="tech-card">
+          <div class="tech-icon">🌐</div>
+          <div class="tech-name">WordPress REST API</div>
+          <div class="tech-desc">/wp-json/wp/v2/ 완전 호환. 기존 WordPress 클라이언트와 플러그인을 그대로 사용합니다.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 핵심 가치 -->
+  <section class="about-section">
+    <div class="container">
+      <div class="about-grid reverse">
+        <div class="about-text">
+          <div class="section-label">핵심 가치</div>
+          <h2>왜 CloudPress인가</h2>
+          <div class="value-list">
+            <div class="value-item">
+              <div class="value-icon">🚀</div>
+              <div class="value-body">
+                <h3>배포 속도 우선</h3>
+                <p>복잡한 설정 없이 3~8분 만에 완전한 CMS 사이트를 자동 배포합니다. 개발자의 시간은 코드에 집중되어야 합니다.</p>
+              </div>
+            </div>
+            <div class="value-item">
+              <div class="value-icon">🔒</div>
+              <div class="value-body">
+                <h3>보안은 기본</h3>
+                <p>DDoS 방어, WAF, SSL 자동화가 모든 플랜에 기본 포함됩니다. 보안 설정에 시간을 낭비하지 마세요.</p>
+              </div>
+            </div>
+            <div class="value-item">
+              <div class="value-icon">🌍</div>
+              <div class="value-body">
+                <h3>글로벌 성능</h3>
+                <p>Cloudflare의 300+ 데이터센터에서 서빙됩니다. 한국이든 유럽이든, 빠른 응답 시간을 보장합니다.</p>
+              </div>
+            </div>
+            <div class="value-item">
+              <div class="value-icon">🔗</div>
+              <div class="value-body">
+                <h3>완전한 호환성</h3>
+                <p>WordPress REST API와 100% 동일한 구조. 기존 워드프레스 생태계의 도구와 클라이언트를 그대로 활용합니다.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="about-visual" style="background:linear-gradient(135deg,#0f1a2e,#0a0f1a)">
+          <div style="color:rgba(255,255,255,.9);font-size:.92rem;line-height:1.8;font-style:italic">
+            "시간은 그 무엇보다 값진 "돈" 입니다. 서버를 관리하는 데 쓰는 돈이 아깝습니다. 콘텐츠와 비즈니스에 집중할 수 있도록, 인프라는 우리가 맡겠습니다."
+          </div>
+          <div style="margin-top:20px;padding-top:20px;border-top:1px solid rgba(255,255,255,.1)">
+            <div style="font-family:'Syne',sans-serif;font-weight:700;color:#fff;font-size:.9rem">CloudPress CEO 최성원</div>
+            <div style="font-size:.78rem;color:rgba(255,255,255,.4);margin-top:2px">Cloudflare 기반 CMS 호스팅 전문</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 운영 방식 -->
+  <section class="about-section">
+    <div class="container" style="max-width:800px">
+      <div style="text-align:center;margin-bottom:48px">
+        <div class="section-label">운영 철학</div>
+        <h2 class="section-heading">관리자 중심 운영</h2>
+        <p class="section-sub">CloudPress는 셀프 서비스 결제 없이, 관리자가 각 사용자의 플랜과 사이트를 직접 관리하는 방식으로 운영됩니다.</p>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+        <div style="background:var(--surf2);border-radius:14px;padding:28px">
+          <div style="font-size:1.5rem;margin-bottom:12px">👤</div>
+          <h3 style="font-family:'Syne',sans-serif;font-weight:700;font-size:1rem;color:var(--t1);margin-bottom:8px">사용자</h3>
+          <p style="font-size:.88rem;color:var(--t2);line-height:1.7">대시보드에서 사이트를 생성·관리하고 콘텐츠를 작성합니다. 플랜 변경이 필요하면 관리자에게 요청합니다.</p>
+        </div>
+        <div style="background:var(--surf2);border-radius:14px;padding:28px">
+          <div style="font-size:1.5rem;margin-bottom:12px">🔧</div>
+          <h3 style="font-family:'Syne',sans-serif;font-weight:700;font-size:1rem;color:var(--t1);margin-bottom:8px">관리자</h3>
+          <p style="font-size:.88rem;color:var(--t2);line-height:1.7">모든 사용자의 플랜, 사이트, 공지를 직접 설정합니다. Cloudflare 인프라 설정도 관리자 페이지에서 통합 관리합니다.</p>
+        </div>
+        <div style="background:var(--surf2);border-radius:14px;padding:28px">
+          <div style="font-size:1.5rem;margin-bottom:12px">⚡</div>
+          <h3 style="font-family:'Syne',sans-serif;font-weight:700;font-size:1rem;color:var(--t1);margin-bottom:8px">자동 배포</h3>
+          <p style="font-size:.88rem;color:var(--t2);line-height:1.7">Cloudflare Pages, D1, KV, 바인딩 설정이 모두 자동화됩니다. 클릭 한 번으로 완전한 사이트가 배포됩니다.</p>
+        </div>
+        <div style="background:var(--surf2);border-radius:14px;padding:28px">
+          <div style="font-size:1.5rem;margin-bottom:12px">🌐</div>
+          <h3 style="font-family:'Syne',sans-serif;font-weight:700;font-size:1rem;color:var(--t1);margin-bottom:8px">도메인 관리</h3>
+          <p style="font-size:.88rem;color:var(--t2);line-height:1.7">Cloudflare DNS와 직접 연동되어 도메인 추가·DNS 레코드 관리가 대시보드에서 가능합니다.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="cta-dark">
+    <div class="container">
+      <h2>지금 바로 시작하세요</h2>
+      <p>서버 없이, 복잡한 설정 없이 — CloudPress로 빠르게 사이트를 만들어보세요.</p>
+      <div style="display:flex;gap:14px;justify-content:center;flex-wrap:wrap">
+        <a href="/auth.html?tab=signup" class="btn primary lg">무료로 시작하기</a>
+        <a href="/features.html" class="btn ghost-white lg" style="color:#fff;border-color:rgba(255,255,255,.3)">기능 살펴보기</a>
+      </div>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-bottom">
+        <span>© 2026 CloudPress. All rights reserved.</span>
+        <span>
+          <a href="/features.html" style="color:var(--t2)">기능</a> ·
+          <a href="/pricing.html" style="color:var(--t2)">요금제</a> ·
+          <a href="/faq.html" style="color:var(--t2)">FAQ</a> ·
+          <a href="/contact.html" style="color:var(--t2)">문의</a>
+        </span>
+      </div>
+    </div>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
