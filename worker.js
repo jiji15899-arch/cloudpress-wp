@@ -21,6 +21,7 @@ const CACHE_TTL_HTML   = 60;
 const CACHE_TTL_API    = 10;
 const KV_SITE_PREFIX   = 'site_domain:';
 const KV_SESSION_PFX   = 'wp_session:';
+const _memSessions = new Map(); // CACHE/DB 없을 때 인메모리 세션 fallback
 const KV_OPT_PFX       = 'opt:';
 const RATE_LIMIT_WIN   = 60;
 const RATE_LIMIT_MAX   = 500;
@@ -241,22 +242,48 @@ function parseCookies(req) {
 
 // ── 세션 관리 ────────────────────────────────────────────────────────────────
 async function getWpSession(env, siteInfo, req) {
-  const cookies  = parseCookies(req);
-  const prefix   = siteInfo.site_prefix;
-  const token    = cookies[`wordpress_logged_in_${prefix}`] || cookies['wordpress_logged_in'] || '';
+  const cookies = parseCookies(req);
+  const prefix  = siteInfo.site_prefix;
+  const token   = cookies[`wordpress_logged_in_${prefix}`] || cookies['wordpress_logged_in'] || '';
   if (!token) return null;
-  if (!env.CACHE) return null;
-  try {
-    return await env.CACHE.get(KV_SESSION_PFX + token, { type: 'json' });
-  } catch { return null; }
+  // 1. KV 캐시 우선
+  if (env.CACHE) {
+    try {
+      const s = await env.CACHE.get(KV_SESSION_PFX + token, { type: 'json' });
+      if (s) return s;
+    } catch {}
+  }
+  // 2. DB fallback (env.CACHE 없을 때)
+  if (env.DB) {
+    try {
+      const row = await env.DB.prepare(
+        'SELECT user_id, username, role, created FROM wp_sessions WHERE token=? AND expires_at > datetime(\'now\') LIMIT 1'
+      ).bind(token).first().catch(() => null);
+      if (row) return row;
+    } catch {}
+  }
+  // 3. 인메모리 fallback (개발/테스트용 — 요청 간 공유 안 됨)
+  return _memSessions.get(token) || null;
 }
 
 async function createWpSession(env, userId, username, role) {
   const token = Array.from(crypto.getRandomValues(new Uint8Array(32)))
     .map(b => b.toString(16).padStart(2, '0')).join('');
   const data  = { user_id: userId, username, role, created: Date.now() };
+  // 1. KV 저장 (있으면)
   if (env.CACHE) {
     await env.CACHE.put(KV_SESSION_PFX + token, JSON.stringify(data), { expirationTtl: 86400 * 14 }).catch(() => {});
+  }
+  // 2. DB 저장 fallback
+  if (env.DB) {
+    await env.DB.prepare(
+      'INSERT OR REPLACE INTO wp_sessions (token, user_id, username, role, created, expires_at) '
+      + 'VALUES (?, ?, ?, ?, datetime(\'now\'), datetime(\'now\', \'+14 days\'))'
+    ).bind(token, userId, username, role).run().catch(() => {});
+  }
+  // 3. 인메모리 저장 (CACHE도 DB도 없는 경우)
+  if (!env.CACHE && !env.DB) {
+    _memSessions.set(token, data);
   }
   return token;
 }
@@ -2492,7 +2519,7 @@ h1{color:#d63638;margin-bottom:12px}p{color:#646970;line-height:1.6}</style>
       const session = await getWpSession(env, siteInfo, request);
       if (!session) {
         const redirect = encodeURIComponent(pathname + url.search);
-        return Response.redirect(`/wp-login.php?redirect_to=${redirect}`, 302);
+        return new Response(null, { status: 302, headers: { 'Location': `/wp-login.php?redirect_to=${redirect}` } });
       }
       const page = url.searchParams.get('page') || 'dashboard';
       const html = renderWpAdmin(siteInfo, session, page, env);
