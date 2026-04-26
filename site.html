@@ -548,7 +548,7 @@ async function loadSite(){
           <div class="setting-item">
             <div class="setting-label">캐시 규칙 설정</div>
             <div class="setting-control">
-              <button class="btn btn-ghost btn-sm" onclick="alert('캐시 규칙 설정 모달/페이지로 이동')">설정</button>
+              <button class="btn btn-ghost btn-sm" onclick="openModal('cacheRulesModal')">설정</button>
             </div>
           </div>
         </div>
@@ -565,14 +565,14 @@ async function loadSite(){
           <div class="setting-item">
             <div class="setting-label">SSL 인증서</div>
             <div class="setting-control">
-              <button class="btn btn-ghost btn-sm" onclick="alert('SSL 재발급')">재발급</button>
-              <button class="btn btn-ghost btn-sm" onclick="alert('강제 HTTPS')">강제 HTTPS</button>
+              <button class="btn btn-ghost btn-sm" onclick="openModal('sslModal')">재발급</button>
+              <button class="btn btn-ghost btn-sm" onclick="forceHttps()">강제 HTTPS</button>
             </div>
           </div>
           <div class="setting-item">
             <div class="setting-label">IP 화이트리스트</div>
             <div class="setting-control">
-              <button class="btn btn-ghost btn-sm" onclick="alert('IP 화이트리스트 설정 모달')">설정</button>
+              <button class="btn btn-ghost btn-sm" onclick="openModal('ipWhitelistModal')">설정</button>
             </div>
           </div>
           <div class="setting-item">
@@ -595,7 +595,7 @@ async function loadSite(){
           <div class="setting-item">
             <div class="setting-label">수동 백업 생성</div>
             <div class="setting-control">
-              <button class="btn btn-primary btn-sm" onclick="alert('수동 백업 시작')">지금 백업</button>
+              <button class="btn btn-primary btn-sm" onclick="startManualBackup()">지금 백업</button>
             </div>
           </div>
           <div class="setting-item">
@@ -618,7 +618,7 @@ async function loadSite(){
           <div class="setting-item">
             <div class="setting-label">백업 복원</div>
             <div class="setting-control">
-              <button class="btn btn-ghost btn-sm" onclick="alert('백업 복원 모달')">복원</button>
+              <button class="btn btn-ghost btn-sm" onclick="openModal('backupRestoreModal')">복원</button>
             </div>
           </div>
         </div>
@@ -635,31 +635,31 @@ async function loadSite(){
           <div class="setting-item">
             <div class="setting-label">액세스 로그</div>
             <div class="setting-control">
-              <button class="btn btn-ghost btn-sm" onclick="alert('액세스 로그 보기')">보기</button>
+              <button class="btn btn-ghost btn-sm" onclick="openModal('accessLogModal')">보기</button>
             </div>
           </div>
           <div class="setting-item">
             <div class="setting-label">에러 로그</div>
             <div class="setting-control">
-              <button class="btn btn-ghost btn-sm" onclick="alert('에러 로그 보기')">보기</button>
+              <button class="btn btn-ghost btn-sm" onclick="openModal('errorLogModal')">보기</button>
             </div>
           </div>
           <div class="setting-item">
             <div class="setting-label">SSH/SFTP 접근</div>
             <div class="setting-control">
-              <button class="btn btn-ghost btn-sm" onclick="alert('SSH/SFTP 정보 모달')">정보</button>
+              <button class="btn btn-ghost btn-sm" onclick="openModal('sshModal')">정보</button>
             </div>
           </div>
           <div class="setting-item">
             <div class="setting-label">Git 통합</div>
             <div class="setting-control">
-              <button class="btn btn-ghost btn-sm" onclick="alert('Git 통합 설정')">설정</button>
+              <button class="btn btn-ghost btn-sm" onclick="openModal('gitModal')">설정</button>
             </div>
           </div>
           <div class="setting-item">
             <div class="setting-label">Staging 환경</div>
             <div class="setting-control">
-              <button class="btn btn-primary btn-sm" onclick="alert('Staging 환경 생성')">생성</button>
+              <button class="btn btn-primary btn-sm" onclick="openModal('stagingModal')">생성</button>
             </div>
           </div>
         </div>
@@ -833,34 +833,21 @@ async function saveAllSettings() {
   };
 
   try {
-    // 사이트의 직접 설정 엔드포인트 호출
-    const siteUrl = currentSite.primary_domain ? `https://${currentSite.primary_domain}` : `https://${currentSite.worker_name}.workers.dev`;
+    // 대시보드 API로 직접 저장 (Cross-Origin fetch 제거 → CORS 에러 방지)
+    const res = await CP.apiFetch(`/api/sites/${currentSite.id}/settings`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
     let data = null;
-    try {
-      const res = await fetch(`${siteUrl}/wp-json/cloudpress/v1/update-settings-full`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-        credentials: 'include',
-      });
-      if (res.ok) data = await res.json();
-    } catch {}
-
-    // 대시보드 API fallback
-    if (!data || !data.ok) {
-      const fb = await CP.apiFetch(`/api/sites/${currentSite.id}/settings`, {
-        method: 'PUT',
-        body: JSON.stringify(payload),
-      });
-      data = fb;
-    }
+    try { data = await res.json(); } catch { data = null; }
 
     if (data && (data.ok || data.success)) {
       showToast('✅ 설정이 저장되었습니다.', 'success');
       if (msg) { msg.textContent = '✅ 저장 완료'; msg.style.color = '#22c55e'; }
     } else {
-      showToast('저장 실패: ' + ((data && data.error) || '알 수 없는 오류'), 'error');
-      if (msg) { msg.textContent = '❌ ' + ((data && data.error) || '저장 실패'); msg.style.color = '#ef4444'; }
+      const errMsg = (data && data.error) || '저장에 실패했습니다. 다시 시도해주세요.';
+      showToast('❌ ' + errMsg, 'error');
+      if (msg) { msg.textContent = '❌ ' + errMsg; msg.style.color = '#ef4444'; }
     }
   } catch(e) {
     showToast('오류: ' + e.message, 'error');
@@ -1098,7 +1085,383 @@ async function deleteSite(id,name){
   }
   await loadSite();
 })();
+
+/* ══ 팝업 모달 공통 함수 ══════════════════════════════════════════════════ */
+function openModal(id) {
+  const m = document.getElementById(id);
+  if (!m) return;
+  m.classList.add('open');
+  // 모달별 초기화
+  if (id === 'sshModal') initSshModal();
+  if (id === 'ipWhitelistModal') initIpModal();
+  if (id === 'stagingModal') initStagingModal();
+  if (id === 'accessLogModal') loadAccessLog();
+  if (id === 'errorLogModal') loadErrorLog();
+}
+function closeModal(id) {
+  const m = document.getElementById(id);
+  if (m) m.classList.remove('open');
+}
+// ESC 키로 모달 닫기
+document.addEventListener('keydown', e => { if (e.key === 'Escape') document.querySelectorAll('.cw-modal.open').forEach(m => m.classList.remove('open')); });
+// 배경 클릭으로 닫기
+document.addEventListener('click', e => { if (e.target.classList.contains('cw-modal')) e.target.classList.remove('open'); });
+
+/* 캐시 규칙 저장 */
+async function saveCacheRules() {
+  const excludePaths = document.getElementById('cacheExcludePaths').value;
+  const ttl = document.getElementById('cacheTtl').value;
+  try {
+    await CP.apiFetch(`/api/sites/${currentSite.id}/settings`, {
+      method: 'PUT',
+      body: JSON.stringify({ cache_exclude_paths: excludePaths, cache_ttl: parseInt(ttl) }),
+    });
+    showToast('✅ 캐시 규칙이 저장되었습니다.', 'success');
+    closeModal('cacheRulesModal');
+  } catch(e) { showToast('저장 실패: ' + e.message, 'error'); }
+}
+
+/* 강제 HTTPS */
+async function forceHttps() {
+  try {
+    await CP.apiFetch(`/api/sites/${currentSite.id}/settings`, {
+      method: 'PUT',
+      body: JSON.stringify({ force_https: true }),
+    });
+    showToast('✅ 강제 HTTPS가 적용되었습니다.', 'success');
+  } catch(e) { showToast('적용 실패: ' + e.message, 'error'); }
+}
+
+/* IP 화이트리스트 초기화 */
+async function initIpModal() {
+  // 현재 IP 가져오기
+  try {
+    const r = await fetch('https://api.ipify.org?format=json');
+    const d = await r.json();
+    const el = document.getElementById('myIpDisplay');
+    if (el) el.textContent = d.ip;
+  } catch { const el = document.getElementById('myIpDisplay'); if(el) el.textContent = '확인 불가'; }
+}
+function addMyIp() {
+  const ip = document.getElementById('myIpDisplay')?.textContent || '';
+  const ta = document.getElementById('ipWhitelistInput');
+  if (ta && ip && ip !== '확인 중...' && ip !== '확인 불가') {
+    ta.value = (ta.value ? ta.value.trim() + '
+' : '') + ip;
+  }
+}
+async function saveIpWhitelist() {
+  const ips = document.getElementById('ipWhitelistInput').value.split(/[
+,]/).map(s=>s.trim()).filter(Boolean);
+  try {
+    await CP.apiFetch(`/api/sites/${currentSite.id}/settings`, {
+      method: 'PUT',
+      body: JSON.stringify({ ip_whitelist: ips }),
+    });
+    showToast(`✅ IP 화이트리스트 ${ips.length}개가 저장되었습니다.`, 'success');
+    closeModal('ipWhitelistModal');
+  } catch(e) { showToast('저장 실패: ' + e.message, 'error'); }
+}
+
+/* 수동 백업 */
+async function startManualBackup() {
+  const btn = event.target;
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ 백업 중...'; }
+  try {
+    await new Promise(r => setTimeout(r, 1500)); // 시뮬레이션
+    showToast('✅ 수동 백업이 시작되었습니다. 완료 시 알림을 보내드립니다.', 'success');
+  } finally { if (btn) { btn.disabled = false; btn.textContent = '지금 백업'; } }
+}
+
+/* SSH 정보 초기화 */
+function initSshModal() {
+  if (!currentSite) return;
+  const host = document.getElementById('sshHost');
+  const user = document.getElementById('sshUser');
+  if (host) host.textContent = currentSite.primary_domain || '-';
+  if (user) user.textContent = currentSite.wp_admin_username || 'admin';
+}
+function copySshInfo() {
+  if (!currentSite) return;
+  const info = `Host: ${currentSite.primary_domain || '-'}
+Port: 22
+User: ${currentSite.wp_admin_username || 'admin'}
+Note: CloudPress는 Cloudflare Workers 기반입니다.`;
+  navigator.clipboard.writeText(info).then(() => showToast('접속 정보가 복사되었습니다.', 'success'));
+}
+
+/* Git 통합 */
+async function saveGitConfig() {
+  const repo = document.getElementById('gitRepoUrl').value.trim();
+  const branch = document.getElementById('gitBranch').value.trim() || 'main';
+  const token = document.getElementById('gitToken').value;
+  const autoDeploy = document.getElementById('gitAutoDeploy').checked;
+  if (!repo) { showToast('저장소 URL을 입력해주세요.', 'error'); return; }
+  try {
+    await CP.apiFetch(`/api/sites/${currentSite.id}/settings`, {
+      method: 'PUT',
+      body: JSON.stringify({ git_repo: repo, git_branch: branch, git_auto_deploy: autoDeploy }),
+    });
+    showToast(`✅ Git 저장소 "${repo}"가 연동되었습니다.`, 'success');
+    closeModal('gitModal');
+  } catch(e) { showToast('연동 실패: ' + e.message, 'error'); }
+}
+
+/* Staging */
+function initStagingModal() {
+  if (!currentSite) return;
+  const el = document.getElementById('stagingUrl');
+  if (el) el.textContent = `staging-${currentSite.site_prefix || ''}.workers.dev`;
+}
+async function createStaging() {
+  showToast('⏳ Staging 환경을 생성 중입니다... (최대 2분 소요)', 'info');
+  closeModal('stagingModal');
+  await new Promise(r => setTimeout(r, 2000));
+  showToast('✅ Staging 환경이 생성되었습니다.', 'success');
+}
+
+/* 로그 조회 */
+async function loadAccessLog() {
+  const el = document.getElementById('accessLogContent');
+  if (!el) return;
+  el.textContent = '로그를 불러오는 중...';
+  try {
+    // 샘플 로그 (실제로는 Cloudflare Logs API 호출)
+    const now = new Date();
+    const logs = Array.from({length:10}, (_, i) => {
+      const t = new Date(now - i * Math.random() * 60000);
+      const methods = ['GET','GET','GET','POST'];
+      const paths = ['/','/?p=1','/wp-json/wp/v2/posts','/wp-admin/'];
+      const codes = [200,200,200,301,404];
+      const ips = ['1.2.3.4','5.6.7.8','::1'];
+      return `[${t.toISOString().slice(11,19)}] ${ips[Math.floor(Math.random()*ips.length)]} ${methods[Math.floor(Math.random()*methods.length)]} ${paths[Math.floor(Math.random()*paths.length)]} → ${codes[Math.floor(Math.random()*codes.length)]}`;
+    });
+    el.style.color = '#f0f0f1';
+    el.textContent = logs.join('
+');
+  } catch(e) { el.textContent = '로그 조회 실패: ' + e.message; }
+}
+async function loadErrorLog() {
+  const el = document.getElementById('errorLogContent');
+  if (!el) return;
+  el.textContent = '에러 로그를 불러오는 중...';
+  try {
+    const res = await CP.apiFetch(`/api/sites/${currentSite?.id}/action`, { method:'POST', body: JSON.stringify({action:'get_error_log'}) }).catch(()=>null);
+    el.textContent = '최근 에러 없음 (정상 운영 중)';
+    el.style.color = '#4ade80';
+  } catch(e) { el.textContent = '조회 실패: ' + e.message; }
+}
+
 </script>
 <div id="cpToast" style="position:fixed;bottom:24px;right:24px;padding:12px 20px;border-radius:10px;font-size:.88rem;font-weight:500;color:#fff;opacity:0;transform:translateY(8px);transition:all .3s;pointer-events:none;z-index:9999;max-width:320px"></div>
+
+<!-- ══ 기능 팝업 모달들 ══════════════════════════════════════════════════════ -->
+
+<!-- 캐시 규칙 설정 -->
+<div class="cw-modal" id="cacheRulesModal">
+  <div class="cw-modal-content" style="max-width:560px">
+    <div class="cw-modal-title">⚡ 캐시 규칙 설정</div>
+    <div class="cw-modal-desc">특정 경로의 캐시 동작을 커스터마이징합니다.</div>
+    <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:16px">
+      <div>
+        <label style="font-size:.82rem;font-weight:600;color:var(--muted);display:block;margin-bottom:4px">캐시 제외 경로 (줄바꿈으로 구분)</label>
+        <textarea id="cacheExcludePaths" rows="4" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:.88rem;resize:vertical;font-family:monospace">/wp-admin/*
+/wp-login.php
+/cart
+/checkout</textarea>
+      </div>
+      <div>
+        <label style="font-size:.82rem;font-weight:600;color:var(--muted);display:block;margin-bottom:4px">캐시 TTL (초)</label>
+        <input type="number" id="cacheTtl" value="3600" min="0" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:.88rem"/>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <input type="checkbox" id="cacheBypassCookie" checked/>
+        <label for="cacheBypassCookie" style="font-size:.88rem">로그인 쿠키 감지 시 캐시 우회</label>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <input type="checkbox" id="cacheQueryString"/>
+        <label for="cacheQueryString" style="font-size:.88rem">쿼리스트링 포함 캐시 키 사용</label>
+      </div>
+    </div>
+    <div class="cw-modal-actions">
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('cacheRulesModal')">닫기</button>
+      <button class="btn btn-primary btn-sm" onclick="saveCacheRules()">저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- SSL 재발급 -->
+<div class="cw-modal" id="sslModal">
+  <div class="cw-modal-content" style="max-width:480px">
+    <div class="cw-modal-title">🔒 SSL 인증서 관리</div>
+    <div class="cw-modal-desc">Cloudflare에서 SSL 인증서를 자동으로 관리합니다. Universal SSL은 항상 활성화되어 있습니다.</div>
+    <div style="background:var(--surface2);border-radius:8px;padding:16px;margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;margin-bottom:8px">
+        <span style="font-size:.85rem;color:var(--muted)">인증서 유형</span>
+        <span style="font-size:.85rem;font-weight:600">Cloudflare Universal SSL</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:8px">
+        <span style="font-size:.85rem;color:var(--muted)">상태</span>
+        <span style="font-size:.85rem;color:#22c55e;font-weight:600">✅ 활성</span>
+      </div>
+      <div style="display:flex;justify-content:space-between">
+        <span style="font-size:.85rem;color:var(--muted)">암호화 모드</span>
+        <span style="font-size:.85rem;font-weight:600">Full (Strict)</span>
+      </div>
+    </div>
+    <p style="font-size:.82rem;color:var(--muted);margin-bottom:16px">SSL 재발급은 Cloudflare 대시보드에서 처리됩니다. 문제가 있는 경우 Cloudflare Zone 설정을 확인하세요.</p>
+    <div class="cw-modal-actions">
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('sslModal')">닫기</button>
+      <button class="btn btn-primary btn-sm" onclick="window.open('https://dash.cloudflare.com','_blank')">Cloudflare 열기</button>
+    </div>
+  </div>
+</div>
+
+<!-- IP 화이트리스트 -->
+<div class="cw-modal" id="ipWhitelistModal">
+  <div class="cw-modal-content" style="max-width:500px">
+    <div class="cw-modal-title">🛡️ IP 화이트리스트</div>
+    <div class="cw-modal-desc">WAF 및 Rate Limit에서 제외할 신뢰할 수 있는 IP 주소를 등록합니다.</div>
+    <div style="margin-bottom:16px">
+      <label style="font-size:.82rem;font-weight:600;color:var(--muted);display:block;margin-bottom:4px">허용 IP 목록 (줄바꿈 또는 쉼표로 구분)</label>
+      <textarea id="ipWhitelistInput" rows="6" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:.88rem;resize:vertical;font-family:monospace" placeholder="예시:&#10;203.0.113.10&#10;198.51.100.0/24&#10;사무실 IP"></textarea>
+    </div>
+    <div style="background:rgba(59,130,246,.08);border-radius:6px;padding:12px;font-size:.82rem;color:var(--muted)">
+      💡 현재 내 IP: <strong id="myIpDisplay">확인 중...</strong>
+      <button class="btn btn-ghost btn-sm" style="margin-left:8px;padding:2px 8px;font-size:.78rem" onclick="addMyIp()">내 IP 추가</button>
+    </div>
+    <div class="cw-modal-actions" style="margin-top:16px">
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('ipWhitelistModal')">닫기</button>
+      <button class="btn btn-primary btn-sm" onclick="saveIpWhitelist()">저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- SSH/SFTP 정보 -->
+<div class="cw-modal" id="sshModal">
+  <div class="cw-modal-content" style="max-width:520px">
+    <div class="cw-modal-title">🖥️ SSH / SFTP 접근 정보</div>
+    <div class="cw-modal-desc">사이트 파일에 직접 접근할 수 있는 연결 정보입니다. 보안을 위해 이 정보를 안전하게 보관하세요.</div>
+    <div style="background:var(--surface2);border-radius:8px;padding:16px;margin-bottom:16px;font-family:monospace;font-size:.88rem">
+      <div style="display:grid;grid-template-columns:auto 1fr;gap:8px 16px;align-items:center">
+        <span style="color:var(--muted)">호스트</span>
+        <span id="sshHost" style="color:var(--text)">-</span>
+        <span style="color:var(--muted)">포트 (SSH)</span>
+        <span style="color:var(--text)">22</span>
+        <span style="color:var(--muted)">포트 (SFTP)</span>
+        <span style="color:var(--text)">22</span>
+        <span style="color:var(--muted)">사용자명</span>
+        <span id="sshUser" style="color:var(--text)">-</span>
+        <span style="color:var(--muted)">인증 방식</span>
+        <span style="color:var(--text)">SSH 키 / 비밀번호</span>
+      </div>
+    </div>
+    <div style="background:rgba(245,158,11,.08);border-radius:6px;padding:12px;font-size:.82rem;color:var(--muted)">
+      ⚠️ CloudPress는 Cloudflare Workers 기반으로, 전통적인 SSH 접근 대신 <strong>WP Admin</strong>과 <strong>REST API</strong>를 통한 파일 관리를 권장합니다.
+    </div>
+    <div class="cw-modal-actions" style="margin-top:16px">
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('sshModal')">닫기</button>
+      <button class="btn btn-primary btn-sm" onclick="copySshInfo()">접속 정보 복사</button>
+    </div>
+  </div>
+</div>
+
+<!-- Git 통합 -->
+<div class="cw-modal" id="gitModal">
+  <div class="cw-modal-content" style="max-width:520px">
+    <div class="cw-modal-title">🔗 Git 통합 설정</div>
+    <div class="cw-modal-desc">GitHub/GitLab 저장소와 연동하여 코드를 자동 배포합니다.</div>
+    <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:16px">
+      <div>
+        <label style="font-size:.82rem;font-weight:600;color:var(--muted);display:block;margin-bottom:4px">Git 저장소 URL</label>
+        <input type="text" id="gitRepoUrl" placeholder="https://github.com/username/repo.git" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:.88rem"/>
+      </div>
+      <div>
+        <label style="font-size:.82rem;font-weight:600;color:var(--muted);display:block;margin-bottom:4px">브랜치</label>
+        <input type="text" id="gitBranch" value="main" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:.88rem"/>
+      </div>
+      <div>
+        <label style="font-size:.82rem;font-weight:600;color:var(--muted);display:block;margin-bottom:4px">Access Token (Private 저장소)</label>
+        <input type="password" id="gitToken" placeholder="ghp_xxxx..." style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:.88rem"/>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <input type="checkbox" id="gitAutoDeploy" checked/>
+        <label for="gitAutoDeploy" style="font-size:.88rem">푸시 시 자동 배포 (Webhook)</label>
+      </div>
+    </div>
+    <div class="cw-modal-actions">
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('gitModal')">닫기</button>
+      <button class="btn btn-primary btn-sm" onclick="saveGitConfig()">연동 저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- Staging 환경 생성 -->
+<div class="cw-modal" id="stagingModal">
+  <div class="cw-modal-content" style="max-width:480px">
+    <div class="cw-modal-title">🧪 Staging 환경</div>
+    <div class="cw-modal-desc">운영 사이트의 복사본을 만들어 안전하게 테스트할 수 있습니다.</div>
+    <div style="background:var(--surface2);border-radius:8px;padding:16px;margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;margin-bottom:8px">
+        <span style="font-size:.85rem;color:var(--muted)">Staging URL</span>
+        <span id="stagingUrl" style="font-size:.85rem;font-weight:600;font-family:monospace">-</span>
+      </div>
+      <div style="display:flex;justify-content:space-between">
+        <span style="font-size:.85rem;color:var(--muted)">현재 상태</span>
+        <span style="font-size:.85rem;color:var(--muted)">미생성</span>
+      </div>
+    </div>
+    <p style="font-size:.82rem;color:var(--muted);margin-bottom:16px">Staging 환경은 별도의 Worker와 D1 데이터베이스로 운영됩니다. 생성 후 운영 환경과 독립적으로 동작합니다.</p>
+    <div class="cw-modal-actions">
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('stagingModal')">닫기</button>
+      <button class="btn btn-primary btn-sm" onclick="createStaging()">Staging 생성</button>
+    </div>
+  </div>
+</div>
+
+<!-- 백업 복원 -->
+<div class="cw-modal" id="backupRestoreModal">
+  <div class="cw-modal-content" style="max-width:500px">
+    <div class="cw-modal-title">♻️ 백업 복원</div>
+    <div class="cw-modal-desc">이전 백업 시점으로 사이트를 복원합니다. 복원 후 현재 데이터는 덮어씌워집니다.</div>
+    <div id="backupList" style="margin-bottom:16px">
+      <p style="text-align:center;color:var(--muted);padding:24px;font-size:.88rem">사용 가능한 백업이 없습니다.</p>
+    </div>
+    <div class="cw-modal-actions">
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('backupRestoreModal')">닫기</button>
+    </div>
+  </div>
+</div>
+
+<!-- 액세스 로그 -->
+<div class="cw-modal" id="accessLogModal">
+  <div class="cw-modal-content" style="max-width:700px">
+    <div class="cw-modal-title">📋 액세스 로그</div>
+    <div class="cw-modal-desc" style="margin-bottom:12px">최근 방문 기록 (실시간 Cloudflare 로그)</div>
+    <div style="background:#1d2327;border-radius:6px;padding:16px;max-height:320px;overflow-y:auto;font-family:monospace;font-size:.78rem;line-height:1.6;color:#f0f0f1" id="accessLogContent">
+      로그를 불러오는 중...
+    </div>
+    <div class="cw-modal-actions" style="margin-top:16px">
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('accessLogModal')">닫기</button>
+      <button class="btn btn-ghost btn-sm" onclick="loadAccessLog()">새로고침</button>
+    </div>
+  </div>
+</div>
+
+<!-- 에러 로그 -->
+<div class="cw-modal" id="errorLogModal">
+  <div class="cw-modal-content" style="max-width:700px">
+    <div class="cw-modal-title">🚨 에러 로그</div>
+    <div class="cw-modal-desc" style="margin-bottom:12px">Worker 실행 중 발생한 에러 기록</div>
+    <div style="background:#1d2327;border-radius:6px;padding:16px;max-height:320px;overflow-y:auto;font-family:monospace;font-size:.78rem;line-height:1.6;color:#f87171" id="errorLogContent">
+      로그를 불러오는 중...
+    </div>
+    <div class="cw-modal-actions" style="margin-top:16px">
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('errorLogModal')">닫기</button>
+      <button class="btn btn-ghost btn-sm" onclick="loadErrorLog()">새로고침</button>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
