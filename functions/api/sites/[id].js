@@ -31,8 +31,30 @@ export async function onRequest({ request, env, params }) {
   // ── [D1 #1] site + settings 동시 조회 (batch 1회) ──────────────────────────
   let site, settings;
   try {
-    const [siteRows, settingsRows] = await env.DB.batch([
-      env.DB.prepare(
+    // batch: site + settings 동시 조회
+    // settings 테이블이 없어도 site는 가져올 수 있도록 개별 fallback 처리
+    let siteRows, settingsRows;
+    try {
+      [siteRows, settingsRows] = await env.DB.batch([
+        env.DB.prepare(
+          `SELECT id, user_id, name, primary_domain, domain_status,
+                  site_prefix, worker_name, worker_route, worker_route_www,
+                  worker_route_id, worker_route_www_id, cf_zone_id,
+                  site_d1_id, site_kv_id,
+                  supabase_url, supabase_key, storage_bucket,
+                  supabase_url2, supabase_key2, storage_bucket2,
+                  wp_admin_url, wp_username, wp_password,
+                  wp_version, region,
+                  status, provision_step, error_message,
+                  suspended, suspension_reason, disk_used, bandwidth_used,
+                  plan, created_at, updated_at
+           FROM sites WHERE id=? AND (user_id=? OR 'admin'=?) AND deleted_at IS NULL`
+        ).bind(siteId, user.id, (user.role === 'admin' || user.role === 'manager') ? 'admin' : '__never__'),
+        env.DB.prepare('SELECT key, value FROM settings'),
+      ]);
+    } catch {
+      // batch 실패 시 개별 조회 fallback
+      siteRows = await env.DB.prepare(
         `SELECT id, user_id, name, primary_domain, domain_status,
                 site_prefix, worker_name, worker_route, worker_route_www,
                 worker_route_id, worker_route_www_id, cf_zone_id,
@@ -44,10 +66,10 @@ export async function onRequest({ request, env, params }) {
                 status, provision_step, error_message,
                 suspended, suspension_reason, disk_used, bandwidth_used,
                 plan, created_at, updated_at
-         FROM sites WHERE id=? AND (user_id=? OR ?='admin') AND deleted_at IS NULL`
-      ).bind(siteId, user.id, user.role),
-      env.DB.prepare('SELECT key, value FROM settings'),
-    ]);
+         FROM sites WHERE id=? AND (user_id=? OR 'admin'=?) AND deleted_at IS NULL`
+      ).bind(siteId, user.id, (user.role === 'admin' || user.role === 'manager') ? 'admin' : '__never__').all();
+      settingsRows = { results: [] };
+    }
 
     site = siteRows.results?.[0] ?? null;
 
