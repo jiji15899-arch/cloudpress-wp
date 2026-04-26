@@ -117,7 +117,9 @@
 
     async function loadGlobalSites() {
       const res = await CP.apiFetch('/admin/sites');
-      const data = await res.json();
+      const data = await CP.safeJson(res);
+      if (data.error) { console.error(data.error); return; }
+      
       const list = document.getElementById('globalSiteList');
       if (!data.sites?.length) {
         list.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px">생성된 사이트가 없습니다.</td></tr>';
