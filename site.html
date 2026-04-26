@@ -750,8 +750,7 @@ async function purgeCache(siteId){
   btn.disabled=true;
   btn.textContent='⏳ 캐시 제거 중...';
   try{
-    const token=CP.getToken();
-    const res=await fetch(`/api/sites/${siteId}/purge-cache`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token}});
+    const res=await CP.apiFetch(`/api/sites/${siteId}/purge-cache`,{method:'POST'});
     const data=await res.json();
     if(data.ok){showToast('✅ 캐시가 성공적으로 제거되었습니다.','success');}
     else{showToast('캐시 제거 실패: '+(data.error||'알 수 없는 오류'),'error');}
@@ -846,9 +845,8 @@ function renderDomainList(siteId,domains,subdomain,primaryDomain){
 const _nsCache={};
 async function loadNsInfo(domId,domain){
   try{
-    const token=CP.getToken();
     const rootDomain=domain.split('.').slice(-2).join('.');
-    const res=await fetch(`/api/dns/zones?domain=${encodeURIComponent(rootDomain)}`,{headers:{'Authorization':'Bearer '+token}});
+    const res=await CP.apiFetch(`/api/dns/zones?domain=${encodeURIComponent(rootDomain)}`);
     const data=await res.json();
     const ns1El=document.getElementById(`ns1-${domId}`);
     const ns2El=document.getElementById(`ns2-${domId}`);
@@ -949,10 +947,9 @@ function showDomainResult(msg,success){
 
 async function deleteSite(id,name){
   if(!confirm(`"${name}" 사이트를 정말 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.`))return;
-  const token=CP.getToken();
   let delData;
   try{
-    const res=await fetch('/api/sites/'+id,{method:'DELETE',headers:{'Authorization':'Bearer '+token}});
+    const res=await CP.apiFetch('/api/sites/'+id,{method:'DELETE'});
     delData=await res.json();
   }catch(e){alert('삭제 중 오류: '+e.message);return;}
   if(delData.ok)location.href='/dashboard.html';
