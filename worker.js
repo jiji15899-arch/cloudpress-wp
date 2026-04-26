@@ -198,19 +198,31 @@ async function getWpOption(env, siteInfo, name) {
       'SELECT option_value FROM wp_options WHERE option_name=? LIMIT 1'
     ).bind(name).first();
     const val = row?.option_value || '';
-    if (env.CACHE) env.CACHE.put(ck, val, { expirationTtl: 600 }).catch(() => {});
+    if (env.CACHE) env.CACHE.put(ck, val, { expirationTtl: 86400 }).catch(() => {});
     return val;
   } catch { return ''; }
 }
 
 async function setWpOption(env, siteInfo, name, value) {
-  const ck = KV_OPT_PFX + (siteInfo?.site_prefix || '') + ':' + name;
+  const prefix = siteInfo?.site_prefix || '';
+  const ck = KV_OPT_PFX + prefix + ':' + name;
   try {
     await env.DB.prepare(
       `INSERT INTO wp_options (option_name, option_value, autoload) VALUES (?,?,'yes')
        ON CONFLICT(option_name) DO UPDATE SET option_value=excluded.option_value`
     ).bind(name, String(value)).run();
-    if (env.CACHE) env.CACHE.put(ck, String(value), { expirationTtl: 600 }).catch(() => {});
+    // KV 캐시 갱신 (86400초=24시간 유지, 플러그인/테마 설정 유실 방지)
+    if (env.CACHE) {
+      await env.CACHE.put(ck, String(value), { expirationTtl: 86400 }).catch(() => {});
+      // 사이트 도메인 캐시도 무효화 (테마/설정 변경 즉시 반영)
+      if (name === 'template' || name === 'stylesheet' || name === 'active_plugins' || name === 'installed_plugins' || name === 'installed_themes') {
+        const domain = siteInfo?.primary_domain || '';
+        if (domain) {
+          await env.CACHE.delete(KV_SITE_PREFIX + domain).catch(() => {});
+          await env.CACHE.delete(KV_SITE_PREFIX + 'www.' + domain).catch(() => {});
+        }
+      }
+    }
     return true;
   } catch { return false; }
 }
@@ -2059,29 +2071,37 @@ async function renderFrontend(env, siteInfo, request, url) {
     });
   }
 
-  // 개별 포스트/페이지
-  const slug = pathname.replace(/^\/|\\/g,'').split('?')[0];
-  if (slug && !/[<>'"&]/.test(slug)) {
-    const post = await env.DB.prepare(
-      `SELECT * FROM wp_posts WHERE post_name=? AND post_status='publish' AND post_type IN ('post','page') LIMIT 1`
-    ).bind(slug).first().catch(() => null);
+  // 개별 포스트/페이지 — Error 1101 방지: 전체 try/catch로 감쌈
+  try {
+    const rawSlug = pathname.replace(/^\/+|\/+$/g, '').split('?')[0].split('/')[0];
+    if (rawSlug && rawSlug.length > 0 && rawSlug.length < 200 && !/[<>'"&]/.test(rawSlug)) {
+      const post = await env.DB.prepare(
+        `SELECT ID, post_title, post_content, post_excerpt, post_date, post_name, post_type
+           FROM wp_posts WHERE post_name=? AND post_status='publish' AND post_type IN ('post','page') LIMIT 1`
+      ).bind(rawSlug).first().catch(() => null);
 
-    if (post) {
-      const dateStr = new Date(post.post_date).toLocaleDateString('ko-KR',{year:'numeric',month:'long',day:'numeric'});
-      return new Response(renderTheme(
-        esc(post.post_title) + ' — ' + esc(title),
-        esc(post.post_excerpt || ''),
-        siteUrl,
-        `<article class="post single h-entry">
-  <h1 class="entry-title p-name">${esc(post.post_title)}</h1>
-  <div class="entry-meta"><time class="dt-published" datetime="${post.post_date}">${dateStr}</time></div>
-  <div class="entry-content e-content">${post.post_content || ''}</div>
+      if (post) {
+        let dateStr = '';
+        try { dateStr = new Date(post.post_date).toLocaleDateString('ko-KR',{year:'numeric',month:'long',day:'numeric'}); } catch {}
+        const safeContent = post.post_content ? String(post.post_content) : '';
+        return new Response(renderTheme(
+          esc(String(post.post_title || '')) + ' — ' + esc(title),
+          esc(String(post.post_excerpt || '')),
+          siteUrl,
+          `<article class="post single h-entry">
+  <h1 class="entry-title p-name">${esc(String(post.post_title || ''))}</h1>
+  <div class="entry-meta"><time class="dt-published" datetime="${esc(String(post.post_date || ''))}">${dateStr}</time></div>
+  <div class="entry-content e-content">${safeContent}</div>
   <nav class="post-nav" style="margin-top:32px;padding-top:20px;border-top:1px solid #e0e0e0">
     <a href="${siteUrl}" style="color:#2271b1">← 목록으로</a>
   </nav>
 </article>`
-      ), { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=300' } });
+        ), { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=300' } });
+      }
     }
+  } catch (postErr) {
+    // Error 1101 방지: 포스트 렌더링 실패 시 404로 안전하게 폴백
+    console.error('Post render error (fallback to 404):', String(postErr?.message || postErr));
   }
 
   // 404
@@ -2267,10 +2287,7 @@ async function handleRequest(request, env, ctx) {
     const siteInfo = await getSiteInfo(env, url.hostname);
     if (!siteInfo) {
       // CloudPress 플랫폼 자체 도메인 — Pages Functions이 처리
-      // 루트 경로면 index.html로, 아니면 그냥 통과
-      if (pathname === '/' || pathname === '') {
-        return Response.redirect(url.origin + '/index.html', 302);
-      }
+      // 그냥 통과 (index.html 리다이렉트 제거)
       return new Response(null, { status: 404 });
     }
 
