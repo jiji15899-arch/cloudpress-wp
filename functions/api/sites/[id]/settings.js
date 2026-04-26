@@ -38,7 +38,7 @@ export async function onRequestPut(ctx) {
     if (wp_auto_update !== undefined) { updates.push('wp_auto_update=?'); binds.push(wp_auto_update); }
 
     if (updates.length > 0) {
-      updates.push('updated_at=datetime('now')');
+      updates.push("updated_at=datetime('now')");
       binds.push(siteId);
       await env.DB.prepare(`UPDATE sites SET ${updates.join(', ')} WHERE id=?`).bind(...binds).run();
     }
