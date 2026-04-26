@@ -1,5 +1,9 @@
-// functions/api/sites/index.js — CloudPress v22.0
-// 수정: manager도 본인 사이트만 표시, 사이트 생성 후 자동 provision 트리거
+// functions/api/sites/index.js — CloudPress v24.5
+// 수정사항:
+//  - 사이트 생성 시 어드민 CF API 설정(D1/KV) 불필요 → 사용자 CF 키만 사용
+//  - CF API 키 미등록 사용자도 사이트 레코드 생성 가능 (provision 단계에서 검증)
+//  - manager도 본인 사이트만 표시
+//  - 사이트 생성 후 자동 provision 트리거
 
 import { CORS, ok, err, getUser } from '../_shared.js';
 import { getLiveRegions } from '../_versions.js';
@@ -15,7 +19,7 @@ export async function onRequestPost({ request, env, waitUntil }) {
   let body;
   try { body = await request.json(); } catch { return err('요청 형식 오류'); }
 
-  // ── 사이트 생성 ──────────────────────────────────────────────────
+  // ── 사이트 생성 ──────────────────────────────────────────────────────────────
   if (!body.action || body.action === 'create') {
     const isPrivileged = user.role === 'admin' || user.role === 'manager';
 
@@ -42,10 +46,9 @@ export async function onRequestPost({ request, env, waitUntil }) {
       return err('사이트 생성을 위해 먼저 "내 계정" 탭에서 결제용 카드를 등록해주세요.', 403);
     }
 
-    // Cloudflare API 정보 검증
-    if (!fullUser?.cf_global_api_key || !fullUser?.cf_account_id) {
-      return err('Cloudflare API 설정이 누락되었습니다. "내 계정"에서 Global API Key와 Account Email을 등록해주세요.', 400);
-    }
+    // ── 핵심 수정: CF API 키는 provision 단계에서만 검증 ─────────────────────
+    // 사이트 레코드는 항상 생성 가능하며, 실제 Cloudflare 작업은 provision에서 수행
+    // CF 키가 없으면 provision 실패 후 error_message에 등록 안내 표시됨
 
     const siteId = 'site_' + crypto.randomUUID().replace(/-/g, '').slice(0, 12);
     const prefix = 's' + Math.random().toString(36).slice(2, 7);
@@ -57,13 +60,13 @@ export async function onRequestPost({ request, env, waitUntil }) {
     try {
       await env.DB.prepare(
         `INSERT INTO sites
-           (id, user_id, name, primary_domain, site_prefix, plan, status, provision_step, 
+           (id, user_id, name, primary_domain, site_prefix, plan, status, provision_step,
             wp_username, wp_password, region, edge_ip, wp_version, php_version, wp_auto_update, created_at)
          VALUES (?, ?, ?, ?, ?, ?, 'pending', 'init', ?, ?, ?, ?, ?, ?, ?, datetime('now'))`
       ).bind(
         siteId, user.id, body.name || 'My Site', domain, prefix, body.plan || 'starter',
-        body.wp_username || 'admin', body.wp_password || '', 
-        regionData.code, regionData.ip, 
+        body.wp_username || 'admin', body.wp_password || '',
+        regionData.code, regionData.ip,
         body.wp_version || 'latest', body.php_version || '8.3', body.wp_auto_update || 'minor'
       ).run();
 
