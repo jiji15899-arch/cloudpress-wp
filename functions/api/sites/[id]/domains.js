@@ -12,7 +12,7 @@ export async function onRequestGet({ request, env, params }) {
   if (!user) return err('로그인이 필요합니다.', 401);
 
   const site = await env.DB.prepare(
-    'SELECT id, primary_domain, alias_domains, site_prefix, worker_name FROM sites WHERE id=? AND (user_id=? OR ?='admin') AND deleted_at IS NULL'
+    "SELECT id, primary_domain, alias_domains, site_prefix, worker_name FROM sites WHERE id=? AND (user_id=? OR ?='admin') AND deleted_at IS NULL"
   ).bind(siteId, user.id, user.role).first();
 
   if (!site) return err('사이트를 찾을 수 없습니다.', 404);
