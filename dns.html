@@ -263,11 +263,13 @@ async function loadZones() {
     zones = data.zones || [];
     renderZones();
   } catch(e) {
+    const isCfKeyError = e.message && (e.message.includes('404') || e.message.includes('API 키') || e.message.includes('Cloudflare'));
     document.getElementById('zonesList').innerHTML = `
-      <div style="text-align:center;padding:40px;color:var(--muted)">
-        <div style="font-size:2rem;margin-bottom:8px">⚠️</div>
-        <div style="font-size:.87rem">${e.message}</div>
-        <div style="font-size:.78rem;margin-top:6px">계정 설정에서 Cloudflare API 키를 확인해주세요.</div>
+      <div style="background:var(--surface,#fff);border:1px solid var(--border,#dde4ee);border-radius:14px;padding:40px 32px;text-align:center;color:var(--muted,#6b7280)">
+        <div style="font-size:2.2rem;margin-bottom:12px">${isCfKeyError ? '🔑' : '⚠️'}</div>
+        <div style="font-size:.95rem;font-weight:600;color:var(--text,#111827);margin-bottom:6px">${isCfKeyError ? 'Cloudflare API 키가 필요합니다' : 'DNS 정보를 불러올 수 없습니다'}</div>
+        <div style="font-size:.84rem;margin-bottom:16px;line-height:1.6">${e.message}</div>
+        ${isCfKeyError ? `<a href="/account.html" style="display:inline-flex;align-items:center;gap:6px;background:var(--accent,#2c33d8);color:#fff;padding:9px 20px;border-radius:8px;font-size:.85rem;font-weight:600;text-decoration:none">⚙️ 계정 설정에서 API 키 등록하기</a>` : `<button onclick="loadZones()" style="background:var(--accent,#2c33d8);color:#fff;border:none;padding:9px 20px;border-radius:8px;font-size:.85rem;font-weight:600;cursor:pointer">🔄 다시 시도</button>`}
       </div>`;
   }
   if (btn) btn.disabled = false;
