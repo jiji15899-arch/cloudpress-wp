@@ -118,7 +118,7 @@
   </div>
 </div>
 
-<script src="/app.js?v=20.1"></script>
+<script src="/app.js?v=24.2"></script>
 <script>
 let delId=null;
 
@@ -142,17 +142,14 @@ async function init(){
     // 실시간 리소스 모니터링 시작
     CP.initResourceMonitor();
 
-    // 공지사항
-    try {
-      const nd=await CP.get('/admin/notices?active=1');
+    // 공지사항 — loadSites()와 병렬 실행 (hang해도 사이트 목록에 영향 없음)
+    CP.get('/admin/notices?active=1').then(nd => {
       if(nd.ok && nd.notices?.length){
         document.getElementById('noticeArea').innerHTML=nd.notices.map(n=>
           `<div class="notice-bar ${n.type}"><span>📢</span><span><strong>${CP.escHtml(n.title)}</strong> — ${CP.escHtml(n.content)}</span></div>`
         ).join('');
       }
-    } catch(e) {
-      console.error('공지사항 로드 실패:', e);
-    }
+    }).catch(e => console.error('공지사항 로드 실패:', e));
     
     await loadSites();
   } catch(e) {
@@ -163,6 +160,7 @@ async function init(){
 
 async function loadSites(){
   const el=document.getElementById('sitesList');
+  el.innerHTML='<div style="color:var(--muted);font-size:.88rem;padding:20px 0">불러오는 중...</div>';
   try {
     const d=await CP.getSites();
     if(!d || !d.ok){
