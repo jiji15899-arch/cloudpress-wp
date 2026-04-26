@@ -25,7 +25,7 @@ export async function onRequestPut(ctx) {
   } = body;
 
   const site = await env.DB.prepare(
-    'SELECT * FROM sites WHERE id=? AND (user_id=? OR ?='admin') AND deleted_at IS NULL'
+    "SELECT * FROM sites WHERE id=? AND (user_id=? OR ?='admin') AND deleted_at IS NULL"
   ).bind(siteId, user.id, user.role).first();
   if (!site) return err('사이트를 찾을 수 없습니다.', 404);
 
