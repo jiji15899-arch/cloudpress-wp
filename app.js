@@ -184,6 +184,32 @@ const CP = {
   // 어드민 통계 조회
   async adminStats() { return await this.get('/admin/stats'); },
 
+  // 어드민 사용자 관리
+  async adminUsers(q = '', page = 1) {
+    let path = `/admin/users?page=${page}`;
+    if (q) path += `&q=${encodeURIComponent(q)}`;
+    return await this.get(path);
+  },
+  async adminUpdateUser(data) { return await this.put(`/admin/users/${data.id}`, data); },
+  async adminDeleteUser(id) { return await this.delete(`/admin/users/${id}`); },
+
+  // 어드민 사이트 관리
+  async adminSites(q = '', page = 1) {
+    let path = `/admin/sites?page=${page}`;
+    if (q) path += `&q=${encodeURIComponent(q)}`;
+    return await this.get(path);
+  },
+  async adminDeleteSite(id) { return await this.delete(`/admin/sites/${id}`); },
+
+  // 어드민 공지사항 관리
+  async adminNotices(page = 1) { return await this.get(`/admin/notices?page=${page}`); },
+  async adminCreateNotice(data) { return await this.post('/admin/notices', data); },
+  async adminUpdateNotice(data) { return await this.put(`/admin/notices/${data.id}`, data); },
+  async adminDeleteNotice(id) { return await this.delete(`/admin/notices/${id}`); },
+
+  // 어드민 매출 관리
+  async adminRevenue(page = 1) { return await this.get(`/admin/revenue?page=${page}`); },
+
   // 도메인 레이턴시 측정 (ping 대체)
   async measureLatency(domain) {
     if (!domain) return -1;
