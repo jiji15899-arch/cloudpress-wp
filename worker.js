@@ -1835,7 +1835,11 @@ export default {
     const siteInfo = await getSiteInfo(env, url.hostname);
     if (!siteInfo) {
       // CloudPress 플랫폼 자체 도메인 — Pages Functions이 처리
-      return new Response('CloudPress Platform', { status: 200 });
+      // 루트 경로면 index.html로, 아니면 그냥 통과
+      if (pathname === '/' || pathname === '') {
+        return Response.redirect(url.origin + '/index.html', 302);
+      }
+      return new Response(null, { status: 404 });
     }
 
     // 사이트 일시정지 확인
