@@ -438,15 +438,15 @@ async function loadSite(){
       <div class="info-row">
         <div class="info-label">아이디 (Username)</div>
         <div class="info-val" style="display:flex;align-items:center;">
-          <code style="background:rgba(34,113,177,.08);padding:2px 8px;border-radius:4px;font-size:.9rem;user-select:all">${esc(site.wp_admin_username||'admin')}</code>
-          <button onclick="navigator.clipboard.writeText('${esc(site.wp_admin_username||'admin')}');this.textContent='✅';setTimeout(()=>this.textContent='복사',1200)" style="margin-left:6px;padding:2px 8px;background:none;border:1px solid var(--border);border-radius:4px;cursor:pointer;font-size:.75rem;color:var(--muted)">복사</button>
+          <code style="background:rgba(34,113,177,.08);padding:2px 8px;border-radius:4px;font-size:.9rem;user-select:all">${esc(site.wp_username||'admin')}</code>
+          <button onclick="navigator.clipboard.writeText('${esc(site.wp_username||'admin')}');this.textContent='✅';setTimeout(()=>this.textContent='복사',1200)" style="margin-left:6px;padding:2px 8px;background:none;border:1px solid var(--border);border-radius:4px;cursor:pointer;font-size:.75rem;color:var(--muted)">복사</button>
         </div>
       </div>
       <div class="info-row">
         <div class="info-label">비밀번호 (Password)</div>
         <div class="info-val" id="pwRow">
-          <code id="pwVal" style="background:rgba(34,113,177,.08);padding:2px 8px;border-radius:4px;font-size:.9rem;user-select:all;letter-spacing:.05em">${esc(site.wp_admin_password||'—')}</code>
-          <button onclick="navigator.clipboard.writeText('${esc(site.wp_admin_password||'')}');this.textContent='✅';setTimeout(()=>this.textContent='복사',1200)" style="margin-left:6px;padding:2px 8px;background:none;border:1px solid var(--border);border-radius:4px;cursor:pointer;font-size:.75rem;color:var(--muted)">복사</button>
+          <code id="pwVal" style="background:rgba(34,113,177,.08);padding:2px 8px;border-radius:4px;font-size:.9rem;user-select:all;letter-spacing:.05em">${esc(site.wp_password||'—')}</code>
+          <button onclick="navigator.clipboard.writeText('${esc(site.wp_password||'')}');this.textContent='✅';setTimeout(()=>this.textContent='복사',1200)" style="margin-left:6px;padding:2px 8px;background:none;border:1px solid var(--border);border-radius:4px;cursor:pointer;font-size:.75rem;color:var(--muted)">복사</button>
         </div>
       </div>
       <div style="background:rgba(34,113,177,.07);border:1px solid rgba(34,113,177,.18);border-radius:8px;padding:14px;font-size:.82rem;color:var(--muted);margin-top:12px;line-height:1.6">
@@ -1184,13 +1184,13 @@ function initSshModal() {
   const host = document.getElementById('sshHost');
   const user = document.getElementById('sshUser');
   if (host) host.textContent = currentSite.primary_domain || '-';
-  if (user) user.textContent = currentSite.wp_admin_username || 'admin';
+  if (user) user.textContent = currentSite.wp_username || 'admin';
 }
 function copySshInfo() {
   if (!currentSite) return;
   const info = `Host: ${currentSite.primary_domain || '-'}
 Port: 22
-User: ${currentSite.wp_admin_username || 'admin'}
+User: ${currentSite.wp_username || 'admin'}
 Note: CloudPress는 Cloudflare Workers 기반입니다.`;
   navigator.clipboard.writeText(info).then(() => showToast('접속 정보가 복사되었습니다.', 'success'));
 }
