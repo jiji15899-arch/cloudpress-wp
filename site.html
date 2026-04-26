@@ -326,25 +326,48 @@ async function updateChartData() {
   }
 }
 
+let _sitePollingTimer = null;
+
 async function loadSite(){
   const params=new URLSearchParams(location.search);
   const siteId=params.get('id');
-  if(!siteId){document.getElementById('content').innerHTML='<p style="color:var(--error);text-align:center;padding:40px">사이트 ID가 없습니다.</p>';return;}
+  const spinner = document.getElementById('loadingSpinner');
+  const contentEl = document.getElementById('content');
+  const showErr = (msg) => {
+    if(spinner) spinner.style.display = 'none';
+    if(contentEl){ contentEl.style.display = ''; contentEl.innerHTML=`<p style="color:var(--error);text-align:center;padding:40px">${esc(msg)}</p>`; }
+  };
+  if(!siteId){ showErr('사이트 ID가 없습니다.'); return; }
   let data;
-  document.getElementById('loadingSpinner').style.display = 'block'; // 로딩 스피너 표시
-  document.getElementById('content').style.display = 'none';
+  if(spinner) spinner.style.display = 'block';
+  if(contentEl) contentEl.style.display = 'none';
   try{
     data = await CP.fetch(`/sites/${siteId}`);
   }catch(e){
-    document.getElementById('loadingSpinner').style.display = 'none';
-    document.getElementById('content').style.display = '';
-    document.getElementById('content').innerHTML=`<p style="color:var(--error);text-align:center;padding:40px">네트워크 오류: ${esc(e.message)}</p>`;
+    showErr('네트워크 오류: ' + e.message);
     return;
   }
-  if(!data.ok){
-    document.getElementById('loadingSpinner').style.display = 'none';
-    document.getElementById('content').style.display = '';
-    document.getElementById('content').innerHTML=`<p style="color:var(--error);text-align:center;padding:40px">${esc(data.error||'사이트를 불러올 수 없습니다.')}</p>`;
+  if(!data || !data.ok){
+    showErr(data && data.error ? data.error : '사이트를 불러올 수 없습니다.');
+    return;
+  }
+  // provisioning 중인 사이트는 폴링
+  if(data.site && ['pending','provisioning','installing_wp'].includes(data.site.status)){
+    if(spinner) spinner.style.display = 'block';
+    if(contentEl){ contentEl.style.display = ''; contentEl.innerHTML=`<div style="text-align:center;padding:40px;color:var(--muted)">
+      <div style="margin-bottom:12px">⚙️ 사이트를 프로비저닝하고 있습니다...</div>
+      <div style="font-size:.85rem">상태: <strong>${esc(STATUS_LABELS[data.site.status]||data.site.status)}</strong></div>
+    </div>`; }
+    if(_sitePollingTimer) clearInterval(_sitePollingTimer);
+    _sitePollingTimer = setInterval(async()=>{
+      try{
+        const d2 = await CP.fetch(`/sites/${siteId}`);
+        if(d2 && d2.ok && d2.site && !['pending','provisioning','installing_wp'].includes(d2.site.status)){
+          clearInterval(_sitePollingTimer); _sitePollingTimer=null;
+          location.reload();
+        }
+      }catch{}
+    }, 4000);
     return;
   }
 
