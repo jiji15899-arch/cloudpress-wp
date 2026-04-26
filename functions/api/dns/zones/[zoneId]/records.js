@@ -17,7 +17,15 @@ async function cfReq(auth, path, method = 'GET', body) {
   if (body !== undefined) opts.body = JSON.stringify(body);
   try {
     const res = await fetch(CF_API + path, opts);
-    return await res.json();
+    const ct = res.headers.get('content-type') || '';
+    if (!ct.includes('application/json')) {
+      return { success: false, errors: [{ message: `Cloudflare API가 JSON이 아닌 응답을 반환했습니다 (Status: ${res.status})` }] };
+    }
+    const text = await res.text();
+    if (!text || !text.trim()) return { success: res.ok };
+    try { return JSON.parse(text); } catch {
+      return { success: false, errors: [{ message: 'Cloudflare 응답 파싱 오류: ' + text.slice(0, 100) }] };
+    }
   } catch (e) {
     return { success: false, errors: [{ message: e.message }] };
   }
