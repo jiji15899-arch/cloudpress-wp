@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>할인 코드 관리 — CloudPress Admin</title>
+  <link rel="stylesheet" href="/dashboard.css?v=23.0"/>
+  <style>
+    .discount-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:20px;margin-bottom:32px}
+    .stat-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px}
+    .stat-val{font-size:2rem;font-weight:700;color:var(--text);margin-bottom:4px}
+    .stat-lbl{font-size:.82rem;color:var(--muted)}
+    .table-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:24px}
+    .table-header{display:flex;align-items:center;justify-content:space-between;padding:20px 24px;border-bottom:1px solid var(--border)}
+    .table-title{font-size:1rem;font-weight:700;color:var(--text)}
+    .admin-table{width:100%;border-collapse:collapse}
+    .admin-table th{background:var(--surface2);padding:12px 20px;text-align:left;font-size:.75rem;color:var(--muted);text-transform:uppercase;font-weight:700}
+    .admin-table td{padding:14px 20px;border-bottom:1px solid var(--border);font-size:.88rem}
+    .admin-table tr:last-child td{border-bottom:none}
+    .badge{display:inline-flex;align-items:center;padding:3px 10px;border-radius:20px;font-size:.72rem;font-weight:700}
+    .badge-green{background:rgba(34,197,94,.12);color:#16a34a}
+    .badge-gray{background:var(--surface2);color:var(--muted)}
+    .badge-red{background:rgba(239,68,68,.12);color:#dc2626}
+    .badge-blue{background:rgba(59,130,246,.12);color:#2563eb}
+    .form-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;align-items:center;justify-content:center;padding:20px}
+    .form-modal.open{display:flex}
+    .form-box{background:var(--surface);border-radius:12px;padding:32px;width:100%;max-width:500px;box-shadow:0 20px 40px rgba(0,0,0,.2)}
+    .form-title{font-size:1.1rem;font-weight:700;margin-bottom:20px}
+    .field-group{display:flex;flex-direction:column;gap:12px;margin-bottom:20px}
+    .field-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .field label{font-size:.82rem;font-weight:600;color:var(--muted);margin-bottom:4px;display:block}
+    .field input,.field select{width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:.9rem}
+    .modal-actions{display:flex;justify-content:flex-end;gap:12px;margin-top:24px}
+    .empty-state{text-align:center;padding:48px;color:var(--muted);font-size:.9rem}
+  </style>
+</head>
+<body>
+<div class="app-wrap">
+  <aside class="sidebar" id="sidebar">
+    <a href="/dashboard.html" class="sb-logo">
+      <svg width="22" height="22" viewBox="0 0 28 28" fill="none">
+        <path d="M14 2L26 8V20L14 26L2 20V8L14 2Z" stroke="currentColor" stroke-width="1.5"/>
+        <path d="M14 8L20 11V17L14 20L8 17V11L14 8Z" fill="currentColor" opacity=".5"/>
+        <circle cx="14" cy="14" r="2.2" fill="currentColor"/>
+      </svg>CloudPress
+    </a>
+    <nav class="sb-nav">
+      <div class="sb-section">
+        <div class="sb-label">메인</div>
+        <a href="/dashboard.html" class="sb-link">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="14" y="3" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="3" y="14" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="14" y="14" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/></svg>대시보드</a>
+        <a href="/dns.html" class="sb-link">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.5"/><path d="M2 12h20" stroke="currentColor" stroke-width="1.5"/></svg>DNS 관리</a>
+      </div>
+      <div class="sb-section">
+        <div class="sb-label">관리자</div>
+        <a href="/admin.html" class="sb-link">📊 개요</a>
+        <a href="/admin-user-control.html" class="sb-link">👥 사용자</a>
+        <a href="/admin-site-control.html" class="sb-link">🌐 사이트</a>
+        <a href="/admin-settings.html" class="sb-link">⚙️ 설정</a>
+        <a href="/admin-notices.html" class="sb-link">📢 공지</a>
+        <a href="/admin-revenue.html" class="sb-link">💰 매출</a>
+        <a href="/admin-traffic.html" class="sb-link">📈 트래픽</a>
+        <a href="/admin-discount.html" class="sb-link active">🎟️ 할인 코드</a>
+      </div>
+      <div class="sb-section">
+        <button class="sb-link danger" onclick="CP.logout()">로그아웃</button>
+      </div>
+    </nav>
+  </aside>
+  <div class="sidebar-overlay" id="overlay" onclick="closeSidebar()"></div>
+
+  <main class="main">
+    <div class="topbar">
+      <div style="display:flex;align-items:center;gap:14px">
+        <button class="sidebar-toggle" onclick="openSidebar()">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M3 12h18M3 6h18M3 18h18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </button>
+        <h1 class="page-title">🎟️ 할인 코드 관리</h1>
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="openCreateModal()">+ 할인 코드 생성</button>
+    </div>
+
+    <div class="content-wrap">
+      <!-- 통계 -->
+      <div class="discount-grid">
+        <div class="stat-card">
+          <div class="stat-val" id="totalCodes">-</div>
+          <div class="stat-lbl">전체 코드</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-val" id="activeCodes">-</div>
+          <div class="stat-lbl">활성 코드</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-val" id="usedCodes">-</div>
+          <div class="stat-lbl">사용된 횟수</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-val" id="totalDiscount">-</div>
+          <div class="stat-lbl">총 할인 금액</div>
+        </div>
+      </div>
+
+      <!-- 코드 목록 -->
+      <div class="table-card">
+        <div class="table-header">
+          <span class="table-title">할인 코드 목록</span>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input type="text" id="searchCode" placeholder="코드 검색..." style="padding:7px 12px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:.85rem" oninput="filterCodes()"/>
+          </div>
+        </div>
+        <div style="overflow-x:auto">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>코드</th>
+                <th>유형</th>
+                <th>할인값</th>
+                <th>사용횟수</th>
+                <th>최대사용</th>
+                <th>만료일</th>
+                <th>상태</th>
+                <th>액션</th>
+              </tr>
+            </thead>
+            <tbody id="codeTableBody">
+              <tr><td colspan="8" class="empty-state">로딩 중...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- 할인 코드 생성 모달 -->
+<div class="form-modal" id="createModal">
+  <div class="form-box">
+    <div class="form-title">🎟️ 새 할인 코드 생성</div>
+    <div class="field-group">
+      <div class="field">
+        <label>코드명 <span style="color:#ef4444">*</span></label>
+        <div style="display:flex;gap:8px">
+          <input type="text" id="codeInput" placeholder="SUMMER2025" style="flex:1;text-transform:uppercase"/>
+          <button class="btn btn-ghost btn-sm" onclick="genRandomCode()">자동생성</button>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>할인 유형</label>
+          <select id="discountType" onchange="updateDiscountLabel()">
+            <option value="percent">퍼센트 (%)</option>
+            <option value="fixed">고정 금액 (₩)</option>
+            <option value="free_month">무료 기간 (개월)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label id="discountValueLabel">할인율 (%)</label>
+          <input type="number" id="discountValue" placeholder="10" min="1"/>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>최대 사용 횟수</label>
+          <input type="number" id="maxUses" placeholder="무제한 (비워두기)" min="1"/>
+        </div>
+        <div class="field">
+          <label>만료일</label>
+          <input type="date" id="expiresAt"/>
+        </div>
+      </div>
+      <div class="field">
+        <label>적용 플랜 (비워두면 전체)</label>
+        <select id="applicablePlan">
+          <option value="">전체 플랜</option>
+          <option value="starter">Starter</option>
+          <option value="pro">Pro</option>
+          <option value="business">Business</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>설명 (내부용)</label>
+        <input type="text" id="codeDesc" placeholder="예: 여름 프로모션 코드"/>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeCreateModal()">취소</button>
+      <button class="btn btn-primary" onclick="createDiscountCode()">생성하기</button>
+    </div>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+<script>
+let allCodes = [];
+
+async function loadCodes() {
+  try {
+    const res = await CP.apiFetch('/api/admin/discounts');
+    const data = await CP.safeJson(res);
+    allCodes = data.codes || [];
+    renderStats(allCodes);
+    renderTable(allCodes);
+  } catch(e) {
+    // 아직 API가 없을 경우 로컬 스토리지에서 로드
+    const stored = localStorage.getItem('cp_discount_codes');
+    allCodes = stored ? JSON.parse(stored) : [];
+    renderStats(allCodes);
+    renderTable(allCodes);
+  }
+}
+
+function renderStats(codes) {
+  const active = codes.filter(c => c.status === 'active');
+  const totalUsed = codes.reduce((s, c) => s + (c.used_count || 0), 0);
+  const totalDisc = codes.reduce((s, c) => {
+    if (c.discount_type === 'fixed') return s + (c.discount_value || 0) * (c.used_count || 0);
+    return s;
+  }, 0);
+  document.getElementById('totalCodes').textContent = codes.length;
+  document.getElementById('activeCodes').textContent = active.length;
+  document.getElementById('usedCodes').textContent = totalUsed;
+  document.getElementById('totalDiscount').textContent = totalDisc > 0 ? '₩' + totalDisc.toLocaleString() : '-';
+}
+
+function renderTable(codes) {
+  const tbody = document.getElementById('codeTableBody');
+  if (!codes.length) {
+    tbody.innerHTML = '<tr><td colspan="8" class="empty-state">할인 코드가 없습니다. 새 코드를 생성해보세요!</td></tr>';
+    return;
+  }
+  tbody.innerHTML = codes.map(c => {
+    const isExpired = c.expires_at && new Date(c.expires_at) < new Date();
+    const isFull = c.max_uses && c.used_count >= c.max_uses;
+    const status = isExpired ? 'expired' : isFull ? 'full' : (c.status || 'active');
+    const statusBadge = {
+      active: '<span class="badge badge-green">활성</span>',
+      inactive: '<span class="badge badge-gray">비활성</span>',
+      expired: '<span class="badge badge-red">만료</span>',
+      full: '<span class="badge badge-gray">사용완료</span>',
+    }[status] || '<span class="badge badge-gray">-</span>';
+
+    const typeLabel = { percent: '퍼센트', fixed: '고정금액', free_month: '무료기간' }[c.discount_type] || c.discount_type;
+    const valueLabel = c.discount_type === 'percent' ? `${c.discount_value}%`
+      : c.discount_type === 'fixed' ? `₩${(c.discount_value||0).toLocaleString()}`
+      : `${c.discount_value}개월`;
+
+    const expires = c.expires_at ? new Date(c.expires_at).toLocaleDateString('ko-KR') : '무제한';
+
+    return `<tr>
+      <td><code style="background:var(--surface2);padding:3px 8px;border-radius:4px;font-size:.85rem;font-weight:700">${esc(c.code)}</code></td>
+      <td><span class="badge badge-blue">${typeLabel}</span></td>
+      <td style="font-weight:600">${valueLabel}</td>
+      <td>${c.used_count || 0}회</td>
+      <td>${c.max_uses ? c.max_uses + '회' : '무제한'}</td>
+      <td style="font-size:.82rem">${expires}</td>
+      <td>${statusBadge}</td>
+      <td>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-ghost btn-sm" onclick="copyCode('${esc(c.code)}')">복사</button>
+          ${status === 'active'
+            ? `<button class="btn btn-ghost btn-sm" style="color:var(--muted)" onclick="toggleCode('${esc(c.id)}', 'inactive')">비활성화</button>`
+            : status === 'inactive'
+            ? `<button class="btn btn-ghost btn-sm" style="color:var(--blue)" onclick="toggleCode('${esc(c.id)}', 'active')">활성화</button>`
+            : ''}
+          <button class="btn btn-ghost btn-sm" style="color:#ef4444" onclick="deleteCode('${esc(c.id)}','${esc(c.code)}')">삭제</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function filterCodes() {
+  const q = document.getElementById('searchCode').value.toLowerCase();
+  renderTable(q ? allCodes.filter(c => c.code.toLowerCase().includes(q) || (c.description||'').toLowerCase().includes(q)) : allCodes);
+}
+
+function genRandomCode() {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let code = '';
+  for (let i = 0; i < 8; i++) code += chars[Math.floor(Math.random() * chars.length)];
+  document.getElementById('codeInput').value = code;
+}
+
+function updateDiscountLabel() {
+  const type = document.getElementById('discountType').value;
+  const labels = { percent: '할인율 (%)', fixed: '할인 금액 (₩)', free_month: '무료 기간 (개월)' };
+  document.getElementById('discountValueLabel').textContent = labels[type] || '할인값';
+}
+
+function openCreateModal() {
+  document.getElementById('createModal').classList.add('open');
+  genRandomCode();
+}
+function closeCreateModal() {
+  document.getElementById('createModal').classList.remove('open');
+}
+
+async function createDiscountCode() {
+  const code = document.getElementById('codeInput').value.trim().toUpperCase();
+  const type = document.getElementById('discountType').value;
+  const value = parseFloat(document.getElementById('discountValue').value);
+  const maxUses = document.getElementById('maxUses').value ? parseInt(document.getElementById('maxUses').value) : null;
+  const expiresAt = document.getElementById('expiresAt').value || null;
+  const plan = document.getElementById('applicablePlan').value;
+  const desc = document.getElementById('codeDesc').value.trim();
+
+  if (!code || code.length < 3) { showToast('코드는 최소 3자 이상이어야 합니다.', 'error'); return; }
+  if (!value || value <= 0) { showToast('할인값을 입력해주세요.', 'error'); return; }
+  if (type === 'percent' && value > 100) { showToast('퍼센트 할인은 100%를 초과할 수 없습니다.', 'error'); return; }
+
+  const newCode = {
+    id: 'dc_' + Date.now(),
+    code,
+    discount_type: type,
+    discount_value: value,
+    max_uses: maxUses,
+    used_count: 0,
+    expires_at: expiresAt,
+    applicable_plan: plan || null,
+    description: desc,
+    status: 'active',
+    created_at: new Date().toISOString(),
+  };
+
+  try {
+    const res = await CP.apiFetch('/api/admin/discounts', {
+      method: 'POST',
+      body: JSON.stringify(newCode),
+    });
+    const data = await CP.safeJson(res);
+    if (data.ok) {
+      showToast(`✅ 할인 코드 "${code}"가 생성되었습니다.`, 'success');
+    }
+  } catch {}
+
+  // 로컬 저장 (API 없을 경우 fallback)
+  allCodes.unshift(newCode);
+  localStorage.setItem('cp_discount_codes', JSON.stringify(allCodes));
+  renderStats(allCodes);
+  renderTable(allCodes);
+  closeCreateModal();
+  showToast(`✅ 할인 코드 "${code}"가 생성되었습니다.`, 'success');
+}
+
+async function toggleCode(id, newStatus) {
+  allCodes = allCodes.map(c => c.id === id ? { ...c, status: newStatus } : c);
+  localStorage.setItem('cp_discount_codes', JSON.stringify(allCodes));
+  renderTable(allCodes);
+  try {
+    await CP.apiFetch(`/api/admin/discounts/${id}`, { method: 'PUT', body: JSON.stringify({ status: newStatus }) });
+  } catch {}
+  showToast(newStatus === 'active' ? '코드가 활성화되었습니다.' : '코드가 비활성화되었습니다.', 'success');
+}
+
+async function deleteCode(id, code) {
+  if (!confirm(`"${code}" 코드를 삭제하시겠습니까?`)) return;
+  allCodes = allCodes.filter(c => c.id !== id);
+  localStorage.setItem('cp_discount_codes', JSON.stringify(allCodes));
+  renderStats(allCodes);
+  renderTable(allCodes);
+  try {
+    await CP.apiFetch(`/api/admin/discounts/${id}`, { method: 'DELETE' });
+  } catch {}
+  showToast(`"${code}" 코드가 삭제되었습니다.`, 'success');
+}
+
+function copyCode(code) {
+  navigator.clipboard.writeText(code).then(() => showToast(`"${code}" 복사됨`, 'success'));
+}
+
+function showToast(msg, type='info') {
+  const t = document.createElement('div');
+  t.textContent = msg;
+  t.style.cssText = `position:fixed;bottom:24px;right:24px;background:${type==='error'?'#ef4444':type==='success'?'#22c55e':'#3b82f6'};color:#fff;padding:12px 20px;border-radius:8px;font-size:.88rem;z-index:9999;box-shadow:0 4px 12px rgba(0,0,0,.2);animation:fadeIn .2s`;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 3000);
+}
+
+function openSidebar() { document.getElementById('sidebar').classList.add('open'); document.getElementById('overlay').style.display='block'; }
+function closeSidebar() { document.getElementById('sidebar').classList.remove('open'); document.getElementById('overlay').style.display='none'; }
+
+document.addEventListener('DOMContentLoaded', () => {
+  if (!CP.getToken()) { location.href = '/auth.html'; return; }
+  loadCodes();
+});
+</script>
+</body>
+</html>
