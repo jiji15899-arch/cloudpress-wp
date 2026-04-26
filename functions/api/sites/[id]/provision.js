@@ -419,7 +419,6 @@ export async function onRequestPost({ request, env, params }) {
                 s.site_d1_id, s.site_kv_id,
                 s.php_version, s.wp_auto_update,
                 s.wp_username, s.wp_password,
-                s.wp_admin_username, s.wp_admin_password,
                 u.cf_global_api_key, u.cf_account_email, u.cf_account_id, u.email
            FROM sites s
            JOIN users u ON u.id = s.user_id
@@ -494,8 +493,8 @@ export async function onRequestPost({ request, env, params }) {
     const phpVersion  = site.php_version  || '8.2';
     const autoUpdate  = site.wp_auto_update || 'minor'; // 'enabled'|'disabled'|'minor'
     // sites/index.js 생성 시 저장된 wp_username/wp_password 사용 (없으면 기본값)
-    const adminUsername = site.wp_admin_username || site.wp_username || 'admin';
-    const adminPassword = site.wp_admin_password || site.wp_password || genPassword(20);
+    const adminUsername = site.wp_username || 'admin';
+    const adminPassword = site.wp_password || genPassword(20);
     const adminEmail    = user.email || 'admin@cloudpress.site';
 
     // WordPress 최신 버전 확인
@@ -699,7 +698,7 @@ export default {
       worker_name:    workerName,
       primary_domain: domain,
       wp_admin_url:   'https://' + domain + '/wp-admin/',
-      wp_admin_username: adminUsername,
+      wp_username:    adminUsername,
     });
 
     if (cacheKvId) {
@@ -774,8 +773,8 @@ export default {
       provision_step:    'completed',
       domain_status:     domainStatus,
       wp_admin_url:      adminUrl,
-      wp_admin_username: adminUsername,
-      wp_admin_password: adminPassword,
+      wp_username:       adminUsername,
+      wp_password:       adminPassword,
       wp_installed:      1,
       wp_version:        wpVersion,
       php_version:       phpVersion,
