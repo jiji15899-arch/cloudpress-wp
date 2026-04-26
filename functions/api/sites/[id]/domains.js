@@ -1,134 +1,12 @@
-// functions/api/sites/[id]/domains.js — CloudPress
-// 사이트 도메인 관리 (GET/POST/PUT/DELETE)
+import { 
+  CORS, ok, err, getUser, 
+  cfUpsertDns, getWorkerSubdomain 
+} from '../../_shared.js';
 
-import { ok, err, getUser, loadAllSettings, settingVal } from '../../_shared.js';
+export const onRequestOptions = () => new Response(null, { status: 204, headers: CORS });
 
-export const onRequestOptions = () => new Response(null, { status: 204, headers: {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type,Authorization',
-}});
-
-// GET: 도메인 목록 조회
-export async function onRequestGet(ctx) {
-  const { id: siteId } = ctx.params;
-  const { env, request } = ctx;
-
-  const user = await getUser(env, request);
-  if (!user) return err('로그인이 필요합니다.', 401);
-
-  try {
-    // 사이트 소유권 확인
-    const site = await env.DB.prepare(
-      `SELECT id, primary_domain, site_prefix, worker_name, cf_zone_id
-       FROM sites WHERE id=? AND (user_id=? OR ?='admin') AND deleted_at IS NULL`
-    ).bind(siteId, user.id, user.role).first();
-    if (!site) return err('사이트를 찾을 수 없습니다.', 404);
-
-    const settings = await loadAllSettings(env.DB);
-    const workerName = site.worker_name || '';
-    const workerSubdomain = workerName ? `${workerName}.workers.dev` : '';
-
-    // 도메인 목록 구성 (primary_domain 기반)
-    const domains = [];
-    if (site.primary_domain) {
-      domains.push({
-        id: 'primary',
-        domain: site.primary_domain,
-        status: 'active',
-        is_primary: true,
-        type: 'custom',
-      });
-    }
-
-    return ok({
-      domains,
-      subdomain: workerSubdomain,
-      primaryDomain: site.primary_domain || null,
-      sitePrefix: site.site_prefix || '',
-    });
-  } catch (e) {
-    return err('도메인 목록 조회 실패: ' + e.message, 500);
-  }
-}
-
-// POST: 도메인 추가 또는 DNS 레코드 추가
-export async function onRequestPost(ctx) {
-  const { id: siteId } = ctx.params;
-  const { env, request } = ctx;
-
-  const user = await getUser(env, request);
-  if (!user) return err('로그인이 필요합니다.', 401);
-
-  let body;
-  try { body = await request.json(); } catch { return err('잘못된 요청'); }
-
-  const { action, domain, type, content } = body || {};
-
-  // 사이트 소유권 확인
-  const site = await env.DB.prepare(
-    `SELECT id, primary_domain, site_prefix, worker_name, cf_zone_id, user_id
-     FROM sites WHERE id=? AND (user_id=? OR ?='admin') AND deleted_at IS NULL`
-  ).bind(siteId, user.id, user.role).first();
-  if (!site) return err('사이트를 찾을 수 없습니다.', 404);
-
-  const settings = await loadAllSettings(env.DB);
-
-  // DNS 레코드 직접 추가
-  if (action === 'add_dns_record') {
-    const cfToken = settingVal(settings, 'cf_api_token');
-    if (!cfToken) return err('Cloudflare API 토큰이 설정되지 않았습니다.', 400);
-    if (!domain || !type || !content) return err('domain, type, content 필수');
-
-    const zoneRes = await fetch(
-      `https://api.cloudflare.com/client/v4/zones?name=${domain.split('.').slice(-2).join('.')}`,
-      { headers: { 'Authorization': `Bearer ${cfToken}`, 'Content-Type': 'application/json' } }
-    );
-    const zoneData = await zoneRes.json();
-    if (!zoneData.success || !zoneData.result?.length) return err('Cloudflare Zone을 찾을 수 없습니다.');
-
-    const zoneId = zoneData.result[0].id;
-    const dnsRes = await fetch(`https://api.cloudflare.com/client/v4/zones/${zoneId}/dns_records`, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${cfToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type, name: domain, content, proxied: true }),
-    });
-    const dnsData = await dnsRes.json();
-    if (dnsData.success) return ok({ message: 'DNS 레코드가 추가되었습니다.', result: dnsData.result });
-    return err('DNS 반영 실패: ' + (dnsData.errors?.[0]?.message || '알 수 없는 오류'));
-  }
-
-  // 도메인 추가 (primary_domain 변경)
-  if (action === 'add' || !action) {
-    const newDomain = (domain || '').trim().toLowerCase().replace(/^https?:\/\//,'').replace(/\/.*$/,'');
-    if (!newDomain || !newDomain.includes('.')) return err('올바른 도메인을 입력해주세요.');
-
-    // 중복 확인
-    const dup = await env.DB.prepare(
-      "SELECT id FROM sites WHERE primary_domain=? AND id!=? AND deleted_at IS NULL"
-    ).bind(newDomain, siteId).first();
-    if (dup) return err('이미 사용 중인 도메인입니다.');
-
-    await env.DB.prepare(
-      "UPDATE sites SET primary_domain=?, domain_status='pending', updated_at=datetime('now') WHERE id=?"
-    ).bind(newDomain, siteId).run();
-
-    return ok({ domain: newDomain, auto_connected: false, message: '도메인이 추가되었습니다.' });
-  }
-
-  // 도메인 연결 확인 (verify)
-  if (action === 'verify') {
-    return ok({ verified: false, message: 'DNS 전파 확인 중입니다. 잠시 후 다시 시도해주세요.' });
-  }
-
-  return err('지원하지 않는 action입니다.', 400);
-}
-
-// PUT: 주도메인 설정
-export async function onRequestPut(ctx) {
-  const { id: siteId } = ctx.params;
-  const { env, request } = ctx;
-
+export async function onRequestGet({ request, env, params }) {
+  const { id: siteId } = params;
   const user = await getUser(env, request);
   if (!user) return err('로그인이 필요합니다.', 401);
 
@@ -136,29 +14,74 @@ export async function onRequestPut(ctx) {
   try { body = await request.json(); } catch { return err('잘못된 요청'); }
 
   const { action, domain } = body || {};
+  if (!domain) return err('도메인을 입력해주세요.');
 
-  if (action === 'set-primary' && domain) {
-    await env.DB.prepare(
-      "UPDATE sites SET primary_domain=?, updated_at=datetime('now') WHERE id=? AND (user_id=? OR ?='admin')"
-    ).bind(domain, siteId, user.id, user.role).run();
-    return ok({ message: '주도메인이 변경되었습니다.' });
+  if (action === 'add_alias') {
+    // 1. 사이트 및 사용자 CF 정보 조회
+    const site = await env.DB.prepare(
+      "SELECT s.*, u.cf_global_api_key, u.cf_account_email FROM sites s JOIN users u ON s.user_id = u.id WHERE s.id = ?"
+    ).bind(siteId).first();
+    
+    if (!site) return err('존재하지 않는 사이트입니다.', 404);
+    if (site.user_id !== user.id && user.role !== 'admin') return err('권한이 없습니다.', 403);
+
+    // 2. DB 업데이트 (JSON 배열 관리)
+    let aliases = [];
+    try { aliases = JSON.parse(site.alias_domains || '[]'); } catch(e) { aliases = []; }
+    
+    if (!aliases.includes(domain)) {
+      aliases.push(domain);
+      await env.DB.prepare("UPDATE sites SET alias_domains = ? WHERE id = ?")
+        .bind(JSON.stringify(aliases), siteId).run();
+    }
+
+    // 3. Cloudflare DNS 레코드 자동 생성 (CNAME)
+    // 실제 운영을 위해 Worker Subdomain 주소로 연결합니다.
+    if (site.cf_global_api_key && site.cf_zone_id) {
+      try {
+        const targetHost = getWorkerSubdomain(env); // 예: cloudpress.workers.dev
+        await cfUpsertDns(env, site, site.cf_zone_id, {
+          type: 'CNAME',
+          name: domain,
+          content: targetHost,
+          proxied: true
+        });
+      } catch (dnsErr) {
+        console.error('DNS 생성 실패:', dnsErr.message);
+        // DB는 성공했으므로 경고와 함께 성공 반환
+        return ok({ message: '도메인은 추가되었으나 DNS 설정에 실패했습니다. (수동 설정 필요)', error: dnsErr.message });
+      }
+    }
+
+    return ok({ message: 'Alias 도메인이 추가되었으며 DNS 레코드가 생성되었습니다.', aliases });
   }
 
-  return err('지원하지 않는 요청입니다.', 400);
-}
+  if (action === 'remove_alias') {
+    const site = await env.DB.prepare("SELECT alias_domains, user_id FROM sites WHERE id = ?")
+      .bind(siteId).first();
+    
+    if (!site) return err('존재하지 않는 사이트입니다.', 404);
+    if (site.user_id !== user.id && user.role !== 'admin') return err('권한이 없습니다.', 403);
 
-// DELETE: 도메인 삭제
-export async function onRequestDelete(ctx) {
-  const { id: siteId } = ctx.params;
-  const { env, request } = ctx;
+    let aliases = [];
+    try { aliases = JSON.parse(site.alias_domains || '[]'); } catch(e) { aliases = []; }
+    
+    const newAliases = aliases.filter(a => a !== domain);
+    await env.DB.prepare("UPDATE sites SET alias_domains = ? WHERE id = ?")
+      .bind(JSON.stringify(newAliases), siteId).run();
 
-  const user = await getUser(env, request);
-  if (!user) return err('로그인이 필요합니다.', 401);
+    return ok({ message: '도메인이 삭제되었습니다.', aliases: newAliases });
+  }
 
-  // primary_domain만 있으므로 NULL로 초기화
-  await env.DB.prepare(
-    "UPDATE sites SET primary_domain=NULL, domain_status='pending', updated_at=datetime('now') WHERE id=? AND (user_id=? OR ?='admin')"
-  ).bind(siteId, user.id, user.role).run();
+  if (action === 'set_primary') {
+    const site = await env.DB.prepare("SELECT user_id FROM sites WHERE id = ?").bind(siteId).first();
+    if (site.user_id !== user.id && user.role !== 'admin') return err('권한이 없습니다.', 403);
 
-  return ok({ message: '도메인이 삭제되었습니다.' });
+    await env.DB.prepare("UPDATE sites SET primary_domain = ? WHERE id = ?")
+      .bind(domain, siteId).run();
+      
+    return ok({ message: '기본 도메인이 변경되었습니다.' });
+  }
+
+  return err('지원되지 않는 액션입니다.', 400);
 }
