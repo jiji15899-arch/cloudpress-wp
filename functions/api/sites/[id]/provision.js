@@ -479,7 +479,12 @@ export async function onRequestPost({ request, env, params }) {
 
     // ── 5. 기본 설정값 ───────────────────────────────────────────────────────
     const domain      = site.primary_domain;
-    const wwwDomain   = 'www.' + domain;
+    // 도메인 분류: 서브도메인 여부 판단
+    // 메인 도메인(예: myblog.com): www CNAME 레코드만 추가
+    // 서브도메인(예: blog.myblog.com): CNAME 없이 사이트만 개설
+    const domainParts  = domain.split('.');
+    const isApexDomain = domainParts.length === 2; // myblog.com 형태
+    const wwwDomain    = isApexDomain ? 'www.' + domain : null; // apex만 www 처리
     const prefix      = site.site_prefix;
     const workerName  = 'cloudpress-site-' + prefix;
     const siteUrl     = 'https://' + domain;
@@ -679,11 +684,15 @@ export default {
     });
 
     if (cacheKvId) {
-      await putKVBulk(cfAuth, cfAccount, cacheKvId, [
-        { key: `site_domain:${domain}`,    value: siteMapping },
-        { key: `site_domain:${wwwDomain}`, value: siteMapping },
-        { key: `site_prefix:${prefix}`,    value: siteMapping },
-      ]);
+      const kvEntries = [
+        { key: `site_domain:${domain}`,   value: siteMapping },
+        { key: `site_prefix:${prefix}`,   value: siteMapping },
+      ];
+      // apex 도메인이면 www도 동일 사이트로 매핑
+      if (isApexDomain && wwwDomain) {
+        kvEntries.push({ key: `site_domain:${wwwDomain}`, value: siteMapping });
+      }
+      await putKVBulk(cfAuth, cfAccount, cacheKvId, kvEntries);
     }
 
     // ── 12. DNS / Custom Domain 설정 ─────────────────────────────────────────
@@ -696,17 +705,30 @@ export default {
     let routeWwwId    = null;
     let cfZoneId      = null;
 
-    // Workers Custom Domain (가장 우선)
-    const [cdRoot, cdWww] = await Promise.all([
-      addWorkerCustomDomain(cfAuth, cfAccount, workerName, domain),
-      addWorkerCustomDomain(cfAuth, cfAccount, workerName, wwwDomain),
-    ]);
+    // ── [수정] 사용자가 입력한 도메인으로만 사이트 개설 ──────────────────────
+    // apex 도메인(myblog.com): root Custom Domain + www→root CNAME만 설정
+    // 서브도메인(blog.myblog.com): 해당 서브도메인 Custom Domain만 설정
 
-    if (cdRoot.ok || cdWww.ok) {
+    // Workers Custom Domain — 사용자 도메인만 등록 (www 별도 등록 없음)
+    const cdRoot = await addWorkerCustomDomain(cfAuth, cfAccount, workerName, domain);
+
+    if (cdRoot.ok) {
       domainStatus = 'active';
-      console.log('[provision] Custom Domain 등록 완료');
+      console.log('[provision] Custom Domain 등록 완료:', domain);
+
+      // apex 도메인인 경우: www → root CNAME DNS 레코드 추가 (리다이렉트용)
+      if (isApexDomain && wwwDomain) {
+        const zone = await cfGetZone(cfAuth, domain);
+        if (zone.ok) {
+          cfZoneId = zone.zoneId;
+          // www를 apex로 CNAME (proxied=true로 CF가 처리)
+          await cfUpsertDns(cfAuth, cfZoneId, 'CNAME', 'www', domain, true)
+            .catch(() => {});
+          console.log('[provision] www CNAME → ', domain, '설정 완료');
+        }
+      }
     } else {
-      // Zone 기반 Route + DNS 레코드 방식
+      // Zone 기반 Route + DNS 레코드 방식 (Custom Domain 실패 시 fallback)
       const [subdomain, zone] = await Promise.all([
         getWorkerSubdomain(cfAuth, cfAccount, workerName),
         cfGetZone(cfAuth, domain),
@@ -716,25 +738,28 @@ export default {
       if (zone.ok) {
         cfZoneId = zone.zoneId;
 
-        const [rr, rw] = await Promise.all([
-          cfUpsertRoute(cfAuth, cfZoneId, domain + '/*',    workerName),
-          cfUpsertRoute(cfAuth, cfZoneId, wwwDomain + '/*', workerName),
-        ]);
-        if (rr.ok) routeId    = rr.routeId;
-        if (rw.ok) routeWwwId = rw.routeId;
+        // 사용자 도메인 Route만 등록 (www Route 없음)
+        const rr = await cfUpsertRoute(cfAuth, cfZoneId, domain + '/*', workerName);
+        if (rr.ok) routeId = rr.routeId;
 
-        const [dr, drw] = await Promise.all([
-          cfUpsertDns(cfAuth, cfZoneId, 'CNAME', domain,    cnameTarget, true),
-          cfUpsertDns(cfAuth, cfZoneId, 'CNAME', wwwDomain, cnameTarget, true),
-        ]);
+        // root 도메인 DNS 레코드
+        const dr = await cfUpsertDns(cfAuth, cfZoneId, 'CNAME', domain, cnameTarget, true);
 
-        if ((rr.ok || rw.ok) && (dr.ok || drw.ok)) domainStatus = 'active';
-        else if (rr.ok || rw.ok)                    domainStatus = 'dns_propagating';
+        if (rr.ok && dr.ok) domainStatus = 'active';
+        else if (rr.ok)     domainStatus = 'dns_propagating';
+
+        // apex 도메인: www → root CNAME (사이트 Worker Route는 없음, 단순 리다이렉트)
+        let drw = { recordId: null };
+        if (isApexDomain && wwwDomain) {
+          drw = await cfUpsertDns(cfAuth, cfZoneId, 'CNAME', 'www', domain, true)
+            .catch(() => ({ recordId: null }));
+          console.log('[provision] www→', domain, 'CNAME 설정:', drw.ok ? '완료' : '실패');
+        }
 
         await flushState(env.DB, siteId, {
           cf_zone_id:          cfZoneId,
-          worker_route_id:     routeId    || null,
-          worker_route_www_id: routeWwwId || null,
+          worker_route_id:     routeId   || null,
+          worker_route_www_id: null,      // www Route 미사용
           dns_record_id:       dr.recordId  || null,
           dns_record_www_id:   drw.recordId || null,
         });
@@ -758,7 +783,7 @@ export default {
       wp_auto_update:    autoUpdate,
       worker_name:       workerName,
       worker_route:      domain + '/*',
-      worker_route_www:  wwwDomain + '/*',
+      worker_route_www:  null, // www별도 Route 없음
       error_message:     domainStatus === 'manual_required'
         ? `외부 DNS 필요 — CNAME ${domain} → ${cnameTarget || workerName + '.workers.dev'}`
         : null,
@@ -785,8 +810,9 @@ export default {
       install_locked: true,
       cname_instructions: domainStatus === 'manual_required' ? {
         type: 'CNAME',
-        root: { host: '@',   value: cnameTarget || workerName + '.workers.dev' },
-        www:  { host: 'www', value: cnameTarget || workerName + '.workers.dev' },
+        root: { host: '@', value: cnameTarget || workerName + '.workers.dev' },
+        // apex 도메인: www→root CNAME도 안내 (서브도메인은 불필요)
+        ...(isApexDomain ? { www: { host: 'www', value: domain, note: '→ apex로 CNAME (Worker 아님)' } } : {}),
         note: `DNS 전파 후 ${adminUrl} 에서 WordPress를 사용하세요.`,
       } : null,
     });
