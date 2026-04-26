@@ -103,7 +103,7 @@
             <label>WordPress 관리자 비밀번호 <span style="color:#ef4444">*</span></label>
             <input type="password" id="wpPassword" placeholder="안전한 비밀번호 입력" autocomplete="new-password"
               style="width:100%;padding:10px 14px;border:1px solid var(--border);border-radius:6px;font-size:.95rem"/>
-            <div class="domain-hint">최소 8자 이상 권장</div>
+            <div class="domain-hint" id="passwordHint">최소 8자 이상 권장</div>
           </div>
           <div class="field" style="margin-top:16px">
             <label>데이터 센터 위치</label>
@@ -161,7 +161,7 @@
 
 <script src="/app.js?v=24.3"></script>
 <script>
-  let config = { plan:'starter', price:9900, name:'', domain:'', wp_username:'admin', wp_password:'', loc:'Seoul', payment_method:'card', promo_code:'' };
+  let config = { plan:'starter', price:9900, name:'', domain:'', wp_username:'admin', wp_password:'', region:'icn', loc:'Seoul (ICN)', payment_method:'card', promo_code:'' };
 
   function showToast(msg, type='info') {
     const t = document.getElementById('cpToast');
@@ -189,11 +189,17 @@
 
   function validateUsername(val) {
     const hint = document.getElementById('usernameHint');
+    if (!val) {
+      hint.textContent = '영문·숫자·언더스코어(_)만 사용 가능, 최소 3자 이상';
+      hint.style.color = 'var(--muted)';
+      return false;
+    }
     const ok = /^[a-zA-Z0-9_]{3,}$/.test(val);
     if (hint) {
       hint.textContent = ok ? '✅ 사용 가능한 로그인명입니다.' : '영문·숫자·언더스코어(_)만 사용 가능, 최소 3자 이상';
       hint.style.color = ok ? '#22c55e' : 'var(--muted)';
     }
+    return ok;
   }
 
   function validateDomain(val) {
@@ -219,9 +225,11 @@
       // nothing to validate on step 1
     }
     if (n === 3) {
+      // ── 사이트 이름 검증
       config.name = (document.getElementById('siteName').value || '').trim();
       if (!config.name) { showToast('사이트 이름을 입력해주세요.', 'error'); return; }
 
+      // ── 도메인 검증
       const rawDomain = document.getElementById('siteDomain').value.trim();
       config.domain = rawDomain.toLowerCase().replace(/^https?:\/\//,'').replace(/\/.*$/,'');
       if (!config.domain || !config.domain.includes('.') || config.domain.length < 4) {
@@ -229,13 +237,33 @@
         return;
       }
 
+      // ── [버그수정] wpUsername 입력값 → config에 저장
+      const rawUsername = (document.getElementById('wpUsername').value || '').trim();
+      if (rawUsername && !/^[a-zA-Z0-9_]{3,}$/.test(rawUsername)) {
+        showToast('관리자 로그인명은 영문·숫자·언더스코어(_), 최소 3자 이상이어야 합니다.', 'error');
+        return;
+      }
+      config.wp_username = rawUsername || 'admin';
+
+      // ── [버그수정] wpPassword 입력값 → config에 저장
+      const rawPassword = (document.getElementById('wpPassword').value || '').trim();
+      if (!rawPassword || rawPassword.length < 8) {
+        showToast('비밀번호는 최소 8자 이상 입력해주세요.', 'error');
+        return;
+      }
+      config.wp_password = rawPassword;
+
+      // ── [버그수정] region 값도 config에 저장
       const locVal = document.getElementById('dataCenter').value;
-      const locLabels = { icn:'Seoul (ICN)', nrt:'Tokyo (NRT)' };
+      config.region = locVal;
+      const locLabels = { icn:'Seoul (ICN)', nrt:'Tokyo (NRT)', sin:'Singapore (SIN)', hkg:'Hong Kong (HKG)', iad:'Ashburn (IAD)', lax:'Los Angeles (LAX)', fra:'Frankfurt (FRA)', lhr:'London (LHR)' };
       config.loc = locLabels[locVal] || locVal;
 
+      // ── 검토 화면 업데이트
       document.getElementById('rPlan').textContent = config.plan.toUpperCase();
       document.getElementById('rName').textContent = config.name;
       document.getElementById('rDomain').textContent = config.domain;
+      document.getElementById('rUsername').textContent = config.wp_username; // [버그수정] 표시 추가
       document.getElementById('rLoc').textContent = config.loc;
       document.getElementById('rPrice').textContent = '₩' + config.price.toLocaleString();
       const pmLabels = { card:'신용카드', vbank:'가상계좌', toss:'토스페이' };
@@ -255,14 +283,15 @@
     btn.disabled = true; btn.textContent = '프로비저닝 중...';
 
     try {
-      // 1단계: 사이트 레코드 생성
+      // 1단계: 사이트 레코드 생성 — [버그수정] region 포함하여 전송
       const res = await CP.createSite({
         name: config.name,
         domain: config.domain,
         plan: config.plan,
+        region: config.region || 'icn',
         payment_method: config.payment_method,
         wp_username: config.wp_username || 'admin',
-        wp_password: config.wp_password || '',
+        wp_password: config.wp_password,
         promo_code: config.promo_code
       });
 
