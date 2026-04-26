@@ -334,7 +334,7 @@ async function loadSite(){
   document.getElementById('loadingSpinner').style.display = 'block'; // 로딩 스피너 표시
   document.getElementById('content').style.display = 'none';
   try{
-    data = await CP.fetch(`/api/sites/${siteId}`);
+    data = await CP.fetch(`/sites/${siteId}`);
   }catch(e){
     document.getElementById('loadingSpinner').style.display = 'none';
     document.getElementById('content').style.display = '';
@@ -739,7 +739,7 @@ async function loadSettings(siteId) {
 
     // 2차: CloudPress 대시보드 API fallback
     if (!data || !data.ok) {
-      const fallback = await CP.fetch(`/api/sites/${siteId}`);
+      const fallback = await CP.fetch(`/sites/${siteId}`);
       if (fallback && fallback.ok) {
         data = { ok: true, settings: {}, site: fallback.site || {} };
       }
@@ -881,7 +881,7 @@ async function purgeCache(siteId){
 async function loadDomains(siteId){
   try{
     const token=CP.getToken();
-    const data = await CP.fetch(`/api/sites/${siteId}/domains`);
+    const data = await CP.fetch(`/sites/${siteId}/domains`);
     if(!data.ok){document.getElementById('domainList').innerHTML='<p style="color:var(--muted);font-size:.84rem">도메인 목록을 불러올 수 없습니다.</p>';return;}
     currentDomains=data.domains||[];
     renderDomainList(siteId,currentDomains,data.subdomain,data.primaryDomain);
