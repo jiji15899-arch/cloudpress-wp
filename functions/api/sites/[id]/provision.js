@@ -649,6 +649,7 @@ export default {
     const cfApiTokenForWorker = typeof cfAuth === 'object' ? cfAuth.token : cfAuth;
 
     const upRes = await uploadWordPressWorker(cfAuth, cfAccount, workerName, {
+      siteId,
       mainDbId,
       cacheKvId,
       sessionsKvId,
@@ -684,17 +685,21 @@ export default {
     await flushState(env.DB, siteId, { provision_step: currentStep });
 
     const siteMapping = JSON.stringify({
-      id: siteId,
-      name: site.name,
-      site_prefix:   prefix,
-      site_d1_id:    d1Id,
-      site_kv_id:    kvId,
-      wp_version:    wpVersion,
-      php_version:   phpVersion,
+      id:             siteId,
+      name:           site.name,
+      site_prefix:    prefix,
+      site_d1_id:     d1Id,
+      site_kv_id:     kvId,
+      wp_version:     wpVersion,
+      php_version:    phpVersion,
       wp_auto_update: autoUpdate,
-      wp_installed:  1,
-      status:        'active',
-      suspended:     0,
+      wp_installed:   1,
+      status:         'active',
+      suspended:      0,
+      worker_name:    workerName,
+      primary_domain: domain,
+      wp_admin_url:   'https://' + domain + '/wp-admin/',
+      wp_admin_username: adminUsername,
     });
 
     if (cacheKvId) {
