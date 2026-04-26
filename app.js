@@ -35,7 +35,7 @@ const CP = {
   safeJson: async function(res) {
     if (!res) return { ok: false, error: '응답 없음' };
     if (typeof res === 'object' && !(res instanceof Response)) {
-      return { ok: true, ...res };
+      return res;
     }
     try {
       const ct = res.headers?.get?.('content-type') || '';
