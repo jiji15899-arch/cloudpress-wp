@@ -93,6 +93,19 @@
             <div class="domain-hint" id="domainHint">도메인만 입력하세요 (예: myblog.com). Cloudflare에 등록된 도메인이어야 합니다.</div>
           </div>
           <div class="field" style="margin-top:16px">
+            <label>WordPress 관리자 로그인명 <span style="color:#ef4444">*</span></label>
+            <input type="text" id="wpUsername" placeholder="admin" autocomplete="off"
+              oninput="validateUsername(this.value)"
+              style="width:100%;padding:10px 14px;border:1px solid var(--border);border-radius:6px;font-size:.95rem"/>
+            <div class="domain-hint" id="usernameHint">영문·숫자·언더스코어(_)만 사용 가능, 최소 3자 이상</div>
+          </div>
+          <div class="field" style="margin-top:16px">
+            <label>WordPress 관리자 비밀번호 <span style="color:#ef4444">*</span></label>
+            <input type="password" id="wpPassword" placeholder="안전한 비밀번호 입력" autocomplete="new-password"
+              style="width:100%;padding:10px 14px;border:1px solid var(--border);border-radius:6px;font-size:.95rem"/>
+            <div class="domain-hint">최소 8자 이상 권장</div>
+          </div>
+          <div class="field" style="margin-top:16px">
             <label>데이터 센터 위치</label>
             <select id="dataCenter">
               <optgroup label="Asia Pacific">
@@ -125,6 +138,7 @@
           <div class="row"><span class="lbl">선택한 플랜</span><span class="val" id="rPlan">Starter</span></div>
           <div class="row"><span class="lbl">사이트 이름</span><span class="val" id="rName">-</span></div>
           <div class="row"><span class="lbl">도메인</span><span class="val" id="rDomain">-</span></div>
+          <div class="row"><span class="lbl">관리자 로그인명</span><span class="val" id="rUsername">-</span></div>
           <div class="row"><span class="lbl">위치</span><span class="val" id="rLoc">Seoul</span></div>
           <div class="row"><span class="lbl">월 결제 금액</span><span class="val" id="rPrice">₩9,900</span></div>
           <div class="row"><span class="lbl">결제 수단</span><span class="val" id="rPayment">신용카드</span></div>
@@ -147,7 +161,7 @@
 
 <script src="/app.js?v=24.3"></script>
 <script>
-  let config = { plan:'starter', price:9900, name:'', domain:'', loc:'Seoul', payment_method:'card', promo_code:'' };
+  let config = { plan:'starter', price:9900, name:'', domain:'', wp_username:'admin', wp_password:'', loc:'Seoul', payment_method:'card', promo_code:'' };
 
   function showToast(msg, type='info') {
     const t = document.getElementById('cpToast');
@@ -171,6 +185,15 @@
   function applyPromo() {
     config.promo_code = document.getElementById('promoCode').value.trim();
     if (config.promo_code) showToast('할인 코드 적용됨: ' + config.promo_code, 'info');
+  }
+
+  function validateUsername(val) {
+    const hint = document.getElementById('usernameHint');
+    const ok = /^[a-zA-Z0-9_]{3,}$/.test(val);
+    if (hint) {
+      hint.textContent = ok ? '✅ 사용 가능한 로그인명입니다.' : '영문·숫자·언더스코어(_)만 사용 가능, 최소 3자 이상';
+      hint.style.color = ok ? '#22c55e' : 'var(--muted)';
+    }
   }
 
   function validateDomain(val) {
@@ -238,6 +261,8 @@
         domain: config.domain,
         plan: config.plan,
         payment_method: config.payment_method,
+        wp_username: config.wp_username || 'admin',
+        wp_password: config.wp_password || '',
         promo_code: config.promo_code
       });
 
