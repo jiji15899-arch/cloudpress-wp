@@ -24,7 +24,9 @@ export async function onRequest({ request, env, params }) {
   const user = await getUser(env, request);
   if (!user) return err('로그인이 필요합니다.', 401);
 
-  const siteId = params.id;
+  // [수정] params가 없거나 id가 없는 경우 방어 처리
+  const siteId = params?.id || new URL(request.url).pathname.split('/').filter(Boolean).pop();
+  if (!siteId || siteId === 'sites') return err('사이트 ID가 없습니다.', 400);
 
   // ── [D1 #1] site + settings 동시 조회 (batch 1회) ──────────────────────────
   let site, settings;
