@@ -91,7 +91,40 @@ async function rateLimitCheck(env, ip, pathname) {
 async function getSiteInfo(env, hostname) {
   const cleanHost = hostname.replace(/^www\./, '');
 
-  // 1. KV 캐시 (가장 빠름)
+  // 0. env 바인딩 기반 직접 구성 (가장 확실 — 사이트 워커 전용 바인딩)
+  // SITE_PREFIX가 있으면 이 워커 자체가 해당 사이트의 워커임
+  if (env.SITE_PREFIX) {
+    const siteUrl   = env.CP_SITE_URL || ('https://' + cleanHost);
+    const siteDomain = siteUrl.replace(/^https?:\/\//, '').replace(/\/$/, '');
+    const info = {
+      id:                env.CP_SITE_ID    || '',
+      name:              env.CP_SITE_NAME  || 'WordPress',
+      site_prefix:       env.SITE_PREFIX,
+      status:            'active',
+      suspended:         0,
+      suspension_reason: '',
+      wp_admin_url:      siteUrl + '/wp-admin/',
+      wp_admin_username: env.WP_ADMIN_USER || 'admin',
+      wp_version:        env.WP_VERSION    || '6.9.4',
+      php_version:       env.PHP_VERSION   || '8.2',
+      wp_auto_update:    env.WP_AUTO_UPDATE || 'minor',
+      plan:              'starter',
+      primary_domain:    siteDomain,
+      worker_name:       '',
+      site_d1_id:        '',
+      site_kv_id:        '',
+    };
+    // KV 캐시에도 저장 (site_domain 키로 플랫폼 워커와 공유)
+    if (env.CACHE && siteDomain) {
+      env.CACHE.put(KV_SITE_PREFIX + siteDomain, JSON.stringify(info), { expirationTtl: 3600 }).catch(() => {});
+      if (siteDomain !== cleanHost) {
+        env.CACHE.put(KV_SITE_PREFIX + cleanHost, JSON.stringify(info), { expirationTtl: 3600 }).catch(() => {});
+      }
+    }
+    return info;
+  }
+
+  // 1. KV 캐시 (가장 빠름 — 플랫폼 Pages 워커에서 사용)
   if (env.CACHE) {
     try {
       const cached = await env.CACHE.get(KV_SITE_PREFIX + cleanHost, { type: 'json' });
@@ -101,12 +134,10 @@ async function getSiteInfo(env, hostname) {
 
   // 2. D1 조회 — CP_MAIN_DB(메인 플랫폼 DB)에서 sites 테이블 조회
   // ※ env.DB는 사이트별 D1(wp_* 테이블 전용), env.CP_MAIN_DB가 플랫폼 메인 DB
-  const mainDb = env.CP_MAIN_DB || env.DB;
+  const mainDb = env.CP_MAIN_DB;
   if (mainDb) {
     try {
-      // workers.dev 서브도메인 패턴 감지 (예: cloudpress-site-xxx.workers.dev)
-      const isWorkersDev = cleanHost.endsWith('.workers.dev');
-      // worker_name은 DB에 'cloudpress-site-xxx' 형태로 저장됨
+      const isWorkersDev    = cleanHost.endsWith('.workers.dev');
       const workerNameGuess = isWorkersDev ? cleanHost.replace(/\.workers\.dev$/, '') : null;
 
       const row = await mainDb.prepare(
@@ -121,7 +152,6 @@ async function getSiteInfo(env, hostname) {
       ).bind(cleanHost, workerNameGuess, workerNameGuess).first();
 
       if (row) {
-        // KV에 캐시 저장 (1시간) — 두 키 모두 저장
         if (env.CACHE) {
           const mapping = JSON.stringify(row);
           env.CACHE.put(KV_SITE_PREFIX + cleanHost, mapping, { expirationTtl: 3600 }).catch(() => {});
