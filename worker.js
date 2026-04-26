@@ -99,15 +99,17 @@ async function getSiteInfo(env, hostname) {
     } catch {}
   }
 
-  // 2. D1 조회 — primary_domain 또는 worker_name(.workers.dev 포함) 으로 검색
-  if (env.DB) {
+  // 2. D1 조회 — CP_MAIN_DB(메인 플랫폼 DB)에서 sites 테이블 조회
+  // ※ env.DB는 사이트별 D1(wp_* 테이블 전용), env.CP_MAIN_DB가 플랫폼 메인 DB
+  const mainDb = env.CP_MAIN_DB || env.DB;
+  if (mainDb) {
     try {
       // workers.dev 서브도메인 패턴 감지 (예: cloudpress-site-xxx.workers.dev)
       const isWorkersDev = cleanHost.endsWith('.workers.dev');
       // worker_name은 DB에 'cloudpress-site-xxx' 형태로 저장됨
       const workerNameGuess = isWorkersDev ? cleanHost.replace(/\.workers\.dev$/, '') : null;
 
-      const row = await env.DB.prepare(
+      const row = await mainDb.prepare(
         `SELECT id, name, site_prefix, status, suspended, suspension_reason,
                 wp_admin_url, wp_admin_username, wp_version, plan,
                 site_d1_id, site_kv_id, php_version, wp_auto_update,
@@ -137,6 +139,7 @@ async function getSiteInfo(env, hostname) {
 
 // ── 정적 파일 판별 ────────────────────────────────────────────────────────────
 function isStaticAsset(pathname) {
+  // .html은 정적 파일로 처리하지 않음 (WordPress 라우팅이 처리해야 함)
   return /\.(css|js|png|jpg|jpeg|gif|svg|ico|woff2?|ttf|eot|mp4|webp|avif|pdf|xml|txt|map|json)$/i.test(pathname);
 }
 
@@ -510,7 +513,8 @@ async function handleCloudPressApi(env, siteInfo, endpoint, method, request, url
     const mode = body.mode || 'minor';
     if (!['enabled','minor','disabled'].includes(mode)) return jsonR({ success: false, message: '잘못된 모드' });
     try {
-      await env.DB.prepare(`UPDATE sites SET wp_auto_update=? WHERE id=?`).bind(mode, siteInfo.id).run().catch(()=>{});
+      const _mdb = env.CP_MAIN_DB || env.DB;
+      await _mdb.prepare(`UPDATE sites SET wp_auto_update=? WHERE id=?`).bind(mode, siteInfo.id).run().catch(()=>{});
     } catch {}
     await setWpOption(env, siteInfo, 'wp_auto_update', mode);
     return jsonR({ ok: true, success: true, message: `자동 업데이트가 "${mode}" 모드로 설정되었습니다.` });
@@ -2296,8 +2300,9 @@ async function handleRequest(request, env, ctx) {
     // 4. 사이트 정보 로드
     const siteInfo = await getSiteInfo(env, url.hostname);
     if (!siteInfo) {
-      // CloudPress 플랫폼 자체 도메인 — Pages Functions이 처리
-      // 그냥 통과 (index.html 리다이렉트 제거)
+      // CloudPress 플랫폼 자체 도메인 — Pages Functions이 처리하거나
+      // 아직 프로비저닝 중인 사이트
+      // 404를 반환하면 Cloudflare Pages가 정적 파일 서빙을 이어받음
       return new Response(null, { status: 404 });
     }
 
@@ -2423,11 +2428,12 @@ export default {
 
   // ── 스케줄된 Cron (자동 업데이트) ─────────────────────────────────────────
   async scheduled(event, env, ctx) {
-    if (!env.DB) return;
+    const mainDb = env.CP_MAIN_DB || env.DB;
+    if (!mainDb) return;
     ctx.waitUntil((async () => {
       try {
         // WordPress 자동 업데이트 처리
-        const sites = await env.DB.prepare(
+        const sites = await mainDb.prepare(
           `SELECT id, site_prefix, wp_version, wp_auto_update, primary_domain
              FROM sites WHERE status='active' AND deleted_at IS NULL
               AND (wp_auto_update='enabled' OR wp_auto_update='minor')`
@@ -2458,7 +2464,7 @@ export default {
           if (site.wp_auto_update === 'minor' && isMajorUpdate) continue;
 
           // 버전 업데이트 기록
-          await env.DB.prepare(
+          await mainDb.prepare(
             `UPDATE sites SET wp_version=?, updated_at=datetime('now') WHERE id=?`
           ).bind(latestVersion, site.id).run().catch(() => {});
 
