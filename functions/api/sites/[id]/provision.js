@@ -443,7 +443,9 @@ export async function onRequestPost({ request, env, params }) {
     let cfAuth    = null;
     let cfAccount = null;
 
-    // 사용자 개인 CF 키 우선
+    // ── [핵심 수정] 사용자 개인 CF 키만 사용 (어드민 전역 키 fallback 제거) ──
+    // 어드민 설정의 CF API/D1/KV는 사이트 생성에 사용하지 않음
+    // 각 사이트는 오직 해당 사용자의 CF 계정에만 배포됨
     if (site.cf_global_api_key && site.cf_account_id) {
       const raw = deobfuscate(site.cf_global_api_key, encKey);
       const key = (raw && raw.length > 10) ? raw : site.cf_global_api_key;
@@ -453,19 +455,10 @@ export async function onRequestPost({ request, env, params }) {
       cfAccount = site.cf_account_id;
     }
 
-    // 관리자 전역 CF 키 fallback
     if (!cfAuth || !cfAccount) {
-      const adminToken   = settingVal(settings, 'cf_api_token');
-      const adminAccount = settingVal(settings, 'cf_account_id');
-      if (adminToken && adminAccount) {
-        cfAuth    = { token: adminToken };
-        cfAccount = adminAccount;
-      }
-    }
-
-    if (!cfAuth || !cfAccount) {
-      await failSite(env.DB, siteId, 'cf_auth', 'Cloudflare API 키가 설정되지 않았습니다. "내 계정"에서 CF Global API Key와 Account ID를 등록해주세요.');
-      return err('Cloudflare API 키 없음', 400);
+      await failSite(env.DB, siteId, 'cf_auth',
+        'Cloudflare API 키가 설정되지 않았습니다. "내 계정" → "Cloudflare 설정"에서 Global API Key와 Account ID를 먼저 등록해주세요.');
+      return err('Cloudflare API 키가 등록되지 않았습니다. 내 계정에서 CF API 키를 먼저 등록해주세요.', 400);
     }
 
     // ── 4. CF 토큰 사전 검증 (DNS 오류 사전 차단) ─────────────────────────────
@@ -543,31 +536,15 @@ export async function onRequestPost({ request, env, params }) {
       // 스키마 초기화 실패는 비치명적 — 계속 진행
     }
 
-    // ── 8. 메인 바인딩 ID 조회 (CACHE, SESSIONS KV) ──────────────────────────
+    // ── 8. [수정] 어드민 공유 바인딩 없음 — 사이트별 D1/KV만 사용 ──────────
     currentStep = 'resolve_bindings';
     await flushState(env.DB, siteId, { provision_step: currentStep });
 
-    let mainDbId     = settingVal(settings, 'main_db_id',     '');
-    let cacheKvId    = settingVal(settings, 'cache_kv_id',    '');
-    let sessionsKvId = settingVal(settings, 'sessions_kv_id', '');
-
-    if (!mainDbId || !cacheKvId || !sessionsKvId) {
-      const resolved = await resolveMainBindingIds(cfAuth, cfAccount);
-      if (!mainDbId     && resolved.mainDbId)     mainDbId     = resolved.mainDbId;
-      if (!cacheKvId    && resolved.cacheKvId)    cacheKvId    = resolved.cacheKvId;
-      if (!sessionsKvId && resolved.sessionsKvId) sessionsKvId = resolved.sessionsKvId;
-
-      // 조회된 ID 캐시 저장
-      if (resolved.mainDbId || resolved.cacheKvId || resolved.sessionsKvId) {
-        const upsert = `INSERT INTO settings (key,value,updated_at) VALUES (?,?,datetime('now'))
-                        ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at`;
-        const stmts = [];
-        if (resolved.mainDbId)     stmts.push(env.DB.prepare(upsert).bind('main_db_id',     resolved.mainDbId));
-        if (resolved.cacheKvId)    stmts.push(env.DB.prepare(upsert).bind('cache_kv_id',    resolved.cacheKvId));
-        if (resolved.sessionsKvId) stmts.push(env.DB.prepare(upsert).bind('sessions_kv_id', resolved.sessionsKvId));
-        if (stmts.length) env.DB.batch(stmts).catch(() => {});
-      }
-    }
+    // 어드민 공유 DB/KV는 사용하지 않음
+    // 각 사이트 워커는 자신의 D1(DB)과 KV(SITE_KV)만 바인딩받음
+    const mainDbId     = '';
+    const cacheKvId    = '';
+    const sessionsKvId = '';
 
     // ── 9. worker.js 소스 로드 ────────────────────────────────────────────────
     currentStep = 'worker_source';
