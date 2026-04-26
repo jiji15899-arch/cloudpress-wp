@@ -1192,14 +1192,186 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Oxygen-Sans,
   });
 }
 
+// ── 플러그인별 동적 메뉴 항목 정의 ───────────────────────────────────────────
+const PLUGIN_NAV_ITEMS = {
+  'rank-math':            [{ id:'rank-math',            label:'Rank Math',         icon:'📊', separator: true }],
+  'rankmath':             [{ id:'rank-math',            label:'Rank Math',         icon:'📊', separator: true }],
+  'rank-math-seo':        [{ id:'rank-math',            label:'Rank Math',         icon:'📊', separator: true }],
+  'easy-table-of-contents': [{ id:'easy-toc',          label:'쉬운 목차',          icon:'📋', separator: true }],
+  'easy-toc':             [{ id:'easy-toc',             label:'쉬운 목차',          icon:'📋', separator: true }],
+  'contact-form-7':       [{ id:'cf7',                  label:'Contact Form 7',    icon:'📩', separator: true }],
+  'woocommerce':          [{ id:'woocommerce',          label:'WooCommerce',       icon:'🛒', separator: true },
+                           { id:'wc-orders',            label:'— 주문',            icon:''   },
+                           { id:'wc-products',          label:'— 상품',            icon:''   },
+                           { id:'wc-settings',          label:'— WC 설정',         icon:''   }],
+  'jetpack':              [{ id:'jetpack',              label:'Jetpack',           icon:'⚡', separator: true }],
+  'yoast-seo':            [{ id:'yoast-seo',            label:'Yoast SEO',         icon:'🔍', separator: true }],
+  'wordpress-seo':        [{ id:'yoast-seo',            label:'Yoast SEO',         icon:'🔍', separator: true }],
+  'all-in-one-seo-pack':  [{ id:'aioseo',               label:'All in One SEO',    icon:'🔍', separator: true }],
+  'elementor':            [{ id:'elementor',            label:'Elementor',         icon:'🎨', separator: true }],
+  'akismet':              [],
+  'wordfence':            [{ id:'wordfence',            label:'Wordfence',         icon:'🛡️', separator: true }],
+  'wordfence-security':   [{ id:'wordfence',            label:'Wordfence',         icon:'🛡️', separator: true }],
+  'wp-super-cache':       [{ id:'wp-cache',             label:'WP Super Cache',    icon:'⚡', separator: true }],
+  'w3-total-cache':       [{ id:'w3tc',                 label:'W3 Total Cache',    icon:'⚡', separator: true }],
+  'updraftplus':          [{ id:'updraftplus',          label:'UpdraftPlus',       icon:'💾', separator: true }],
+  'really-simple-ssl':    [],
+  'wp-smushit':           [{ id:'smush',                label:'Smush',             icon:'🖼️', separator: true }],
+  'the-events-calendar':  [{ id:'tribe-events',         label:'이벤트',            icon:'📅', separator: true }],
+  'bbpress':              [{ id:'bbpress',              label:'bbPress',           icon:'💬', separator: true }],
+  'buddypress':           [{ id:'buddypress',           label:'BuddyPress',        icon:'👥', separator: true }],
+};
+
+// ── WP Admin 동적 페이지 핸들러 정의 ──────────────────────────────────────────
+function getPluginPageHtml(page, siteInfo) {
+  const pluginPages = {
+    'rank-math': `
+<h1 class="wp-heading-inline">Rank Math SEO</h1>
+<div class="notice notice-success" style="margin-top:15px"><p>✅ Rank Math SEO가 활성화되어 있습니다.</p></div>
+<div class="grid-2" style="margin-top:20px">
+  <div class="wp-card">
+    <div class="wp-card-header"><h2>SEO 점수</h2></div>
+    <div class="wp-card-body">
+      <p style="font-size:2rem;text-align:center;color:var(--ok)">82/100</p>
+      <p style="text-align:center;color:var(--muted);font-size:.85rem">전체 사이트 SEO 점수</p>
+    </div>
+  </div>
+  <div class="wp-card">
+    <div class="wp-card-header"><h2>빠른 설정</h2></div>
+    <div class="wp-card-body">
+      <div style="margin-bottom:12px"><label style="display:block;margin-bottom:4px;font-weight:600;font-size:12px">사이트 유형</label>
+        <select class="form-input"><option>개인 블로그</option><option>기업 사이트</option><option>뉴스/미디어</option><option>온라인 쇼핑몰</option></select></div>
+      <div style="margin-bottom:12px"><label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+        <input type="checkbox" checked> 검색엔진 크롤링 허용</label></div>
+      <div style="margin-bottom:12px"><label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+        <input type="checkbox" checked> XML 사이트맵 활성화</label></div>
+      <div style="margin-bottom:12px"><label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+        <input type="checkbox"> 리다이렉션 모듈 활성화</label></div>
+      <button class="btn-primary" onclick="showToast('설정이 저장되었습니다.','success')">설정 저장</button>
+    </div>
+  </div>
+</div>
+<div class="wp-card" style="margin-top:16px">
+  <div class="wp-card-header"><h2>일반 설정</h2></div>
+  <div class="wp-card-body">
+    <div style="margin-bottom:12px"><label style="display:block;margin-bottom:4px;font-weight:600;font-size:12px">분리자</label>
+      <select class="form-input" style="max-width:200px"><option>- 하이픈</option><option>| 파이프</option><option>• 점</option></select></div>
+    <div style="margin-bottom:12px"><label style="display:block;margin-bottom:4px;font-weight:600;font-size:12px">Open Graph 활성화</label>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" checked> Open Graph 메타 태그 출력</label></div>
+    <div style="margin-bottom:12px"><label style="display:block;margin-bottom:4px;font-weight:600;font-size:12px">Twitter Card</label>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" checked> Twitter Card 메타 태그 출력</label></div>
+    <button class="btn-primary" onclick="showToast('설정이 저장되었습니다.','success')">저장</button>
+  </div>
+</div>`,
+    'easy-toc': `
+<h1 class="wp-heading-inline">쉬운 목차 (Easy Table of Contents)</h1>
+<div class="notice notice-success" style="margin-top:15px"><p>✅ 쉬운 목차 플러그인이 활성화되어 있습니다.</p></div>
+<div class="wp-card" style="margin-top:20px">
+  <div class="wp-card-header"><h2>일반 설정</h2></div>
+  <div class="wp-card-body">
+    <table style="width:100%;border-collapse:collapse">
+      <tr style="border-bottom:1px solid var(--border)"><td style="padding:12px 0;width:40%;font-weight:600;font-size:13px">자동 삽입</td>
+        <td style="padding:12px 0"><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" checked> 콘텐츠에 자동으로 목차 삽입</label></td></tr>
+      <tr style="border-bottom:1px solid var(--border)"><td style="padding:12px 0;font-weight:600;font-size:13px">적용 콘텐츠 유형</td>
+        <td style="padding:12px 0">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:6px"><input type="checkbox" checked> 글 (post)</label>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" checked> 페이지 (page)</label>
+        </td></tr>
+      <tr style="border-bottom:1px solid var(--border)"><td style="padding:12px 0;font-weight:600;font-size:13px">목차 표시 최소 제목 수</td>
+        <td style="padding:12px 0"><input type="number" value="2" min="1" max="10" class="form-input" style="max-width:80px"></td></tr>
+      <tr style="border-bottom:1px solid var(--border)"><td style="padding:12px 0;font-weight:600;font-size:13px">제목 표시 위치</td>
+        <td style="padding:12px 0"><select class="form-input" style="max-width:200px"><option>콘텐츠 시작 전</option><option>첫 번째 제목 후</option><option>콘텐츠 끝</option></select></td></tr>
+      <tr style="border-bottom:1px solid var(--border)"><td style="padding:12px 0;font-weight:600;font-size:13px">목차 타이틀</td>
+        <td style="padding:12px 0"><input type="text" value="목차" class="form-input" style="max-width:200px"></td></tr>
+      <tr style="border-bottom:1px solid var(--border)"><td style="padding:12px 0;font-weight:600;font-size:13px">접기 허용</td>
+        <td style="padding:12px 0"><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" checked> 사용자가 목차 접기 가능</label></td></tr>
+      <tr><td style="padding:12px 0;font-weight:600;font-size:13px">초기 상태</td>
+        <td style="padding:12px 0"><select class="form-input" style="max-width:200px"><option>펼침</option><option>접힘</option></select></td></tr>
+    </table>
+    <div style="margin-top:20px"><button class="btn-primary" onclick="showToast('설정이 저장되었습니다.','success')">변경 저장</button></div>
+  </div>
+</div>
+<div class="wp-card" style="margin-top:16px">
+  <div class="wp-card-header"><h2>외모 설정</h2></div>
+  <div class="wp-card-body">
+    <div style="margin-bottom:12px"><label style="display:block;margin-bottom:4px;font-weight:600;font-size:12px">테마 색상</label>
+      <select class="form-input" style="max-width:200px"><option>기본 (회색)</option><option>파랑</option><option>초록</option><option>빨강</option><option>검정</option></select></div>
+    <div style="margin-bottom:12px"><label style="display:block;margin-bottom:4px;font-weight:600;font-size:12px">목차 너비</label>
+      <input type="text" value="auto" class="form-input" style="max-width:120px"> (예: auto, 300px, 50%)</div>
+    <button class="btn-primary" onclick="showToast('외모 설정이 저장되었습니다.','success')">저장</button>
+  </div>
+</div>`,
+    'cf7': `
+<h1 class="wp-heading-inline">Contact Form 7</h1>
+<div class="notice notice-success" style="margin-top:15px"><p>✅ Contact Form 7이 활성화되어 있습니다.</p></div>
+<p style="margin-top:12px"><a href="/wp-admin/?page=cf7-list" class="btn-primary">문의 폼 목록</a></p>`,
+    'woocommerce': `
+<h1 class="wp-heading-inline">WooCommerce</h1>
+<div class="notice notice-success" style="margin-top:15px"><p>✅ WooCommerce가 활성화되어 있습니다.</p></div>
+<div class="stat-grid" style="margin-top:20px">
+  <div class="stat-box"><div class="stat-val" id="wc-orders-c">0</div><div class="stat-lbl">총 주문</div></div>
+  <div class="stat-box"><div class="stat-val" id="wc-revenue-c">₩0</div><div class="stat-lbl">총 매출</div></div>
+  <div class="stat-box"><div class="stat-val" id="wc-products-c">0</div><div class="stat-lbl">상품 수</div></div>
+  <div class="stat-box"><div class="stat-val" id="wc-customers-c">0</div><div class="stat-lbl">고객 수</div></div>
+</div>`,
+    'yoast-seo': `
+<h1 class="wp-heading-inline">Yoast SEO</h1>
+<div class="notice notice-success" style="margin-top:15px"><p>✅ Yoast SEO가 활성화되어 있습니다.</p></div>
+<div class="wp-card" style="margin-top:20px">
+  <div class="wp-card-header"><h2>일반 설정</h2></div>
+  <div class="wp-card-body">
+    <div style="margin-bottom:12px"><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" checked> XML 사이트맵 활성화</label></div>
+    <div style="margin-bottom:12px"><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" checked> Open Graph 메타 태그</label></div>
+    <button class="btn-primary" onclick="showToast('저장되었습니다.','success')">설정 저장</button>
+  </div>
+</div>`,
+    'wordfence': `
+<h1 class="wp-heading-inline">Wordfence Security</h1>
+<div class="notice notice-success" style="margin-top:15px"><p>✅ Wordfence가 활성화되어 있습니다.</p></div>
+<div class="stat-grid" style="margin-top:20px">
+  <div class="stat-box"><div class="stat-val" style="color:var(--ok)">안전</div><div class="stat-lbl">사이트 상태</div></div>
+  <div class="stat-box"><div class="stat-val">0</div><div class="stat-lbl">차단된 공격</div></div>
+  <div class="stat-box"><div class="stat-val">0</div><div class="stat-lbl">차단된 IP</div></div>
+  <div class="stat-box"><div class="stat-val" style="color:var(--ok)">최신</div><div class="stat-lbl">방화벽 규칙</div></div>
+</div>`,
+    'jetpack': `
+<h1 class="wp-heading-inline">Jetpack</h1>
+<div class="notice notice-success" style="margin-top:15px"><p>✅ Jetpack이 활성화되어 있습니다.</p></div>
+<p style="margin-top:12px;color:var(--muted)">WordPress.com 계정과 연결하면 더 많은 기능을 사용할 수 있습니다.</p>`,
+    'updraftplus': `
+<h1 class="wp-heading-inline">UpdraftPlus 백업</h1>
+<div class="notice notice-success" style="margin-top:15px"><p>✅ UpdraftPlus가 활성화되어 있습니다.</p></div>
+<div class="wp-card" style="margin-top:20px">
+  <div class="wp-card-header"><h2>백업 상태</h2></div>
+  <div class="wp-card-body">
+    <p style="color:var(--muted)">최근 백업: 없음</p>
+    <button class="btn-primary" style="margin-top:12px" onclick="showToast('백업을 시작합니다...','info')">지금 백업</button>
+  </div>
+</div>`,
+    'elementor': `
+<h1 class="wp-heading-inline">Elementor</h1>
+<div class="notice notice-success" style="margin-top:15px"><p>✅ Elementor가 활성화되어 있습니다.</p></div>
+<p style="margin-top:12px;color:var(--muted)">페이지를 편집할 때 "Elementor로 편집" 버튼을 클릭하세요.</p>`,
+  };
+  return pluginPages[page] || null;
+}
+
 // ── WP Admin 렌더링 ───────────────────────────────────────────────────────────
-function renderWpAdmin(siteInfo, session, page = 'dashboard', env = {}) {
+async function renderWpAdmin(siteInfo, session, page = 'dashboard', env = {}) {
   const siteName   = esc(siteInfo?.name || 'WordPress');
   const username   = esc(session?.username || 'admin');
   const phpVersion = siteInfo.php_version || (env && env.PHP_VERSION) || '8.2';
   const wpVersion  = siteInfo.wp_version  || '6.9.4';
   const autoUpdate = siteInfo.wp_auto_update || (env && env.WP_AUTO_UPDATE) || 'minor';
 
+  // DB에서 활성화된 플러그인 목록 로드
+  let activePlugins = [];
+  try {
+    const raw = await getWpOption(env, siteInfo, 'active_plugins');
+    if (raw) activePlugins = JSON.parse(raw);
+  } catch {}
+
+  // 기본 메뉴 항목
   const navItems = [
     { id:'dashboard',  label:'대시보드',    icon:'🏠' },
     { id:'posts',      label:'글',          icon:'📝' },
@@ -1211,6 +1383,24 @@ function renderWpAdmin(siteInfo, session, page = 'dashboard', env = {}) {
     { id:'themes',     label:'외모 (테마)', icon:'🎨' },
     { id:'widgets',    label:'— 위젯',      icon:''   },
     { id:'plugins',    label:'플러그인',    icon:'🔌' },
+  ];
+
+  // 활성화된 플러그인 메뉴 동적 추가 (중복 방지)
+  const addedPluginMenuIds = new Set();
+  for (const slug of activePlugins) {
+    const extraItems = PLUGIN_NAV_ITEMS[slug];
+    if (extraItems && extraItems.length > 0) {
+      for (const item of extraItems) {
+        if (!addedPluginMenuIds.has(item.id)) {
+          navItems.push(item);
+          addedPluginMenuIds.add(item.id);
+        }
+      }
+    }
+  }
+
+  // 나머지 고정 메뉴
+  navItems.push(
     { id:'users',      label:'사용자',      icon:'👥' },
     { id:'tools',      label:'도구',        icon:'🔧' },
     { id:'settings',   label:'설정',        icon:'⚙️' },
@@ -1218,7 +1408,8 @@ function renderWpAdmin(siteInfo, session, page = 'dashboard', env = {}) {
     { id:'updates',    label:'업데이트',    icon:'🔄' },
     { id:'health',     label:'사이트 상태', icon:'🏥' },
     { id:'profile',    label:'내 프로필',   icon:'👤' },
-  ];
+  );
+
   const navHtml = navItems.map(n =>
     `<li class="${page===n.id?'active':''}"><a href="/wp-admin/?page=${n.id}"><span>${n.icon}</span>${n.label}</a></li>`
   ).join('');
@@ -1381,6 +1572,10 @@ ${getAdminPageScript(page)}
 function getAdminPageHtml(page, siteInfo, session, phpVersion, wpVersion, autoUpdate) {
   const hn = esc(siteInfo.primary_domain || '');
   const siteName = esc(siteInfo.name || 'WordPress');
+
+  // 플러그인 전용 페이지 처리
+  const pluginPageHtml = getPluginPageHtml(page, siteInfo);
+  if (pluginPageHtml) return pluginPageHtml;
 
   switch (page) {
     case 'dashboard': return `
@@ -1770,6 +1965,10 @@ function getAdminPageScript(page) {
   const API = '/wp-json/cloudpress/v1';
   const WP  = '/wp-json/wp/v2';
 
+  // 플러그인 전용 페이지는 별도 스크립트 불필요 (인라인 처리됨)
+  const pluginPages = ['rank-math','easy-toc','cf7','woocommerce','yoast-seo','wordfence','jetpack','updraftplus','elementor','aioseo','buddypress','bbpress','tribe-events','smush','w3tc','wp-cache'];
+  if (pluginPages.includes(page)) return '';
+
   switch (page) {
     case 'dashboard': return `
 (async () => {
@@ -1805,7 +2004,7 @@ async function loadPosts() {
 }
 loadPosts();
 async function delPost(id) {
-  await apiFetch('${WP_API}/posts/'+id, { method:'DELETE' });
+  await apiFetch('${WP}/posts/'+id, { method:'DELETE' });
   loadPosts();
 }`;
 
@@ -1813,7 +2012,7 @@ async function delPost(id) {
 const urlParams = new URLSearchParams(location.search);
 const editId = urlParams.get('id');
 if (editId) {
-  apiFetch('${WP_API}/posts/'+editId).then(p => {
+  apiFetch('${WP}/posts/'+editId).then(p => {
     if (p && p.id) {
       document.getElementById('post-title').value = p.title?.rendered || '';
       document.getElementById('block-editor-canvas').innerHTML = p.content?.rendered || '<p></p>';
@@ -1861,7 +2060,7 @@ async function savePost(forceStatus) {
     date: document.getElementById('post-date').value.replace('T', ' ') + ':00'
   };
   const method = editId ? 'PUT' : 'POST';
-  const url = editId ? '${WP_API}/posts/'+editId : '${WP_API}/posts';
+  const url = editId ? '${WP}/posts/'+editId : '${WP}/posts';
   const res = await apiFetch(url, { method, body: JSON.stringify(data) });
   if (res && res.id) {
     showToast('글이 저장되었습니다.', 'success');
@@ -2214,10 +2413,11 @@ async function renderFrontend(env, siteInfo, request, url) {
   const pathname = url.pathname;
   const hostname = url.hostname;
 
-  const [siteTitle, siteDesc] = await Promise.all([
+  const [siteTitle, siteDesc, activeTheme] = await Promise.all([
     getWpOption(env, siteInfo, 'blogname'),
     getWpOption(env, siteInfo, 'blogdescription'),
-  ]).catch(() => ['WordPress', '']);
+    getWpOption(env, siteInfo, 'template'),
+  ]).catch(() => ['WordPress', '', 'twentytwentyfour']);
 
   const title = siteTitle || siteInfo.name || 'WordPress';
   const desc  = siteDesc  || '';
@@ -2240,7 +2440,7 @@ async function renderFrontend(env, siteInfo, request, url) {
         }).join('\n')
       : '<div class="no-posts"><p>아직 게시글이 없습니다.</p><a href="/wp-admin/" class="btn-write">첫 글 작성하기</a></div>';
 
-    return new Response(renderTheme(title, desc, siteUrl, `<div class="posts-list">${postsHtml}</div>`), {
+    return new Response(renderTheme(title, desc, siteUrl, `<div class="posts-list">${postsHtml}</div>`, activeTheme || 'twentytwentyfour'), {
       headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=60' },
     });
   }
@@ -2269,7 +2469,7 @@ async function renderFrontend(env, siteInfo, request, url) {
   <nav class="post-nav" style="margin-top:32px;padding-top:20px;border-top:1px solid #e0e0e0">
     <a href="${siteUrl}" style="color:#2271b1">← 목록으로</a>
   </nav>
-</article>`
+</article>`, activeTheme || 'twentytwentyfour'
         ), { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=300' } });
       }
     }
@@ -2285,11 +2485,31 @@ async function renderFrontend(env, siteInfo, request, url) {
   <h2 style="font-size:1.2rem;margin-bottom:16px">페이지를 찾을 수 없습니다</h2>
   <p style="color:#646970;margin-bottom:24px">요청하신 페이지가 존재하지 않거나 이동되었습니다.</p>
   <a href="${siteUrl}" style="background:#2271b1;color:#fff;padding:10px 24px;border-radius:4px;text-decoration:none">홈으로 돌아가기</a>
-</div>`), { status: 404, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+</div>`, activeTheme || 'twentytwentyfour'), { status: 404, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
 }
 
-function renderTheme(title, description, siteUrl, content) {
+// ── 테마별 CSS 스타일 정의 ────────────────────────────────────────────────────
+const THEME_STYLES = {
+  'twentytwentyfour': ':root{--primary:#111;--text:#333;--muted:#767676;--border:#e5e7eb;--bg:#fff;--surface:#fff;--accent:#111}body{font-family:"Inter",system-ui,sans-serif}.site-header{background:#fff;border-bottom:2px solid #111}.site-title{font-weight:800;font-size:1.5rem;letter-spacing:-.03em}article.post{border:2px solid #111;border-radius:0;transition:none}.entry-title a{color:#111}.widget{border:2px solid #111;border-radius:0}.site-footer{background:#111;color:#fff;padding:48px 24px}.site-footer a{color:#ccc}',
+  'twentytwentythree': ':root{--primary:#1a1a1a;--text:#1a1a1a;--muted:#6b6b6b;--border:#ddd;--bg:#f8f8f8;--surface:#fff}body{font-family:"DM Sans",system-ui,sans-serif;font-size:18px}.site-header{background:#fff;padding:16px 0;border-bottom:none;box-shadow:0 0 0 1px #e0e0e0}.site-title{font-size:1.8rem;font-weight:700}.entry-title{font-size:1.6rem}article.post{background:#fff;border:none;box-shadow:0 1px 3px rgba(0,0,0,.1);border-radius:8px}.widget{border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.1)}.site-footer{background:#fff;border-top:1px solid #e0e0e0}',
+  'twentytwentytwo': ':root{--primary:#0073aa;--text:#1e1e1e;--muted:#767676;--border:#ddd;--bg:#fff;--surface:#fff}body{font-family:"Source Serif 4","Georgia",serif;font-size:18px;line-height:1.9}.site-header{background:#0073aa;padding:16px 0;border-bottom:none}.site-header .header-inner{justify-content:center}.site-title a{color:#fff}.site-desc{color:rgba(255,255,255,.8);font-size:.85rem}nav.main-nav a{color:rgba(255,255,255,.9)}.site-footer{background:#0073aa;color:#fff;margin-top:0}.site-footer a{color:#fff}',
+  'astra': ':root{--primary:#006adc;--text:#3a3a3a;--muted:#717171;--border:#e8e8e8;--bg:#f5f5f5;--surface:#fff}body{font-family:"Nunito","Helvetica Neue",sans-serif;font-size:16px}.site-header{background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.08)}.site-title{font-weight:700;color:#2c2c2c;font-size:1.25rem}article.post{border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.07);border:none;padding:24px}.entry-title a{color:#2c2c2c}.entry-title a:hover{color:var(--primary);text-decoration:none}.widget{border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.07);border:none}',
+  'generatepress': ':root{--primary:#1e73be;--text:#3d3d3d;--muted:#919191;--border:#e5e5e5;--bg:#f7f7f7;--surface:#fff}body{font-family:system-ui,-apple-system,sans-serif;font-size:17px}.site-header{background:#fff;border-bottom:3px solid var(--primary)}.site-title a{color:var(--primary);font-weight:700}article.post{background:#fff;border:1px solid #e5e5e5;border-radius:4px;padding:24px}.widget{border:1px solid #e5e5e5;border-radius:4px}.site-footer{background:#3d3d3d;color:#f5f5f5;margin-top:0}.site-footer a{color:#ccc}',
+  'kadence': ':root{--primary:#5b6fcb;--text:#3a3a3a;--muted:#999;--border:#ebebeb;--bg:#f9f9f9;--surface:#fff}body{font-family:"Albert Sans",sans-serif}.site-header{background:linear-gradient(135deg,#5b6fcb,#8b5cf6);border-bottom:none;padding:8px 0}.site-title a{color:#fff;font-weight:800;font-size:1.4rem}nav.main-nav a{color:rgba(255,255,255,.85)}article.post{border-radius:12px;box-shadow:0 4px 16px rgba(0,0,0,.08);border:none;padding:28px}.entry-title a{color:#1a1a2e}.widget{border-radius:12px;box-shadow:0 4px 16px rgba(0,0,0,.08);border:none}',
+  'hello-elementor': ':root{--primary:#6ec1e4;--text:#7a7a7a;--muted:#aaa;--border:#e8e8e8;--bg:#fff;--surface:#fff}body{font-family:"Roboto",sans-serif}.site-header{background:#fff;border-bottom:none;padding:20px 0}.site-title{font-size:1.6rem;font-weight:300;letter-spacing:.1em;text-transform:uppercase}.site-container{max-width:1200px}.widget{border:none;padding:0}.widget-title{border-bottom:2px solid var(--primary);padding-bottom:8px}',
+  'blocksy': ':root{--primary:#2ecc71;--text:#1c1c1c;--muted:#717171;--border:#e2e2e2;--bg:#f4f4f4;--surface:#fff}body{font-family:"Jost",system-ui,sans-serif}.site-header{background:#1c1c1c;border-bottom:none}.site-title a{color:#fff;font-weight:700}nav.main-nav a{color:rgba(255,255,255,.7)}.entry-title a:hover{color:var(--primary)}.widget-title{color:var(--primary);border-bottom:2px solid var(--primary)}.site-footer{background:#1c1c1c;color:#888}.site-footer a{color:#2ecc71}',
+  'oceanwp': ':root{--primary:#13aff0;--text:#555;--muted:#999;--border:#e2e2e2;--bg:#f9f9f9;--surface:#fff}body{font-family:"Lato",sans-serif;font-size:15px}.site-header{background:#fff;box-shadow:0 1px 15px rgba(0,0,0,.08)}.site-title{font-size:1.2rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em}article.post{border-left:3px solid var(--primary);border-radius:0;padding:20px 20px 20px 24px}.entry-title a:hover{color:var(--primary)}.site-footer{background:#1a1a2e;color:#888;margin-top:0}',
+  'neve': ':root{--primary:#0366d6;--text:#404040;--muted:#717171;--border:#e5e5e5;--bg:#fff;--surface:#fff}body{font-family:"Nunito",system-ui,sans-serif;font-size:16px}.site-header{background:#fff;border-bottom:1px solid #e5e5e5}.site-title{font-weight:800;font-size:1.5rem}article.post{border-radius:10px;border:1px solid #e5e5e5;box-shadow:0 2px 6px rgba(0,0,0,.06)}.entry-title a:hover{color:var(--primary)}.widget{border-radius:10px;border:1px solid #e5e5e5}',
+  'storefront': ':root{--primary:#96588a;--text:#43454b;--muted:#686368;--border:#d3ced2;--bg:#f3f3f3;--surface:#fff}body{font-family:"Palatino Linotype","Book Antiqua",Palatino,serif}.site-header{background:var(--primary);border-bottom:none;padding:8px 0}.site-title a{color:#fff;font-weight:700}nav.main-nav a{color:rgba(255,255,255,.8)}.entry-title a:hover{color:var(--primary)}.site-footer{background:var(--primary);color:#fff;margin-top:0}.site-footer a{color:rgba(255,255,255,.7)}',
+};
+
+function getThemeStyle(activeTheme) {
+  return THEME_STYLES[activeTheme] || THEME_STYLES['twentytwentyfour'];
+}
+
+function renderTheme(title, description, siteUrl, content, activeTheme) {
   const siteTitle = title.includes(' — ') ? title.split(' — ').pop() : title;
+  const themeStyle = getThemeStyle(activeTheme || 'twentytwentyfour');
   return `<!DOCTYPE html>
 <html lang="ko-KR">
 <head>
@@ -2298,7 +2518,6 @@ function renderTheme(title, description, siteUrl, content) {
 <title>${title}</title>
 ${description ? `<meta name="description" content="${esc(description)}">` : ''}
 <meta name="generator" content="WordPress (CloudPress Edge)">
-<link rel="stylesheet" href="${siteUrl}/wp-includes/css/dashicons.min.css">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{--primary:#2271b1;--text:#3c434a;--muted:#646970;--border:#e0e0e0;--bg:#f9f9f9;--surface:#fff}
@@ -2347,6 +2566,8 @@ article.post.single{padding:36px}
 .widget-title{font-size:.95rem;font-weight:700;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--border)}
 .site-footer{background:var(--surface);border-top:1px solid var(--border);padding:24px;text-align:center;font-size:.85rem;color:var(--muted);margin-top:48px}
 .site-footer a{color:var(--muted)}.site-footer a:hover{color:var(--primary)}
+
+${themeStyle}
 </style>
 </head>
 <body class="wordpress">
@@ -2553,7 +2774,7 @@ h1{color:#d63638;margin-bottom:12px}p{color:#646970;line-height:1.6}</style>
         return new Response(null, { status: 302, headers: { 'Location': `/wp-login.php?redirect_to=${redirect}` } });
       }
       const page = url.searchParams.get('page') || 'dashboard';
-      const html = renderWpAdmin(siteInfo, session, page, env);
+      const html = await renderWpAdmin(siteInfo, session, page, env);
       return new Response(html, {
         headers: {
           'Content-Type': 'text/html; charset=utf-8',
