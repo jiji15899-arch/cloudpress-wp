@@ -1,5 +1,5 @@
 /**
- * CloudPress v24.2 — WordPress Edge Runtime (Full Compatibility Mode)
+ * CloudPress v24.3 — WordPress Edge Runtime (Full Compatibility Mode)
  *
  * ■ v24.2 변경사항
  *   - Error 1101 방지를 위한 전역 예외 처리 및 환경 검증 강화
@@ -15,7 +15,7 @@
  */
 
 // ── 상수 ─────────────────────────────────────────────────────────────────────
-const VERSION          = '24.2';
+const VERSION          = '24.3';
 const CACHE_TTL_STATIC = 31536000; // 1년
 const CACHE_TTL_HTML   = 60;
 const CACHE_TTL_API    = 10;
@@ -99,23 +99,33 @@ async function getSiteInfo(env, hostname) {
     } catch {}
   }
 
-  // 2. D1 조회
+  // 2. D1 조회 — primary_domain 또는 worker_name(.workers.dev 포함) 으로 검색
   if (env.DB) {
     try {
+      // workers.dev 서브도메인 패턴 감지 (예: cloudpress-site-xxx.workers.dev)
+      const isWorkersDev = cleanHost.endsWith('.workers.dev');
+      // worker_name은 DB에 'cloudpress-site-xxx' 형태로 저장됨
+      const workerNameGuess = isWorkersDev ? cleanHost.replace(/\.workers\.dev$/, '') : null;
+
       const row = await env.DB.prepare(
         `SELECT id, name, site_prefix, status, suspended, suspension_reason,
                 wp_admin_url, wp_admin_username, wp_version, plan,
                 site_d1_id, site_kv_id, php_version, wp_auto_update,
                 primary_domain, worker_name
            FROM sites
-          WHERE primary_domain=? AND deleted_at IS NULL AND status='active'
+          WHERE (primary_domain=? OR (? IS NOT NULL AND worker_name=?))
+            AND deleted_at IS NULL AND status='active'
           LIMIT 1`
-      ).bind(cleanHost).first();
+      ).bind(cleanHost, workerNameGuess, workerNameGuess).first();
 
       if (row) {
-        // KV에 캐시 저장 (1시간)
+        // KV에 캐시 저장 (1시간) — 두 키 모두 저장
         if (env.CACHE) {
-          env.CACHE.put(KV_SITE_PREFIX + cleanHost, JSON.stringify(row), { expirationTtl: 3600 }).catch(() => {});
+          const mapping = JSON.stringify(row);
+          env.CACHE.put(KV_SITE_PREFIX + cleanHost, mapping, { expirationTtl: 3600 }).catch(() => {});
+          if (row.primary_domain && row.primary_domain !== cleanHost) {
+            env.CACHE.put(KV_SITE_PREFIX + row.primary_domain, mapping, { expirationTtl: 3600 }).catch(() => {});
+          }
         }
         return row;
       }
