@@ -244,7 +244,7 @@ function parseCookies(req) {
 async function getWpSession(env, siteInfo, req) {
   const cookies = parseCookies(req);
   const prefix  = siteInfo.site_prefix;
-  const token   = cookies[`wordpress_logged_in_${prefix}`] || cookies['wordpress_logged_in'] || '';
+  const token   = cookies[`wordpress_logged_in_${prefix}`] || cookies['wordpress_logged_in'] || cookies['wp_auth_token'] || '';
   if (!token) return null;
   // 1. KV 캐시 우선
   if (env.CACHE) {
@@ -255,6 +255,7 @@ async function getWpSession(env, siteInfo, req) {
   }
   // 2. DB fallback (env.CACHE 없을 때)
   if (env.DB) {
+    await ensureWpSessionsTable(env);
     try {
       const row = await env.DB.prepare(
         'SELECT user_id, username, role, created FROM wp_sessions WHERE token=? AND expires_at > datetime(\'now\') LIMIT 1'
@@ -266,6 +267,25 @@ async function getWpSession(env, siteInfo, req) {
   return _memSessions.get(token) || null;
 }
 
+async function ensureWpSessionsTable(env) {
+  if (!env.DB) return;
+  try {
+    await env.DB.prepare(
+      `CREATE TABLE IF NOT EXISTS wp_sessions (
+        token TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        username TEXT NOT NULL DEFAULT '',
+        role TEXT NOT NULL DEFAULT 'subscriber',
+        created TEXT NOT NULL DEFAULT (datetime('now')),
+        expires_at TEXT NOT NULL DEFAULT (datetime('now', '+14 days'))
+      )`
+    ).run();
+    await env.DB.prepare(
+      `CREATE INDEX IF NOT EXISTS idx_wp_sessions_expires ON wp_sessions(expires_at)`
+    ).run().catch(() => {});
+  } catch {}
+}
+
 async function createWpSession(env, userId, username, role) {
   const token = Array.from(crypto.getRandomValues(new Uint8Array(32)))
     .map(b => b.toString(16).padStart(2, '0')).join('');
@@ -274,12 +294,15 @@ async function createWpSession(env, userId, username, role) {
   if (env.CACHE) {
     await env.CACHE.put(KV_SESSION_PFX + token, JSON.stringify(data), { expirationTtl: 86400 * 14 }).catch(() => {});
   }
-  // 2. DB 저장 fallback
+  // 2. DB 저장 — 테이블 없으면 자동 생성 후 재시도
   if (env.DB) {
-    await env.DB.prepare(
-      'INSERT OR REPLACE INTO wp_sessions (token, user_id, username, role, created, expires_at) '
-      + 'VALUES (?, ?, ?, ?, datetime(\'now\'), datetime(\'now\', \'+14 days\'))'
-    ).bind(token, userId, username, role).run().catch(() => {});
+    await ensureWpSessionsTable(env);
+    try {
+      await env.DB.prepare(
+        'INSERT OR REPLACE INTO wp_sessions (token, user_id, username, role, created, expires_at) '
+        + 'VALUES (?, ?, ?, ?, datetime(\'now\'), datetime(\'now\', \'+14 days\'))'
+      ).bind(token, userId, username, role).run();
+    } catch {}
   }
   // 3. 인메모리 저장 (CACHE도 DB도 없는 경우)
   if (!env.CACHE && !env.DB) {
@@ -1070,16 +1093,22 @@ async function handleWpLogin(env, siteInfo, request, url) {
     const token    = await createWpSession(env, wpUser.ID, wpUser.user_login, 'administrator');
     const maxAge   = remember ? `Max-Age=${14*24*3600};` : '';
     const prefix   = siteInfo.site_prefix;
-    const cookieParts = `Path=/; ${maxAge} HttpOnly; SameSite=Lax; Secure`;
+    // HTTPS 여부에 따라 Secure 플래그 설정 (HTTP 환경에서도 쿠키 동작)
+    const isSecure = request.url.startsWith('https://');
+    const securePart = isSecure ? ' Secure;' : '';
+    const cookieParts = `Path=/; ${maxAge} HttpOnly; SameSite=Lax;${securePart}`;
 
-    return new Response(null, {
-      status: 302,
-      headers: new Headers([
-        ['Location', redirectTo],
-        ['Set-Cookie', `wordpress_logged_in_${prefix}=${token}; ${cookieParts}`],
-        ['Set-Cookie', `wordpress_logged_in=${token}; ${cookieParts}`],
-      ]),
-    });
+    // 안전한 리다이렉트 경로 검증 (외부 URL 리다이렉트 방지)
+    const safeRedirect = redirectTo.startsWith('/') ? redirectTo : '/wp-admin/';
+
+    const headers = new Headers();
+    headers.append('Location', safeRedirect);
+    headers.append('Set-Cookie', `wordpress_logged_in_${prefix}=${token}; ${cookieParts}`);
+    headers.append('Set-Cookie', `wordpress_logged_in=${token}; ${cookieParts}`);
+    // 세션 토큰을 URL 파라미터로도 전달 (쿠키 차단 환경 대비 — wp-admin에서 제거)
+    headers.append('Set-Cookie', `wp_auth_token=${token}; ${cookieParts}`);
+
+    return new Response(null, { status: 302, headers });
   }
 
   const action = url.searchParams.get('action') || 'login';
@@ -1091,10 +1120,12 @@ async function handleWpLogin(env, siteInfo, request, url) {
     }
     return new Response(null, {
       status: 302,
-      headers: {
-        'Location': '/wp-login.php?loggedout=true',
-        'Set-Cookie': 'wordpress_logged_in=; Path=/; Max-Age=0; HttpOnly; Secure',
-      },
+      headers: new Headers([
+        ['Location', '/wp-login.php?loggedout=true'],
+        ['Set-Cookie', 'wordpress_logged_in=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax'],
+        ['Set-Cookie', `wordpress_logged_in_${siteInfo.site_prefix}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax`],
+        ['Set-Cookie', 'wp_auth_token=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax'],
+      ]),
     });
   }
 
