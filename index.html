@@ -459,7 +459,7 @@
 // 가격 동적 로드 (어드민 설정 반영)
 async function loadAdminPrices(){
   try{
-    const r=await fetch('/api/sites/prices').catch(()=>null);
+    const r=await CP.apiFetch('/api/sites/prices').catch(()=>null);
     if(!r||!r.ok)return;
     const d=await r.json();
     if(!d.ok)return;
