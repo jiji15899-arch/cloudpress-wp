@@ -39,23 +39,16 @@ export async function onRequestPost({ request, env, params }) {
   const results   = [];
 
   // ── 1. KV 페이지 캐시 삭제 ────────────────────────────────────────────────
+  // 주의: site_domain: 키는 삭제하지 않음 — 삭제 시 worker가 사이트를 찾지 못해 404/에러 발생
   if (env.CACHE) {
     try {
-      // 공통 KV 캐시 키 패턴 삭제
-      const keysToDelete = [
+      const pageKeysToDelete = [
         `page:${prefix}:/`,
         `page:${prefix}:/index`,
-        `site_domain:${domain}`,
-        `site_domain:www.${domain}`,
-        `site_prefix:${prefix}`,
-        `opt:${prefix}:siteurl`,
-        `opt:${prefix}:home`,
-        `opt:${prefix}:blogname`,
-        `opt:${prefix}:template`,
-        `opt:${prefix}:stylesheet`,
+        `page:${prefix}:/?`,
       ];
-      await Promise.allSettled(keysToDelete.map(k => env.CACHE.delete(k)));
-      results.push({ step: 'kv_cache', ok: true, message: `KV 캐시 삭제 완료 (${keysToDelete.length}건)` });
+      await Promise.allSettled(pageKeysToDelete.map(k => env.CACHE.delete(k)));
+      results.push({ step: 'kv_cache', ok: true, message: `KV 페이지 캐시 삭제 완료 (${pageKeysToDelete.length}건)` });
     } catch (e) {
       results.push({ step: 'kv_cache', ok: false, error: e.message });
     }
