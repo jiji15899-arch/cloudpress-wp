@@ -17,7 +17,11 @@ async function cfReq(auth, path, method = 'GET', body) {
   if (body !== undefined) opts.body = JSON.stringify(body);
   try {
     const res = await fetch(CF_API + path, opts);
-    const contentType = res.headers.get('content-type') || '';
+    // 응답이 JSON이 아닐 경우(Cloudflare HTML 에러 등)에 대한 방어 로직
+    if (!res.headers.get('content-type')?.includes('application/json')) {
+      return { success: false, errors: [{ message: `Cloudflare API가 HTML을 반환했습니다 (Status: ${res.status})` }] };
+    }
+    return await res.json();
     
     if (!contentType.includes('application/json')) {
       const text = await res.text();
