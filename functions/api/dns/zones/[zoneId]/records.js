@@ -5,6 +5,20 @@ import { CORS, ok, err, getUser } from '../../../_shared.js';
 
 const CF_API = 'https://api.cloudflare.com/client/v4';
 
+// CF 키 복호화 (user/index.js의 obfuscate와 동일한 XOR 방식)
+function deobfuscate(str, salt) {
+  if (!str) return '';
+  try {
+    const key = salt || 'cp_enc_v1';
+    const decoded = atob(str);
+    let result = '';
+    for (let i = 0; i < decoded.length; i++) {
+      result += String.fromCharCode(decoded.charCodeAt(i) ^ key.charCodeAt(i % key.length));
+    }
+    return result;
+  } catch { return str; } // 복호화 실패 시 원문 그대로 (평문 키 호환)
+}
+
 export const onRequestOptions = () => new Response(null, { status: 204, headers: CORS });
 
 function cfHeaders(token, email) {
@@ -49,7 +63,9 @@ async function getAuth(env, userId) {
     for (const r of rows.results || []) settings[r.key] = r.value;
   } catch {}
 
-  const token = userRow?.cf_global_api_key || settings['cf_api_token'] || '';
+  // DB에 저장된 키는 XOR 난독화된 상태 — 복호화 후 사용
+  const rawToken = userRow?.cf_global_api_key || settings['cf_api_token'] || '';
+  const token = rawToken ? deobfuscate(rawToken, env.ENCRYPTION_KEY || 'cp_enc_default') : '';
   const email = userRow?.cf_account_email  || settings['cf_account_email'] || '';
   if (!token) return null;
   return { token, email: email || undefined };
