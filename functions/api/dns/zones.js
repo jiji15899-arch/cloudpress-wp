@@ -6,6 +6,20 @@ import { CORS, ok, err, getUser, loadAllSettings, settingVal } from '../_shared.
 
 const CF_API = 'https://api.cloudflare.com/client/v4';
 
+// CF 키 복호화 (user/index.js의 obfuscate와 동일한 XOR 방식)
+function deobfuscate(str, salt) {
+  if (!str) return '';
+  try {
+    const key = salt || 'cp_enc_v1';
+    const decoded = atob(str);
+    let result = '';
+    for (let i = 0; i < decoded.length; i++) {
+      result += String.fromCharCode(decoded.charCodeAt(i) ^ key.charCodeAt(i % key.length));
+    }
+    return result;
+  } catch { return str; } // 복호화 실패 시 원문 그대로 (평문 키 호환)
+}
+
 export const onRequestOptions = () => new Response(null, { status: 204, headers: CORS });
 
 function cfHeaders(token, email) {
@@ -54,7 +68,9 @@ async function getAuth(env, userId) {
     settings = await loadAllSettings(env.DB);
   } catch {}
 
-  const token = userRow?.cf_global_api_key || settingVal(settings, 'cf_api_token');
+  // DB에 저장된 키는 XOR 난독화된 상태 — 복호화 후 사용
+  const rawToken = userRow?.cf_global_api_key || settingVal(settings, 'cf_api_token');
+  const token = rawToken ? deobfuscate(rawToken, env.ENCRYPTION_KEY || 'cp_enc_default') : null;
   const email = userRow?.cf_account_email  || settingVal(settings, 'cf_account_email');
   const accountId = userRow?.cf_account_id || settingVal(settings, 'cf_account_id');
 
@@ -83,7 +99,13 @@ export async function onRequestGet({ request, env }) {
         ? `/zones?name=${encodeURIComponent(domainFilter)}&per_page=50&page=${page}`
         : `/zones?per_page=50&page=${page}`;
       const res = await cfReq(auth, qs);
-      if (!res.success) return err('존 목록 조회 실패: ' + cfErrMsg(res), 502);
+      if (!res.success) {
+        const cfMsg = cfErrMsg(res);
+        // 인증 오류인 경우 더 명확한 안내
+        const isAuthErr = (res.errors || []).some(e => e.code === 9103 || e.code === 10000 || String(e.message).toLowerCase().includes('auth'));
+        if (isAuthErr) return err('Cloudflare 인증 실패: API 키 또는 이메일을 확인해주세요. (' + cfMsg + ')', 401);
+        return err('Cloudflare 존 목록 조회 실패: ' + cfMsg, 502);
+      }
       const zones = res.result || [];
       allZones = allZones.concat(zones.map(z => ({
         id: z.id,
