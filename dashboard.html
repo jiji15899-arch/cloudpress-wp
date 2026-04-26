@@ -85,9 +85,17 @@
         <p style="color:var(--muted);font-size:.88rem">CloudPress CMS 사이트 현황을 확인하세요.</p>
       </div>
       <div class="stats-grid">
-        <div class="stat-card"><div class="sc-icon" style="background:rgba(249,115,22,.1)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="2" y="3" width="20" height="14" rx="2" stroke="#f97316" stroke-width="1.5"/><path d="M8 21h8M12 17v4" stroke="#f97316" stroke-width="1.5" stroke-linecap="round"/></svg></div><div class="sc-val" id="sSites">0</div><div class="sc-lbl">CMS 사이트</div></div>
-        <div class="stat-card"><div class="sc-icon" style="background:rgba(99,102,241,.1)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="#6366f1" stroke-width="1.5" stroke-linecap="round"/></svg></div><div class="sc-val" id="sPlan">—</div><div class="sc-lbl">현재 플랜</div></div>
-        <div class="stat-card"><div class="sc-icon" style="background:rgba(34,197,94,.1)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" stroke="#22c55e" stroke-width="1.5" stroke-linecap="round"/><polyline points="22 4 12 14.01 9 11.01" stroke="#22c55e" stroke-width="1.5" stroke-linecap="round"/></svg></div><div class="sc-val" id="sActive">0</div><div class="sc-lbl">활성 사이트</div></div>
+        <div class="stat-card"><div class="sc-val" id="sSites">0</div><div class="sc-lbl">CMS 사이트</div></div>
+        <div class="stat-card"><div class="sc-val" id="sPlan">—</div><div class="sc-lbl">현재 플랜</div></div>
+        <div class="stat-card">
+           <div style="height:40px; width:100%;" id="resourceChart">
+              <div style="background:#eee; height:8px; border-radius:4px; overflow:hidden; margin-top:10px;">
+                 <div id="cpuBar" style="width:12%; background:var(--accent); height:100%;"></div>
+              </div>
+              <div style="font-size:10px; color:var(--muted); margin-top:4px;">CPU Usage: <span id="cpuText">12%</span></div>
+           </div>
+           <div class="sc-lbl">엣지 리소스 실시간</div>
+        </div>
       </div>
       <div style="display:flex;align-items:center;justify-content:space-between;margin:28px 0 14px">
         <h2 style="font-family:var(--font-head);font-size:1rem;font-weight:700">내 CMS 사이트</h2>
