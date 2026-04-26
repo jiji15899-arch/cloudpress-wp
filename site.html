@@ -472,55 +472,14 @@ async function loadSite(){
       </div>
     </div>
     </div>
-
+    
     <div id="tab-settings" class="tab-pane">
-    <div class="info-card">
-      <div class="info-title">⚙️ 사이트 설정 및 최적화</div>
-      <div class="settings-grid">
-        <!-- PHP 설정 (5개) -->
-        <div class="section-card">
-          <div class="section-title">PHP 설정</div>
-          <div class="setting-item">
-            <div class="setting-label">PHP 버전</div>
-            <div class="setting-control">
-              <select id="phpVersionSelect"></select>
-            </div>
-          </div>
-          <div class="setting-item">
-            <div class="setting-label">PHP-FPM</div>
-            <div class="setting-control">
-              <input type="checkbox" id="phpFpmToggle"/>
-            </div>
-          </div>
-          <div class="setting-item">
-            <div class="setting-label">메모리 제한 (MB)</div>
-            <div class="setting-control">
-              <input type="number" id="phpMemoryLimit" value="256"/>
-            </div>
-          </div>
-          <div class="setting-item">
-            <div class="setting-label">실행 시간 제한 (초)</div>
-            <div class="setting-control">
-              <input type="number" id="phpExecutionTime" value="300"/>
-            </div>
-          </div>
-          <div class="setting-item">
-            <div class="setting-label">OPcache</div>
-            <div class="setting-control">
-              <input type="checkbox" id="opcacheToggle"/>
-            </div>
-          </div>
-        </div>
-
-        <!-- WordPress 설정 (5개) -->
-        <div class="section-card">
-          <div class="section-title">WordPress 설정</div>
-          <div class="setting-item">
-            <div class="setting-label">자동 업데이트</div>
-            <div class="setting-control">
-              <select id="wpAutoUpdateSelect"></select>
-            </div>
-          </div>
+      <div class="info-card">
+        <div class="info-title">⚙️ 사이트 설정 및 최적화</div>
+        <div class="settings-grid">
+          <!-- WordPress 설정 -->
+          <div class="section-card">
+            <div class="section-title">WordPress 설정</div>
           <div class="setting-item">
             <div class="setting-label">디버그 모드</div>
             <div class="setting-control">
@@ -746,6 +705,14 @@ async function loadSite(){
           </div>
         </div>
       </div>
+      <!-- 설정 저장 버튼 -->
+      <div style="margin-top:28px;padding-top:20px;border-top:1px solid var(--border);display:flex;align-items:center;gap:12px">
+        <button id="saveSettingsBtn" class="btn btn-primary" onclick="saveAllSettings()">
+          💾 설정 저장하기
+        </button>
+        <button class="btn btn-ghost btn-sm" onclick="loadSettings(currentSite?.id)">↺ 초기화</button>
+        <span id="saveSettingsMsg" style="font-size:.85rem;color:var(--muted)"></span>
+      </div>
     </div>
     </div>
 
@@ -795,9 +762,22 @@ async function loadSite(){
 /* 설정 로드 — 현재 사이트 값으로 UI 채우기 */
 async function loadSettings(siteId) {
   if (!siteId) return;
+  
+  const contentEl = document.getElementById('tab-settings');
+  if(!contentEl) return;
+
   try {
-    const res = await CP.apiFetch(`/api/sites/${siteId}/settings`);
-    const data = await res.json();
+    // 실제 사이트의 WP-API를 통해 설정을 가져오도록 변경 (404 해결)
+    const siteUrl = currentSite.primary_domain ? `https://${currentSite.primary_domain}` : `https://${currentSite.worker_name}.workers.dev`;
+    const res = await fetch(`${siteUrl}/wp-json/cloudpress/v1/settings-info`);
+    
+    if (!res.ok) {
+       // 대체 경로 시도 (기존 대시보드 API)
+       const fallback = await CP.apiFetch(`/api/sites/${siteId}/settings`);
+       var data = await fallback.json();
+    } else {
+       var data = await res.json();
+    }
     const s = data.ok ? (data.settings || data.site || {}) : {};
 
     // PHP
@@ -809,6 +789,7 @@ async function loadSettings(siteId) {
     const setChk = (id, val) => { const el = document.getElementById(id); if(el) el.checked = !!val; };
     const setVal = (id, val) => { const el = document.getElementById(id); if(el && val!=null) el.value = val; };
     const setSel = (id, val) => { const el = document.getElementById(id); if(el && val!=null) el.value = val; };
+    const wpAutoSel = document.getElementById('wpAutoUpdateSelect');
 
     setChk('phpFpmToggle',      s.php_fpm_enabled);
     setVal('phpMemoryLimit',    s.php_memory_limit  || 256);
@@ -816,7 +797,6 @@ async function loadSettings(siteId) {
     setChk('opcacheToggle',     s.opcache_enabled   !== false);
 
     // WordPress
-    const wpAutoSel = document.getElementById('wpAutoUpdateSelect');
     if (wpAutoSel) {
       wpAutoSel.innerHTML = [
         {v:'minor', l:'마이너 업데이트'},
@@ -860,12 +840,12 @@ async function saveAllSettings() {
   if (btn) { btn.disabled = true; btn.textContent = '⏳ 저장 중...'; }
   if (msg) { msg.textContent = ''; msg.style.color = 'var(--muted)'; }
 
-  const getChk = id => { const el = document.getElementById(id); return el ? el.checked : undefined; };
-  const getVal = id => { const el = document.getElementById(id); return el ? el.value : undefined; };
+  const getChk = id => { const el = document.getElementById(id); return el ? el.checked : false; };
+  const getVal = id => { const el = document.getElementById(id); return el ? el.value : ''; };
 
   const payload = {
     php_version:          getVal('phpVersionSelect'),
-    php_fpm_enabled:      getChk('phpFpmToggle'),
+    php_fpm_enabled:      getChk('phpFpmToggle') ? 1 : 0,
     php_memory_limit:     parseInt(getVal('phpMemoryLimit')  || 256),
     php_execution_time:   parseInt(getVal('phpExecutionTime')|| 300),
     opcache_enabled:      getChk('opcacheToggle'),
@@ -885,8 +865,10 @@ async function saveAllSettings() {
   };
 
   try {
-    const res = await CP.apiFetch(`/api/sites/${siteId}/settings`, {
-      method: 'PUT',
+    // 사이트의 직접 설정 엔드포인트 호출
+    const siteUrl = currentSite.primary_domain ? `https://${currentSite.primary_domain}` : `https://${currentSite.worker_name}.workers.dev`;
+    const res = await fetch(`${siteUrl}/wp-json/cloudpress/v1/update-settings-full`, {
+      method: 'POST',
       body: JSON.stringify(payload),
     });
     const data = await res.json();
