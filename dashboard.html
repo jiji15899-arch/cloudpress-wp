@@ -131,8 +131,9 @@ async function init(){
     document.getElementById('welcome').textContent=`안녕하세요, ${user.name}님!`;
     document.getElementById('sPlan').textContent=CP.planInfo(user.plan).name;
     if(user.role==='admin'||user.role==='manager'){const am=document.getElementById('adminMenu');if(am)am.style.display='';}
-    // CF API 경고: account 페이지에서 확인 필요
-    // (has_cf_api는 /auth/me 에서 반환하지 않으므로 조건 제거)
+
+    // 실시간 리소스 모니터링 시작
+    CP.initResourceMonitor();
 
     // 공지사항
     try {
@@ -156,14 +157,12 @@ async function init(){
 async function loadSites(){
   try {
     const d=await CP.getSites();
-    if(!d || !d.ok){
-      console.error('사이트 로딩 실패:', d);
+    if(!d.ok){
       const el=document.getElementById('sitesList');
-      el.innerHTML=`<div class="empty-state" style="color:var(--error)"><div style="width:56px;height:56px;background:rgba(239,68,68,.1);border-radius:14px;display:flex;align-items:center;justify-content:center;margin:0 auto 14px"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg></div><p style="font-weight:600;margin-bottom:6px;color:var(--error)">사이트 로딩 실패</p><p style="font-size:.83rem;margin-bottom:18px">${CP.escHtml(d?.error || '서버에서 사이트 목록을 가져올 수 없습니다.')}</p><button class="btn btn-primary btn-sm" onclick="loadSites()">다시 시도</button></div>`;
-      showToast(d?.error || '사이트 로딩 실패','error');
+      el.innerHTML=`<div class="empty-state" style="color:var(--error)"><p style="font-weight:600">사이트 로딩 실패</p><p style="font-size:.83rem">${CP.escHtml(d.error)}</p><button class="btn btn-primary btn-sm" onclick="loadSites()">다시 시도</button></div>`;
       return;
     }
-    
+
     const sites=d.sites||[];
     document.getElementById('sSites').textContent=sites.length;
     document.getElementById('sActive').textContent=sites.filter(s=>s.status==='active').length;
