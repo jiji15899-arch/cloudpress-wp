@@ -188,7 +188,7 @@
     </div>
 
     <!-- 로딩 스피너 (content 바깥) -->
-    <div id="loadingSpinner" style="text-align:center;padding:60px;color:var(--muted)">
+    <div id="loadingSpinner" style="display:none;text-align:center;padding:60px;color:var(--muted)">
       <div style="display:inline-block;width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite"></div><style>@keyframes spin{to{transform:rotate(360deg)}}</style>
     </div>
     <div class="content" id="content" style="display:none">
@@ -1098,13 +1098,20 @@ async function deleteSite(id,name){
 }
 
 (async()=>{
-  const u=await CP.requireAuth();
-  if(!u)return;
-  if(CP.isAdminOrMgr(u)){
-    const am=document.getElementById('adminMenu');
-    if(am)am.style.display='';
+  try {
+    const u=await CP.requireAuth();
+    if(!u)return;
+    if(CP.isAdminOrMgr(u)){
+      const am=document.getElementById('adminMenu');
+      if(am)am.style.display='';
+    }
+    await loadSite();
+  } catch(e) {
+    const sp=document.getElementById('loadingSpinner');
+    const ct=document.getElementById('content');
+    if(sp) sp.style.display='none';
+    if(ct){ ct.style.display=''; ct.innerHTML=`<p style="color:var(--error);text-align:center;padding:40px">오류가 발생했습니다: ${String(e.message||e)}</p>`; }
   }
-  await loadSite();
 })();
 
 /* ══ 팝업 모달 공통 함수 ══════════════════════════════════════════════════ */
