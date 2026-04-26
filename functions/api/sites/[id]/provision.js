@@ -228,6 +228,15 @@ CREATE TABLE IF NOT EXISTS cp_site_settings (
   value TEXT NOT NULL DEFAULT '',
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+CREATE TABLE IF NOT EXISTS wp_sessions (
+  token TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL,
+  username TEXT NOT NULL DEFAULT '',
+  role TEXT NOT NULL DEFAULT 'subscriber',
+  created TEXT NOT NULL DEFAULT (datetime('now')),
+  expires_at TEXT NOT NULL DEFAULT (datetime('now', '+14 days'))
+);
+CREATE INDEX IF NOT EXISTS idx_wp_sessions_expires ON wp_sessions(expires_at);
 CREATE TABLE IF NOT EXISTS cp_install_lock (
   id INTEGER PRIMARY KEY DEFAULT 1,
   installed_at TEXT NOT NULL DEFAULT (datetime('now')),
