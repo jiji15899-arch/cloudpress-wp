@@ -24,6 +24,8 @@ CREATE TABLE IF NOT EXISTS users (
   cf_global_api_key   TEXT,
   cf_account_email    TEXT,
   cf_account_id       TEXT,
+  card_number         TEXT,
+  card_expiry         TEXT,
   created_at          TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at          TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -83,6 +85,21 @@ CREATE TABLE IF NOT EXISTS sites (
   wp_admin_password   TEXT,
   wp_installed        INTEGER DEFAULT 0,  -- 한 번 설치 후 재설치 방지
   wp_version          TEXT DEFAULT '6.7',
+  php_version         TEXT DEFAULT '8.3',
+  wp_auto_update      TEXT DEFAULT 'minor',
+  wp_auto_update_at   TEXT,
+
+  -- 리전 / 엣지
+  region              TEXT DEFAULT 'icn',
+  edge_ip             TEXT,
+
+  -- 별칭 도메인 목록 (JSON 배열)
+  alias_domains       TEXT DEFAULT '[]',
+
+  -- 결제/구독 상태
+  billing_status      TEXT DEFAULT 'trial',  -- trial, active, past_due
+  trial_ends_at       TEXT,
+  subscription_id     TEXT,
 
   -- 상태
   status              TEXT NOT NULL DEFAULT 'pending',
