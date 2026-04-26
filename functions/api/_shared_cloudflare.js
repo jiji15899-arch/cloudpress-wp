@@ -198,6 +198,7 @@ export async function uploadWordPressWorker(auth, accountId, workerName, opts) {
   bindings.push({ type: 'plain_text', name: 'CP_SITE_NAME',  text: siteName    || '' });
   bindings.push({ type: 'plain_text', name: 'CP_SITE_URL',   text: 'https://' + (siteDomain || '') });
   bindings.push({ type: 'plain_text', name: 'SITE_PREFIX',   text: sitePrefix  || '' });
+  if (opts.siteId) bindings.push({ type: 'plain_text', name: 'CP_SITE_ID', text: opts.siteId });
   bindings.push({ type: 'plain_text', name: 'CF_ACCOUNT_ID', text: cfAccountId || '' });
   bindings.push({ type: 'plain_text', name: 'WP_VERSION',    text: wpVersion   || '6.7.1' });
   bindings.push({ type: 'plain_text', name: 'PHP_VERSION',   text: phpVersion  || '8.2' });
