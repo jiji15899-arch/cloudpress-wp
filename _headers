@@ -18,6 +18,15 @@
 /*.js
   Cache-Control: public, max-age=31536000, immutable
 
+# worker.js는 캐시하지 않음 (사이트 프로비저닝에 사용)
+/worker.js
+  Cache-Control: no-store, max-age=0
+
+# 사이트 상세 페이지 캐시 없음
+/site.html
+  Cache-Control: no-store, private
+  X-Robots-Tag: noindex
+
 /*.png
   Cache-Control: public, max-age=86400
 
