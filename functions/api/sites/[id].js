@@ -37,7 +37,7 @@ export async function onRequest({ request, env, params }) {
                 site_d1_id, site_kv_id,
                 supabase_url, supabase_key, storage_bucket,
                 supabase_url2, supabase_key2, storage_bucket2,
-                wp_admin_url, wp_admin_username, wp_admin_password,
+                wp_admin_url, wp_username, wp_password,
                 wp_version, region,
                 status, provision_step, error_message,
                 suspended, suspension_reason, disk_used, bandwidth_used,
