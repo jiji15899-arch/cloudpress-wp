@@ -86,6 +86,7 @@
       </div>
       <div class="stats-grid">
         <div class="stat-card"><div class="sc-val" id="sSites">0</div><div class="sc-lbl">CMS 사이트</div></div>
+        <div class="stat-card"><div class="sc-val" id="sActive">0</div><div class="sc-lbl">활성 사이트</div></div>
         <div class="stat-card"><div class="sc-val" id="sPlan">—</div><div class="sc-lbl">현재 플랜</div></div>
         <div class="stat-card">
            <div style="height:40px; width:100%;" id="resourceChart">
@@ -165,7 +166,8 @@ async function loadSites(){
 
     const sites=d.sites||[];
     document.getElementById('sSites').textContent=sites.length;
-    document.getElementById('sActive').textContent=sites.filter(s=>s.status==='active').length;
+    const activeEl = document.getElementById('sActive');
+    if(activeEl) activeEl.textContent = sites.filter(s=>s.status==='active').length;
 
     const el=document.getElementById('sitesList');
     if(!sites.length){
