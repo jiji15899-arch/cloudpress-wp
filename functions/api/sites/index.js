@@ -1,12 +1,11 @@
-import { ok, err, getUser } from '../_shared.js';
+// functions/api/sites/index.js — CloudPress v22.0
+// 수정: manager도 본인 사이트만 표시, 사이트 생성 후 자동 provision 트리거
 
-export const onRequestOptions = () => new Response(null, { status: 204, headers: {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type,Authorization',
-}});
+import { CORS, ok, err, getUser } from '../_shared.js';
 
-export async function onRequestPost({ request, env }) {
+export const onRequestOptions = () => new Response(null, { status: 204, headers: CORS });
+
+export async function onRequestPost({ request, env, waitUntil }) {
   if (!env?.DB || !env?.SESSIONS) return err('서버 설정 오류: 데이터베이스 연결 불가', 503);
 
   const user = await getUser(env, request);
@@ -28,11 +27,11 @@ export async function onRequestPost({ request, env }) {
 
     // 도메인 중복 확인
     const existingDomain = await env.DB.prepare(
-      "SELECT id FROM sites WHERE primary_domain=? AND deleted_at IS NULL"
+      'SELECT id FROM sites WHERE primary_domain=? AND deleted_at IS NULL'
     ).bind(domain).first();
     if (existingDomain) return err('이미 사용 중인 도메인입니다.', 409);
 
-    // DB에서 최신 사용자 정보(카드 및 Cloudflare API 정보) 조회
+    // DB에서 최신 사용자 정보 조회
     const fullUser = await env.DB.prepare(
       'SELECT card_number, cf_global_api_key, cf_account_id, cf_account_email FROM users WHERE id=?'
     ).bind(user.id).first();
@@ -47,16 +46,34 @@ export async function onRequestPost({ request, env }) {
       return err('Cloudflare API 설정이 누락되었습니다. "내 계정"에서 Global API Key와 Account Email을 등록해주세요.', 400);
     }
 
-    const siteId = 'site_' + Math.random().toString(36).slice(2, 11);
+    const siteId = 'site_' + crypto.randomUUID().replace(/-/g, '').slice(0, 12);
     const prefix = 's' + Math.random().toString(36).slice(2, 7);
 
     try {
       await env.DB.prepare(
-        `INSERT INTO sites (id, user_id, name, primary_domain, site_prefix, plan, status, wp_username, wp_password, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, 'pending', 'admin', '', datetime('now'))`
+        `INSERT INTO sites
+           (id, user_id, name, primary_domain, site_prefix, plan, status,
+            provision_step, wp_admin_username, wp_admin_password, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, 'pending', 'init', 'admin', '', datetime('now'))`
       ).bind(siteId, user.id, body.name || 'My Site', domain, prefix, body.plan || 'starter').run();
 
-      return ok({ siteId, prefix, domain, message: '사이트 레코드가 생성되었습니다.' });
+      // 백그라운드로 provision 자동 시작
+      if (waitUntil) {
+        const provisionUrl = new URL(request.url);
+        provisionUrl.pathname = `/api/sites/${siteId}/provision`;
+        waitUntil(
+          fetch(provisionUrl.toString(), {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': request.headers.get('Authorization') || '',
+            },
+            body: '{}',
+          }).catch(e => console.error('[auto-provision] 실패:', e.message))
+        );
+      }
+
+      return ok({ siteId, prefix, domain, message: '사이트 생성이 시작되었습니다. 프로비저닝이 백그라운드에서 진행됩니다.' });
     } catch (e) {
       return err('데이터베이스 저장 실패: ' + e.message);
     }
@@ -72,15 +89,19 @@ export async function onRequestGet({ request, env }) {
   if (!user) return err('로그인이 필요합니다.', 401);
 
   try {
-    // admin만 전체 사이트 목록 조회 가능, 나머지는 본인 사이트만
+    // admin만 전체 사이트 목록 조회, manager/일반 사용자는 본인 사이트만
     const isAdmin = user.role === 'admin';
     const rows = isAdmin
       ? await env.DB.prepare(
-          `SELECT id, user_id, name, primary_domain, site_prefix, status, plan, created_at, updated_at
+          `SELECT id, user_id, name, primary_domain, site_prefix, status, plan,
+                  wp_admin_url, wp_admin_username, wp_version, provision_step,
+                  error_message, domain_status, worker_name, created_at, updated_at
            FROM sites WHERE deleted_at IS NULL ORDER BY created_at DESC`
         ).all()
       : await env.DB.prepare(
-          `SELECT id, user_id, name, primary_domain, site_prefix, status, plan, created_at, updated_at
+          `SELECT id, user_id, name, primary_domain, site_prefix, status, plan,
+                  wp_admin_url, wp_admin_username, wp_version, provision_step,
+                  error_message, domain_status, worker_name, created_at, updated_at
            FROM sites WHERE user_id=? AND deleted_at IS NULL ORDER BY created_at DESC`
         ).bind(user.id).all();
 
