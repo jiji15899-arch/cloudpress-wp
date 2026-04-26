@@ -103,14 +103,14 @@ export async function onRequestGet({ request, env }) {
     const isAdmin = user.role === 'admin';
     const rows = isAdmin
       ? await env.DB.prepare(
-          `SELECT id, user_id, name, primary_domain, site_prefix, status, plan,
-                  wp_admin_url, wp_username, wp_version, php_version, region, provision_step,
+          `SELECT id, user_id, name, primary_domain, site_prefix, status, plan, wp_admin_url,
+                  wp_username, wp_password, wp_version, php_version, region, provision_step,
                   error_message, domain_status, worker_name, alias_domains, created_at, updated_at
            FROM sites WHERE deleted_at IS NULL ORDER BY created_at DESC`
         ).all()
       : await env.DB.prepare(
-          `SELECT id, user_id, name, primary_domain, site_prefix, status, plan,
-                  wp_admin_url, wp_username, wp_version, php_version, region, provision_step,
+          `SELECT id, user_id, name, primary_domain, site_prefix, status, plan, wp_admin_url,
+                  wp_username, wp_password, wp_version, php_version, region, provision_step,
                   error_message, domain_status, worker_name, alias_domains, created_at, updated_at
            FROM sites WHERE user_id=? AND deleted_at IS NULL ORDER BY created_at DESC`
         ).bind(user.id).all();
