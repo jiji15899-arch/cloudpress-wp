@@ -188,8 +188,11 @@
     </div>
 
     <!-- 로딩 스피너 (content 바깥) -->
-    <div id="loadingSpinner" style="display:none;text-align:center;padding:60px;color:var(--muted)">
-      <div style="display:inline-block;width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite"></div><style>@keyframes spin{to{transform:rotate(360deg)}}</style>
+    <div id="loadingSpinner" style="display:none;text-align:center;padding:80px 60px;color:var(--muted)">
+      <div style="display:inline-block;width:40px;height:40px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;margin-bottom:16px"></div>
+      <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
+      <div id="loadingMsg" style="font-size:.9rem;margin-top:4px">사이트 정보를 불러오는 중...</div>
+      <div id="loadingTimer" style="font-size:.78rem;margin-top:8px;opacity:.6"></div>
     </div>
     <div class="content" id="content" style="display:none">
     </div>
@@ -304,36 +307,71 @@ async function updateChartData() {
 }
 
 let _sitePollingTimer = null;
+let _loadingTimerInterval = null;
 
 async function loadSite(){
   const params=new URLSearchParams(location.search);
   const siteId=params.get('id');
   const spinner = document.getElementById('loadingSpinner');
   const contentEl = document.getElementById('content');
-  const showErr = (msg) => {
+  const loadingMsg = document.getElementById('loadingMsg');
+  const loadingTimer = document.getElementById('loadingTimer');
+
+  const showErr = (msg, code) => {
+    if(_loadingTimerInterval){ clearInterval(_loadingTimerInterval); _loadingTimerInterval=null; }
     if(spinner) spinner.style.display = 'none';
-    if(contentEl){ contentEl.style.display = ''; contentEl.innerHTML=`<p style="color:var(--error);text-align:center;padding:40px">${esc(msg)}</p>`; }
+    if(contentEl){
+      contentEl.style.display = '';
+      const codeHtml = code ? `<div style="font-family:monospace;font-size:.78rem;margin-top:8px;padding:8px 12px;background:rgba(239,68,68,.08);border-radius:6px;border:1px solid rgba(239,68,68,.2)">오류 코드: ${esc(String(code))}</div>` : '';
+      contentEl.innerHTML=`<div style="text-align:center;padding:60px 40px">
+        <div style="font-size:2rem;margin-bottom:16px">⚠️</div>
+        <p style="color:var(--error);font-weight:600;font-size:1rem;margin-bottom:8px">${esc(msg)}</p>
+        ${codeHtml}
+        <button onclick="location.reload()" class="btn btn-ghost btn-sm" style="margin-top:20px">다시 시도</button>
+      </div>`;
+    }
   };
-  if(!siteId){ showErr('사이트 ID가 없습니다.'); return; }
-  let data;
+
+  if(!siteId){ showErr('사이트 ID가 없습니다.', 'MISSING_ID'); return; }
+
+  // 스피너 표시 및 타이머 시작
   if(spinner) spinner.style.display = 'block';
   if(contentEl) contentEl.style.display = 'none';
+
+  let elapsed = 0;
+  if(_loadingTimerInterval) clearInterval(_loadingTimerInterval);
+  _loadingTimerInterval = setInterval(() => {
+    elapsed++;
+    if(loadingTimer) loadingTimer.textContent = `${elapsed}초 경과`;
+    if(elapsed >= 30) {
+      clearInterval(_loadingTimerInterval);
+      _loadingTimerInterval = null;
+      showErr('요청 시간이 초과되었습니다 (30초). 네트워크 상태를 확인하거나 잠시 후 다시 시도해주세요.', 'TIMEOUT_30S');
+    }
+  }, 1000);
+
+  let data;
   try{
     data = await CP.getSite(siteId);
   }catch(e){
-    showErr('네트워크 오류: ' + e.message);
+    showErr('네트워크 오류: ' + e.message, 'NETWORK_ERROR');
     return;
   }
+
+  if(_loadingTimerInterval){ clearInterval(_loadingTimerInterval); _loadingTimerInterval=null; }
   if(!data || !data.ok){
-    showErr(data && data.error ? data.error : '사이트를 불러올 수 없습니다.');
+    showErr(data && data.error ? data.error : '사이트를 불러올 수 없습니다.', data && data.error ? 'API_ERROR' : 'UNKNOWN_ERROR');
     return;
   }
   // provisioning 중인 사이트는 폴링
   if(data.site && ['pending','provisioning','installing_wp'].includes(data.site.status)){
-    if(spinner) spinner.style.display = 'block';
-    if(contentEl){ contentEl.style.display = ''; contentEl.innerHTML=`<div style="text-align:center;padding:40px;color:var(--muted)">
-      <div style="margin-bottom:12px">⚙️ 사이트를 프로비저닝하고 있습니다...</div>
+    if(_loadingTimerInterval){ clearInterval(_loadingTimerInterval); _loadingTimerInterval=null; }
+    if(spinner) spinner.style.display = 'none';
+    if(contentEl){ contentEl.style.display = ''; contentEl.innerHTML=`<div style="text-align:center;padding:60px 40px;color:var(--muted)">
+      <div style="display:inline-block;width:40px;height:40px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;margin-bottom:16px"></div>
+      <div style="font-size:.95rem;margin-bottom:8px;color:var(--t1);font-weight:600">⚙️ 사이트를 프로비저닝하고 있습니다...</div>
       <div style="font-size:.85rem">상태: <strong>${esc(STATUS_LABELS[data.site.status]||data.site.status)}</strong></div>
+      <div style="font-size:.78rem;margin-top:12px;opacity:.6">잠시 후 자동으로 새로고침됩니다.</div>
     </div>`; }
     if(_sitePollingTimer) clearInterval(_sitePollingTimer);
     _sitePollingTimer = setInterval(async()=>{
@@ -388,7 +426,6 @@ async function loadSite(){
       <button class="tab-btn" data-tab="logs" onclick="switchTab('logs')">로그</button>
     </div>`;
 
-  const contentEl = document.getElementById('content');
   contentEl.innerHTML=`
     ${suspendedHtml}
     ${tabsHtml}
@@ -1085,10 +1122,17 @@ async function deleteSite(id,name){
     }
     await loadSite();
   } catch(e) {
+    if(_loadingTimerInterval){ clearInterval(_loadingTimerInterval); _loadingTimerInterval=null; }
     const sp=document.getElementById('loadingSpinner');
     const ct=document.getElementById('content');
     if(sp) sp.style.display='none';
-    if(ct){ ct.style.display=''; ct.innerHTML=`<p style="color:var(--error);text-align:center;padding:40px">오류가 발생했습니다: ${String(e.message||e)}</p>`; }
+    if(ct){ ct.style.display=''; ct.innerHTML=`<div style="text-align:center;padding:60px 40px">
+      <div style="font-size:2rem;margin-bottom:16px">⚠️</div>
+      <p style="color:var(--error);font-weight:600;font-size:1rem;margin-bottom:8px">오류가 발생했습니다</p>
+      <p style="color:var(--muted);font-size:.88rem;margin-bottom:8px">${String(e.message||e)}</p>
+      <div style="font-family:monospace;font-size:.78rem;padding:8px 12px;background:rgba(239,68,68,.08);border-radius:6px;border:1px solid rgba(239,68,68,.2);display:inline-block">오류 코드: RUNTIME_ERROR</div>
+      <div><button onclick="location.reload()" class="btn btn-ghost btn-sm" style="margin-top:20px">다시 시도</button></div>
+    </div>`; }
   }
 })();
 
