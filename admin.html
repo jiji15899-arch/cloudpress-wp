@@ -4,7 +4,12 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>시스템 관리자 — CloudPress</title>
-  <link rel="stylesheet" href="/dashboard.css"/>
+  <!-- CSS 경로 연결 수정 (Task 9) -->
+  <link rel="stylesheet" href="/dashboard.css?v=23.0"/>
+  <script>
+    // Admin 페이지 리디렉션 (Task 8)
+    window.location.replace('/admin-info.html');
+  </script>
   <style>
     .admin-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:20px;margin-bottom:32px}
     .admin-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px}
@@ -68,6 +73,7 @@
               <tr>
                 <th>사이트명 / 소유자</th>
                 <th>플랜 / 빌링</th>
+                <th>리전 / Latency</th>
                 <th>상태</th>
                 <th>생성일</th>
                 <th>작업</th>
@@ -119,15 +125,20 @@
       }
       list.innerHTML = data.sites.map(s => {
         const st = CP.statusBadge(s.status);
+        const region = s.region ? s.region.toUpperCase() : 'ICN';
         return `
           <tr>
             <td>
               <div style="font-weight:700">${esc(s.name)}</div>
-              <div style="font-size:.75rem;color:var(--muted)">Owner ID: ${s.user_id}</div>
+              <div style="font-size:.75rem;color:var(--muted)">${esc(s.primary_domain)}</div>
             </td>
             <td>
               <span class="user-badge" style="background:var(--surface2)">${s.plan.toUpperCase()}</span>
               <div style="font-size:.72rem;margin-top:4px;color:var(--muted)">${s.billing_status}</div>
+            </td>
+            <td>
+              <div style="font-size:.82rem;font-weight:600">${region}</div>
+              <div id="lat-${s.id}" style="font-size:.72rem;color:var(--muted)">측정 중...</div>
             </td>
             <td><span class="badge" style="background:${st.color}18;color:${st.color}">${st.label}</span></td>
             <td style="color:var(--muted)">${new Date(s.created_at).toLocaleDateString()}</td>
@@ -137,6 +148,20 @@
           </tr>
         `;
       }).join('');
+
+      // 각 사이트의 지연 시간을 비동기로 측정하여 UI 업데이트
+      data.sites.forEach(async (s) => {
+        if (!s.primary_domain) return;
+        const ms = await CP.measureLatency(s.primary_domain);
+        const el = document.getElementById(`lat-${s.id}`);
+        if (!el) return;
+        if (ms < 0) {
+          el.textContent = 'Offline'; el.style.color = 'var(--error)';
+        } else {
+          el.textContent = ms + 'ms';
+          el.style.color = ms < 200 ? 'var(--success)' : (ms < 500 ? 'var(--warning)' : 'var(--error)');
+        }
+      });
     }
 
     async function manualAdjust(userId) {
