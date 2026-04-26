@@ -5,6 +5,40 @@ import { cfUpsertDns, getWorkerSubdomain, cfReq, cfErrMsg } from '../../_shared_
 
 export const onRequestOptions = () => new Response(null, { status: 204, headers: CORS });
 
+// GET: 도메인 목록 조회
+export async function onRequestGet({ request, env, params }) {
+  const { id: siteId } = params;
+  const user = await getUser(env, request);
+  if (!user) return err('로그인이 필요합니다.', 401);
+
+  const site = await env.DB.prepare(
+    'SELECT id, primary_domain, alias_domains, site_prefix, worker_name FROM sites WHERE id=? AND (user_id=? OR ?='admin') AND deleted_at IS NULL'
+  ).bind(siteId, user.id, user.role).first();
+
+  if (!site) return err('사이트를 찾을 수 없습니다.', 404);
+
+  let aliases = [];
+  try { aliases = JSON.parse(site.alias_domains || '[]'); } catch {}
+
+  const domains = [
+    {
+      id: 'primary',
+      domain: site.primary_domain,
+      is_primary: true,
+      status: 'active',
+      subdomain: site.worker_name ? `${site.worker_name}.workers.dev` : null,
+    },
+    ...aliases.map((d, i) => ({
+      id: `alias_${i}`,
+      domain: d,
+      is_primary: false,
+      status: 'active',
+    })),
+  ];
+
+  return ok({ domains, primary_domain: site.primary_domain, subdomain: site.worker_name ? `${site.worker_name}.workers.dev` : null });
+}
+
 export async function onRequestPost({ request, env, params }) {
   const { id: siteId } = params;
   const user = await getUser(env, request);
