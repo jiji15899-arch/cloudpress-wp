@@ -63,10 +63,32 @@ const CP = {
   },
 
   // 인증 관련
+  getToken() {
+    return localStorage.getItem('cp_token');
+  },
+
+  async login(email, password, twoFaCode = null) {
+    const body = { email, password };
+    if (twoFaCode) body.twofa_code = twoFaCode;
+    const r = await this.post('/auth/login', body);
+    if (r.ok && r.token) {
+      localStorage.setItem('cp_token', r.token);
+    }
+    return r;
+  },
+
+  async register(name, email, password) {
+    const r = await this.post('/auth/register', { name, email, password });
+    if (r.ok && r.token) {
+      localStorage.setItem('cp_token', r.token);
+    }
+    return r;
+  },
+
   async requireAuth() {
     const user = await this.get('/auth/me');
     if (!user.ok) {
-      location.href = '/login.html?ref=' + encodeURIComponent(location.pathname + location.search);
+      location.href = '/auth.html?returnTo=' + encodeURIComponent(location.pathname + location.search);
       return null;
     }
     return user.user;
@@ -74,7 +96,7 @@ const CP = {
 
   logout() {
     localStorage.removeItem('cp_token');
-    location.href = '/login.html';
+    location.href = '/auth.html';
   },
 
   // 사이트 관리 API
