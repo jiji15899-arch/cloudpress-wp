@@ -2351,12 +2351,17 @@ h1{color:#d63638;margin-bottom:12px}p{color:#646970;line-height:1.6}</style>
     if (method === 'GET' && isStaticAsset(pathname)) {
       const kvRes = await serveStaticFromKV(env, siteInfo, pathname);
       if (kvRes) return kvRes;
-      // KV에 없으면 WordPress.org CDN에서 직접 fetch (wp-includes만)
+      // KV에 없으면 WordPress.org CDN에서 직접 fetch
       if (pathname.startsWith('/wp-includes/') || pathname.startsWith('/wp-admin/')) {
         const wpVer = siteInfo.wp_version || env.WP_VERSION || '6.9.4';
-        const cdnUrl = `https://core.svn.wordpress.org/tags/${wpVer}${pathname}`;
+        // downloads.wordpress.org CDN 사용 (SVN보다 빠르고 안정적)
+        const cdnUrls = [
+          `https://downloads.wordpress.org/release/wordpress-${wpVer}-no-content.zip`,
+        ];
+        // 파일별 직접 fetch: core GitHub mirror 또는 WordPress CDN
+        const fileCdnUrl = `https://raw.githubusercontent.com/WordPress/WordPress/${wpVer}${pathname}`;
         try {
-          const cdnRes = await fetch(cdnUrl, { cf: { cacheEverything: true, cacheTtl: 86400 } });
+          const cdnRes = await fetch(fileCdnUrl, { cf: { cacheEverything: true, cacheTtl: 86400 } });
           if (cdnRes.ok) {
             const clone = cdnRes.clone();
             const buf   = await clone.arrayBuffer();
@@ -2368,9 +2373,14 @@ h1{color:#d63638;margin-bottom:12px}p{color:#646970;line-height:1.6}</style>
                 }).catch(() => {})
               );
             }
+            const ext = pathname.split('.').pop().toLowerCase();
+            const mimeMap = { css:'text/css', js:'application/javascript', png:'image/png',
+              jpg:'image/jpeg', jpeg:'image/jpeg', gif:'image/gif', svg:'image/svg+xml',
+              woff:'font/woff', woff2:'font/woff2', ttf:'font/ttf', eot:'application/vnd.ms-fontobject',
+              ico:'image/x-icon', json:'application/json', xml:'application/xml', txt:'text/plain' };
             return new Response(buf, {
               headers: {
-                'Content-Type': cdnRes.headers.get('Content-Type') || 'application/octet-stream',
+                'Content-Type': cdnRes.headers.get('Content-Type') || mimeMap[ext] || 'application/octet-stream',
                 'Cache-Control': `public, max-age=${CACHE_TTL_STATIC}`,
               },
             });
