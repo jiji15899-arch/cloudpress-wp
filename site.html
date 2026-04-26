@@ -196,7 +196,7 @@
   </main>
 </div>
 
-<script src="/app.js?v=24.3"></script>
+<script src="/app.js?v=24.2"></script>
 <script>
 const STATUS_LABELS = {
   pending:'대기 중',provisioning:'호스팅 생성 중',installing_wp:'WordPress 설치 중',
@@ -483,31 +483,31 @@ async function loadSite(){
           <div class="setting-item">
             <div class="setting-label">PHP 버전</div>
             <div class="setting-control">
-              <select id="phpVersionSelect" onchange="updateSiteSetting('${site.id}', 'php_version', this.value)"></select>
+              <select id="phpVersionSelect"></select>
             </div>
           </div>
           <div class="setting-item">
             <div class="setting-label">PHP-FPM</div>
             <div class="setting-control">
-              <input type="checkbox" id="phpFpmToggle" onchange="updateSiteSetting('${site.id}', 'php_fpm_enabled', this.checked)"/>
+              <input type="checkbox" id="phpFpmToggle"/>
             </div>
           </div>
           <div class="setting-item">
             <div class="setting-label">메모리 제한 (MB)</div>
             <div class="setting-control">
-              <input type="number" id="phpMemoryLimit" value="256" onchange="updateSiteSetting('${site.id}', 'php_memory_limit', this.value)"/>
+              <input type="number" id="phpMemoryLimit" value="256"/>
             </div>
           </div>
           <div class="setting-item">
             <div class="setting-label">실행 시간 제한 (초)</div>
             <div class="setting-control">
-              <input type="number" id="phpExecutionTime" value="300" onchange="updateSiteSetting('${site.id}', 'php_execution_time', this.value)"/>
+              <input type="number" id="phpExecutionTime" value="300"/>
             </div>
           </div>
           <div class="setting-item">
             <div class="setting-label">OPcache</div>
             <div class="setting-control">
-              <input type="checkbox" id="opcacheToggle" onchange="updateSiteSetting('${site.id}', 'opcache_enabled', this.checked)"/>
+              <input type="checkbox" id="opcacheToggle"/>
             </div>
           </div>
         </div>
@@ -518,31 +518,31 @@ async function loadSite(){
           <div class="setting-item">
             <div class="setting-label">자동 업데이트</div>
             <div class="setting-control">
-              <select id="wpAutoUpdateSelect" onchange="updateSiteSetting('${site.id}', 'wp_auto_update', this.value)"></select>
+              <select id="wpAutoUpdateSelect"></select>
             </div>
           </div>
           <div class="setting-item">
             <div class="setting-label">디버그 모드</div>
             <div class="setting-control">
-              <input type="checkbox" id="wpDebugToggle" onchange="updateSiteSetting('${site.id}', 'wp_debug_mode', this.checked)"/>
+              <input type="checkbox" id="wpDebugToggle"/>
             </div>
           </div>
           <div class="setting-item">
             <div class="setting-label">WP-CLI</div>
             <div class="setting-control">
-              <input type="checkbox" id="wpCliToggle" onchange="updateSiteSetting('${site.id}', 'wp_cli_enabled', this.checked)"/>
+              <input type="checkbox" id="wpCliToggle"/>
             </div>
           </div>
           <div class="setting-item">
             <div class="setting-label">WordPress Cron</div>
             <div class="setting-control">
-              <input type="checkbox" id="wpCronToggle" onchange="updateSiteSetting('${site.id}', 'wp_cron_enabled', this.checked)"/>
+              <input type="checkbox" id="wpCronToggle"/>
             </div>
           </div>
           <div class="setting-item">
             <div class="setting-label">Heartbeat Control</div>
             <div class="setting-control">
-              <select id="wpHeartbeatControl" onchange="updateSiteSetting('${site.id}', 'wp_heartbeat_control', this.value)">
+              <select id="wpHeartbeatControl">
                 <option value="default">기본</option>
                 <option value="disable">비활성화</option>
                 <option value="limit">제한</option>
@@ -557,19 +557,19 @@ async function loadSite(){
           <div class="setting-item">
             <div class="setting-label">페이지 캐시</div>
             <div class="setting-control">
-              <input type="checkbox" id="pageCacheToggle" onchange="updateSiteSetting('${site.id}', 'page_cache_enabled', this.checked)"/>
+              <input type="checkbox" id="pageCacheToggle"/>
             </div>
           </div>
           <div class="setting-item">
             <div class="setting-label">오브젝트 캐시 (KV)</div>
             <div class="setting-control">
-              <input type="checkbox" id="objectCacheToggle" onchange="updateSiteSetting('${site.id}', 'object_cache_enabled', this.checked)"/>
+              <input type="checkbox" id="objectCacheToggle"/>
             </div>
           </div>
           <div class="setting-item">
             <div class="setting-label">브라우저 캐시</div>
             <div class="setting-control">
-              <input type="checkbox" id="browserCacheToggle" onchange="updateSiteSetting('${site.id}', 'browser_cache_enabled', this.checked)"/>
+              <input type="checkbox" id="browserCacheToggle"/>
             </div>
           </div>
           <div class="setting-item">
@@ -592,7 +592,7 @@ async function loadSite(){
           <div class="setting-item">
             <div class="setting-label">WAF (웹 방화벽)</div>
             <div class="setting-control">
-              <input type="checkbox" id="wafToggle" onchange="updateSiteSetting('${site.id}', 'waf_enabled', this.checked)"/>
+              <input type="checkbox" id="wafToggle"/>
             </div>
           </div>
           <div class="setting-item">
@@ -611,13 +611,13 @@ async function loadSite(){
           <div class="setting-item">
             <div class="setting-label">봇 보호</div>
             <div class="setting-control">
-              <input type="checkbox" id="botProtectionToggle" onchange="updateSiteSetting('${site.id}', 'bot_protection_enabled', this.checked)"/>
+              <input type="checkbox" id="botProtectionToggle"/>
             </div>
           </div>
           <div class="setting-item">
             <div class="setting-label">XML-RPC 비활성화</div>
             <div class="setting-control">
-              <input type="checkbox" id="xmlrpcToggle" onchange="updateSiteSetting('${site.id}', 'xmlrpc_disabled', this.checked)"/>
+              <input type="checkbox" id="xmlrpcToggle"/>
             </div>
           </div>
         </div>
@@ -634,7 +634,7 @@ async function loadSite(){
           <div class="setting-item">
             <div class="setting-label">자동 백업 스케줄</div>
             <div class="setting-control">
-              <select id="backupSchedule" onchange="updateSiteSetting('${site.id}', 'backup_schedule', this.value)">
+              <select id="backupSchedule">
                 <option value="daily">매일</option>
                 <option value="weekly">매주</option>
                 <option value="monthly">매월</option>
@@ -645,7 +645,7 @@ async function loadSite(){
           <div class="setting-item">
             <div class="setting-label">백업 보존 기간 (일)</div>
             <div class="setting-control">
-              <input type="number" id="backupRetention" value="30" onchange="updateSiteSetting('${site.id}', 'backup_retention_days', this.value)"/>
+              <input type="number" id="backupRetention" value="30"/>
             </div>
           </div>
           <div class="setting-item">
@@ -659,6 +659,55 @@ async function loadSite(){
         <!-- 모니터링 & 도구 (6개) -->
         <div class="section-card">
           <div class="section-title">모니터링 & 도구</div>
+          <div class="setting-item">
+            <div class="setting-label">서버 리소스 모니터링</div>
+            <div class="setting-control">
+              <button class="btn btn-ghost btn-sm" onclick="switchTab('monitoring')">자세히 보기</button>
+            </div>
+          </div>
+          <div class="setting-item">
+            <div class="setting-label">액세스 로그</div>
+            <div class="setting-control">
+              <button class="btn btn-ghost btn-sm" onclick="alert('액세스 로그 보기')">보기</button>
+            </div>
+          </div>
+          <div class="setting-item">
+            <div class="setting-label">에러 로그</div>
+            <div class="setting-control">
+              <button class="btn btn-ghost btn-sm" onclick="alert('에러 로그 보기')">보기</button>
+            </div>
+          </div>
+          <div class="setting-item">
+            <div class="setting-label">SSH/SFTP 접근</div>
+            <div class="setting-control">
+              <button class="btn btn-ghost btn-sm" onclick="alert('SSH/SFTP 정보 모달')">정보</button>
+            </div>
+          </div>
+          <div class="setting-item">
+            <div class="setting-label">Git 통합</div>
+            <div class="setting-control">
+              <button class="btn btn-ghost btn-sm" onclick="alert('Git 통합 설정')">설정</button>
+            </div>
+          </div>
+          <div class="setting-item">
+            <div class="setting-label">Staging 환경</div>
+            <div class="setting-control">
+              <button class="btn btn-primary btn-sm" onclick="alert('Staging 환경 생성')">생성</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 설정 저장 버튼 -->
+      <div style="margin-top:28px;padding-top:20px;border-top:1px solid var(--border);display:flex;align-items:center;gap:12px">
+        <button id="saveSettingsBtn" class="btn btn-primary" onclick="saveAllSettings()">
+          💾 설정 저장하기
+        </button>
+        <button class="btn btn-ghost btn-sm" onclick="loadSettings(currentSite?.id)">↺ 초기화</button>
+        <span id="saveSettingsMsg" style="font-size:.85rem;color:var(--muted)"></span>
+      </div>
+    </div>
+    </div>          <div class="section-title">모니터링 & 도구</div>
           <div class="setting-item">
             <div class="setting-label">서버 리소스 모니터링</div>
             <div class="setting-control">
@@ -741,6 +790,125 @@ async function loadSite(){
     await loadDomains(site.id);
     await loadSettings(site.id); // 새로운 설정 로드
   }
+}
+
+/* 설정 로드 — 현재 사이트 값으로 UI 채우기 */
+async function loadSettings(siteId) {
+  if (!siteId) return;
+  try {
+    const res = await CP.apiFetch(`/api/sites/${siteId}/settings`);
+    const data = await res.json();
+    const s = data.ok ? (data.settings || data.site || {}) : {};
+
+    // PHP
+    const phpSel = document.getElementById('phpVersionSelect');
+    if (phpSel) {
+      phpSel.innerHTML = ['8.3','8.2','8.1','8.0','7.4'].map(v =>
+        `<option value="${v}" ${(s.php_version||'8.2')===v?'selected':''}>${v}</option>`).join('');
+    }
+    const setChk = (id, val) => { const el = document.getElementById(id); if(el) el.checked = !!val; };
+    const setVal = (id, val) => { const el = document.getElementById(id); if(el && val!=null) el.value = val; };
+    const setSel = (id, val) => { const el = document.getElementById(id); if(el && val!=null) el.value = val; };
+
+    setChk('phpFpmToggle',      s.php_fpm_enabled);
+    setVal('phpMemoryLimit',    s.php_memory_limit  || 256);
+    setVal('phpExecutionTime',  s.php_execution_time|| 300);
+    setChk('opcacheToggle',     s.opcache_enabled   !== false);
+
+    // WordPress
+    const wpAutoSel = document.getElementById('wpAutoUpdateSelect');
+    if (wpAutoSel) {
+      wpAutoSel.innerHTML = [
+        {v:'minor', l:'마이너 업데이트'},
+        {v:'major', l:'모든 업데이트'},
+        {v:'disabled', l:'업데이트 비활성화'}
+      ].map(o=>`<option value="${o.v}" ${(s.wp_auto_update||'minor')===o.v?'selected':''}>${o.l}</option>`).join('');
+    }
+    setChk('wpDebugToggle',     s.wp_debug_mode);
+    setChk('wpCliToggle',       s.wp_cli_enabled    !== false);
+    setChk('wpCronToggle',      s.wp_cron_enabled   !== false);
+    setSel('wpHeartbeatControl',s.wp_heartbeat_control || 'default');
+
+    // 캐시
+    setChk('pageCacheToggle',   s.page_cache_enabled   !== false);
+    setChk('objectCacheToggle', s.object_cache_enabled !== false);
+    setChk('browserCacheToggle',s.browser_cache_enabled!== false);
+
+    // 보안
+    setChk('wafToggle',         s.waf_enabled !== false);
+    setChk('botProtectionToggle',s.bot_protection_enabled);
+    setChk('xmlrpcToggle',      s.xmlrpc_disabled);
+
+    // 백업
+    setSel('backupSchedule',    s.backup_schedule    || 'daily');
+    setVal('backupRetention',   s.backup_retention_days || 30);
+
+    const msg = document.getElementById('saveSettingsMsg');
+    if (msg) msg.textContent = '';
+  } catch(e) {
+    console.warn('설정 로드 실패:', e.message);
+  }
+}
+
+/* 설정 저장 — 모든 값을 한 번에 PUT */
+async function saveAllSettings() {
+  const siteId = currentSite?.id;
+  if (!siteId) return;
+
+  const btn = document.getElementById('saveSettingsBtn');
+  const msg = document.getElementById('saveSettingsMsg');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ 저장 중...'; }
+  if (msg) { msg.textContent = ''; msg.style.color = 'var(--muted)'; }
+
+  const getChk = id => { const el = document.getElementById(id); return el ? el.checked : undefined; };
+  const getVal = id => { const el = document.getElementById(id); return el ? el.value : undefined; };
+
+  const payload = {
+    php_version:          getVal('phpVersionSelect'),
+    php_fpm_enabled:      getChk('phpFpmToggle'),
+    php_memory_limit:     parseInt(getVal('phpMemoryLimit')  || 256),
+    php_execution_time:   parseInt(getVal('phpExecutionTime')|| 300),
+    opcache_enabled:      getChk('opcacheToggle'),
+    wp_auto_update:       getVal('wpAutoUpdateSelect'),
+    wp_debug_mode:        getChk('wpDebugToggle'),
+    wp_cli_enabled:       getChk('wpCliToggle'),
+    wp_cron_enabled:      getChk('wpCronToggle'),
+    wp_heartbeat_control: getVal('wpHeartbeatControl'),
+    page_cache_enabled:   getChk('pageCacheToggle'),
+    object_cache_enabled: getChk('objectCacheToggle'),
+    browser_cache_enabled:getChk('browserCacheToggle'),
+    waf_enabled:          getChk('wafToggle'),
+    bot_protection_enabled:getChk('botProtectionToggle'),
+    xmlrpc_disabled:      getChk('xmlrpcToggle'),
+    backup_schedule:      getVal('backupSchedule'),
+    backup_retention_days:parseInt(getVal('backupRetention') || 30),
+  };
+
+  try {
+    const res = await CP.apiFetch(`/api/sites/${siteId}/settings`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      showToast('✅ 설정이 저장되었습니다.', 'success');
+      if (msg) { msg.textContent = '✅ 저장 완료'; msg.style.color = '#22c55e'; }
+    } else {
+      showToast('저장 실패: ' + (data.error || '알 수 없는 오류'), 'error');
+      if (msg) { msg.textContent = '❌ ' + (data.error || '저장 실패'); msg.style.color = '#ef4444'; }
+    }
+  } catch(e) {
+    showToast('오류: ' + e.message, 'error');
+    if (msg) { msg.textContent = '❌ ' + e.message; msg.style.color = '#ef4444'; }
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '💾 설정 저장하기'; }
+  }
+}
+
+/* 하위 호환 — 개별 설정 변경 (더 이상 onchange로 쓰지 않지만 혹시 남은 코드를 위해 유지) */
+async function updateSiteSetting(siteId, key, value) {
+  // 즉시 저장 대신 UI 변경만 반영 (saveAllSettings로 일괄 저장)
+  console.debug('setting changed (pending save):', key, value);
 }
 
 /* 캐시 제거 */
