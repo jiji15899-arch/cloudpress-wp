@@ -1,8 +1,8 @@
 /* CloudPress CMS app.js v20.1 — 캐시 버스팅 적용 */
 'use strict';
 
-window.CP = window.CP || {};
-const CP = window.CP;
+// CP is not defined 에러 방지를 위한 즉시 초기화 (Task 3)
+const CP = window.CP = {};
 
 Object.assign(CP, {
   TOKEN_KEY: 'cp_token',
@@ -94,6 +94,25 @@ Object.assign(CP, {
   async deleteSite(id)     { return this.del('/api/sites/' + id); },
   async startProvision(id) { return this.post('/api/sites/' + id + '/provision', {}); },
   async getMetrics(id)     { return this.get('/api/sites/' + id + '/metrics'); },
+
+  /**
+   * 사이트 실시간 지연 시간(Latency) 측정
+   */
+  async measureLatency(domain) {
+    const start = performance.now();
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 4000); // 4초 타임아웃
+      // 캐시 방지를 위해 쿼리 스트링 추가 및 no-cors 모드로 핑 테스트
+      await fetch(`https://${domain}/favicon.ico?_cp_ping=${start}`, { 
+        mode: 'no-cors', cache: 'no-store', signal: controller.signal 
+      });
+      clearTimeout(timeout);
+      return Math.round(performance.now() - start);
+    } catch (e) {
+      return -1; // 연결 실패 또는 타임아웃
+    }
+  },
 
   async getProfile()           { return this.get('/api/user'); },
   async updateProfile(b)       { return this.put('/api/user', b); },
