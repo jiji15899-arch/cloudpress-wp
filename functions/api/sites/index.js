@@ -50,13 +50,22 @@ export async function onRequestPost({ request, env, waitUntil }) {
     const siteId = 'site_' + crypto.randomUUID().replace(/-/g, '').slice(0, 12);
     const prefix = 's' + Math.random().toString(36).slice(2, 7);
 
+    // 리전별 최적화 IP 할당
+    const allRegions = getLiveRegions();
+    const regionData = allRegions.find(r => r.code === (body.region || 'icn')) || allRegions[0];
+
     try {
       await env.DB.prepare(
         `INSERT INTO sites
-           (id, user_id, name, primary_domain, site_prefix, plan, status,
-            provision_step, wp_admin_username, wp_admin_password, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, 'pending', 'init', 'admin', '', datetime('now'))`
-      ).bind(siteId, user.id, body.name || 'My Site', domain, prefix, body.plan || 'starter').run();
+           (id, user_id, name, primary_domain, site_prefix, plan, status, provision_step, 
+            wp_username, wp_password, region, edge_ip, wp_version, php_version, wp_auto_update, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, 'pending', 'init', ?, ?, ?, ?, ?, ?, ?, datetime('now'))`
+      ).bind(
+        siteId, user.id, body.name || 'My Site', domain, prefix, body.plan || 'starter',
+        body.wp_username || 'admin', body.wp_password || '', 
+        regionData.code, regionData.ip, 
+        body.wp_version || 'latest', body.php_version || '8.3', body.wp_auto_update || 'minor'
+      ).run();
 
       // 백그라운드로 provision 자동 시작
       if (waitUntil) {
@@ -95,14 +104,14 @@ export async function onRequestGet({ request, env }) {
     const rows = isAdmin
       ? await env.DB.prepare(
           `SELECT id, user_id, name, primary_domain, site_prefix, status, plan,
-                  wp_admin_url, wp_admin_username, wp_version, provision_step,
-                  error_message, domain_status, worker_name, created_at, updated_at
+                  wp_admin_url, wp_username, wp_version, php_version, region, provision_step,
+                  error_message, domain_status, worker_name, alias_domains, created_at, updated_at
            FROM sites WHERE deleted_at IS NULL ORDER BY created_at DESC`
         ).all()
       : await env.DB.prepare(
           `SELECT id, user_id, name, primary_domain, site_prefix, status, plan,
-                  wp_admin_url, wp_admin_username, wp_version, provision_step,
-                  error_message, domain_status, worker_name, created_at, updated_at
+                  wp_admin_url, wp_username, wp_version, php_version, region, provision_step,
+                  error_message, domain_status, worker_name, alias_domains, created_at, updated_at
            FROM sites WHERE user_id=? AND deleted_at IS NULL ORDER BY created_at DESC`
         ).bind(user.id).all();
 
