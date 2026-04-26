@@ -188,8 +188,10 @@
     </div>
 
     <!-- 로딩 스피너 (content 바깥) -->
-    <div id="loadingSpinner" style="display:none;text-align:center;padding:60px;color:var(--muted)">
-      <div style="display:inline-block;width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite"></div><style>@keyframes spin{to{transform:rotate(360deg)}}</style>
+    <div id="loadingSpinner" style="display:block;text-align:center;padding:60px;color:var(--muted)">
+      <div style="display:inline-block;width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite"></div>
+      <p style="margin-top:16px;font-size:.88rem">사이트 정보를 불러오는 중...</p>
+      <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
     </div>
     <div class="content" id="content" style="display:none">
     </div>
@@ -344,27 +346,36 @@ async function loadSite(){
   try{
     data = await CP.fetch(`/sites/${siteId}`);
   }catch(e){
-    showErr('네트워크 오류: ' + e.message);
+    showErr('네트워크 오류: ' + (e.message||'알 수 없는 오류'));
     return;
   }
   if(!data || !data.ok){
-    showErr(data && data.error ? data.error : '사이트를 불러올 수 없습니다.');
+    const errMsg = (data && data.error) ? data.error : '사이트를 불러올 수 없습니다. 잠시 후 다시 시도해주세요.';
+    showErr(errMsg);
     return;
   }
   // provisioning 중인 사이트는 폴링
-  if(data.site && ['pending','provisioning','installing_wp'].includes(data.site.status)){
-    if(spinner) spinner.style.display = 'block';
-    if(contentEl){ contentEl.style.display = ''; contentEl.innerHTML=`<div style="text-align:center;padding:40px;color:var(--muted)">
-      <div style="margin-bottom:12px">⚙️ 사이트를 프로비저닝하고 있습니다...</div>
-      <div style="font-size:.85rem">상태: <strong>${esc(STATUS_LABELS[data.site.status]||data.site.status)}</strong></div>
-    </div>`; }
+  if(data.site && ['pending','provisioning','installing_wp','init','starting'].includes(data.site.status)){
+    if(spinner) spinner.style.display = 'none';
+    if(contentEl){
+      contentEl.style.display = '';
+      contentEl.innerHTML=`<div class="info-card" style="text-align:center;padding:48px 24px">
+        <div style="display:inline-block;width:40px;height:40px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;margin-bottom:20px"></div>
+        <div style="font-size:1.05rem;font-weight:600;margin-bottom:8px">⚙️ 사이트를 구축하고 있습니다</div>
+        <div style="font-size:.88rem;color:var(--muted)">상태: <strong style="color:var(--accent)">${esc(STATUS_LABELS[data.site.status]||data.site.status)}</strong></div>
+        <div style="font-size:.82rem;color:var(--muted);margin-top:8px">완료되면 자동으로 새로고침됩니다. 잠시만 기다려주세요.</div>
+      </div>`;
+    }
     if(_sitePollingTimer) clearInterval(_sitePollingTimer);
     _sitePollingTimer = setInterval(async()=>{
       try{
         const d2 = await CP.fetch(`/sites/${siteId}`);
-        if(d2 && d2.ok && d2.site && !['pending','provisioning','installing_wp'].includes(d2.site.status)){
+        if(d2 && d2.ok && d2.site && !['pending','provisioning','installing_wp','init','starting'].includes(d2.site.status)){
           clearInterval(_sitePollingTimer); _sitePollingTimer=null;
           location.reload();
+        } else if(d2 && d2.ok && d2.site) {
+          const statusEl = contentEl.querySelector('strong');
+          if(statusEl) statusEl.textContent = STATUS_LABELS[d2.site.status]||d2.site.status;
         }
       }catch{}
     }, 4000);
