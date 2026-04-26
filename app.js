@@ -211,6 +211,32 @@ Object.assign(CP, {
     return { stop: () => clearInterval(iv) };
   },
 
+  /**
+   * safeJson — Response 객체 또는 일반 객체에서 안전하게 JSON을 파싱합니다.
+   * CP.safeJson is not a function 에러 수정
+   */
+  async safeJson(res) {
+    if (!res) return { ok: false, error: '응답 없음' };
+    // 이미 plain object인 경우 (CP.api 결과)
+    if (typeof res === 'object' && !(res instanceof Response)) return res;
+    try {
+      const ct = res.headers?.get?.('content-type') || '';
+      if (!ct.includes('application/json')) {
+        const text = await res.text();
+        // Unexpected token '<' 에러 방지: HTML 응답 감지
+        if (text.trim().startsWith('<')) {
+          return { ok: false, error: '서버가 HTML을 반환했습니다 (status=' + res.status + ')' };
+        }
+        try { return JSON.parse(text); } catch { return { ok: res.ok, error: text.slice(0, 200) }; }
+      }
+      const data = await res.json();
+      if (data && data.ok === undefined) data.ok = res.ok;
+      return data;
+    } catch (e) {
+      return { ok: false, error: 'JSON 파싱 실패: ' + e.message };
+    }
+  },
+
   setup() {},
   send(b) { return this.post('/api/support', b); },
 
