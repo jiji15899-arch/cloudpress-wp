@@ -13,28 +13,39 @@ const CP = {
     };
   },
 
-  // API 통신 기본 메소드
-  async fetch(path, options = {}) {
+  // API 통신 기본 메소드 (타임아웃 포함)
+  async fetch(path, options = {}, timeoutMs = 15000) {
     try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
       const res = await fetch(`${this.apiBase}${path.startsWith('/') ? path : '/' + path}`, {
         ...options,
-        headers: { ...this.headers(), ...options.headers }
+        headers: { ...this.headers(), ...options.headers },
+        signal: controller.signal,
       });
+      clearTimeout(timer);
       return await this.safeJson(res);
     } catch (e) {
+      if (e.name === 'AbortError') return { ok: false, error: '요청 시간이 초과되었습니다.' };
       return { ok: false, error: '네트워크 오류가 발생했습니다.' };
     }
   },
 
   // 원시 Response를 반환하되 .json()이 항상 안전하게 동작하는 래퍼
   // (dns.html, site.html, chat.html 등에서 CP.apiFetch 사용)
-  async apiFetch(path, options = {}) {
+  async apiFetch(path, options = {}, timeoutMs = 15000) {
     try {
-      const url = path.startsWith('http') ? path : `${this.apiBase}${path.startsWith('/') ? path : '/' + path}`;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      const url = path.startsWith('http') ? path
+        : path.startsWith('/api/') || path === '/api' ? path  // 이미 /api 포함 — 그대로 사용
+        : `${this.apiBase}${path.startsWith('/') ? path : '/' + path}`;
       const rawRes = await fetch(url, {
         ...options,
-        headers: { ...this.headers(), ...(options.headers || {}) }
+        headers: { ...this.headers(), ...(options.headers || {}) },
+        signal: controller.signal,
       });
+      clearTimeout(timer);
 
       // rawRes.text()는 한 번만 읽을 수 있으므로 미리 읽어둔다
       const text = await rawRes.text();
@@ -66,7 +77,8 @@ const CP = {
         text: async function() { return text; },
       };
     } catch (e) {
-      const errData = { ok: false, error: '네트워크 오류가 발생했습니다.' };
+      const errMsg = e.name === 'AbortError' ? '요청 시간이 초과되었습니다.' : '네트워크 오류가 발생했습니다.';
+      const errData = { ok: false, error: errMsg };
       return {
         ok: false,
         status: 0,
@@ -153,6 +165,36 @@ const CP = {
   logout() {
     localStorage.removeItem('cp_token');
     location.href = '/auth.html';
+  },
+
+  // 어드민 전용: 관리자/매니저 권한 확인 후 user 반환
+  async requireAdmin() {
+    const user = await this.get('/auth/me');
+    if (!user.ok) {
+      location.href = '/auth.html?returnTo=' + encodeURIComponent(location.pathname + location.search);
+      return null;
+    }
+    if (user.user?.role !== 'admin' && user.user?.role !== 'manager') {
+      location.href = '/dashboard.html';
+      return null;
+    }
+    return user.user;
+  },
+
+  // 어드민 통계 조회
+  async adminStats() { return await this.get('/admin/stats'); },
+
+  // 도메인 레이턴시 측정 (ping 대체)
+  async measureLatency(domain) {
+    if (!domain) return -1;
+    try {
+      const url = `https://${domain}/favicon.ico`;
+      const start = Date.now();
+      await fetch(url, { method: 'HEAD', mode: 'no-cors', cache: 'no-store', signal: AbortSignal.timeout(5000) });
+      return Date.now() - start;
+    } catch {
+      return -1;
+    }
   },
 
   // 사이트 관리 API
