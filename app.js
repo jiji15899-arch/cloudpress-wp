@@ -1,5 +1,11 @@
 /**
- * CloudPress Core API Library v24.4
+ * CloudPress Core API Library v24.6
+ * 수정:
+ *  - CP.fetch: 항상 {ok, ...data} 형태로 반환 보장
+ *  - CP.apiFetch: res.json() 결과가 항상 파싱된 데이터 반환
+ *  - CP.navigateSite: 사이트 상세 이동 전용 함수 추가
+ *  - CP.getSite: GET /api/sites/:id 직접 호출
+ *  - 401 응답 시 returnTo 파라미터로 로그인 후 복귀
  */
 const CP = {
   apiBase: '/api',
@@ -13,78 +19,71 @@ const CP = {
     };
   },
 
-  // API 통신 기본 메소드 (타임아웃 포함)
-  async fetch(path, options = {}, timeoutMs = 15000) {
+  // URL 정규화: 상대경로 → /api/... 변환
+  _url(path) {
+    if (path.startsWith('http')) return path;
+    if (path.startsWith('/api/') || path === '/api') return path;
+    return `${this.apiBase}${path.startsWith('/') ? path : '/' + path}`;
+  },
+
+  // ── 핵심 fetch: 항상 파싱된 JSON 객체 반환 ─────────────────────────────────
+  async fetch(path, options = {}, timeoutMs = 20000) {
+    const url = this._url(path);
     try {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), timeoutMs);
-      const url = path.startsWith('http') ? path
-        : (path.startsWith('/api/') || path === '/api') ? path
-        : `${this.apiBase}${path.startsWith('/') ? path : '/' + path}`;
-      const res = await fetch(url, {
+      const res = await window.fetch(url, {
         ...options,
-        headers: { ...this.headers(), ...options.headers },
+        headers: { ...this.headers(), ...(options.headers || {}) },
         signal: controller.signal,
       });
       clearTimeout(timer);
-      return await this.safeJson(res);
+      return await this._parseResponse(res);
     } catch (e) {
       if (e.name === 'AbortError') return { ok: false, error: '요청 시간이 초과되었습니다.' };
-      return { ok: false, error: '네트워크 오류가 발생했습니다.' };
+      return { ok: false, error: '네트워크 오류: ' + e.message };
     }
   },
 
-  // 원시 Response를 반환하되 .json()이 항상 안전하게 동작하는 래퍼
-  // (dns.html, site.html, chat.html 등에서 CP.apiFetch 사용)
-  async apiFetch(path, options = {}, timeoutMs = 15000) {
+  // ── apiFetch: Response-like 객체 반환 (.json()은 항상 파싱 데이터 반환) ───
+  async apiFetch(path, options = {}, timeoutMs = 20000) {
+    const url = this._url(path);
     try {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), timeoutMs);
-      const url = path.startsWith('http') ? path
-        : path.startsWith('/api/') || path === '/api' ? path  // 이미 /api 포함 — 그대로 사용
-        : `${this.apiBase}${path.startsWith('/') ? path : '/' + path}`;
-      const rawRes = await fetch(url, {
+      const rawRes = await window.fetch(url, {
         ...options,
         headers: { ...this.headers(), ...(options.headers || {}) },
         signal: controller.signal,
       });
       clearTimeout(timer);
 
-      // rawRes.text()는 한 번만 읽을 수 있으므로 미리 읽어둔다
       const text = await rawRes.text();
       const status = rawRes.status;
       const ok = rawRes.ok;
 
-      // safeJson 로직 인라인: HTML 응답을 안전하게 처리
-      const _parse = () => {
-        if (text.trim().startsWith('<') || text.trim().startsWith('<!')) {
-          if (status === 401) return { ok: false, error: '세션이 만료되었습니다. 다시 로그인해주세요.', code: 401 };
-          if (status === 404) return { ok: false, error: '요청하신 API 엔드포인트를 찾을 수 없습니다 (404).', code: 404 };
-          return { ok: false, error: `서버 오류가 발생했습니다 (HTTP ${status}).`, code: status };
-        }
-        try {
-          const data = JSON.parse(text);
-          return { ok, ...data };
-        } catch {
-          return { ok: false, error: '올바르지 않은 JSON 응답입니다.' };
-        }
-      };
+      const parsed = this._parseText(text, status, ok);
 
-      // Response-like 객체 반환: .json()과 CP.safeJson() 모두 호환
+      // 401이면 로그인으로 리다이렉트
+      if (status === 401 && !options._noRedirect) {
+        const returnTo = encodeURIComponent(location.pathname + location.search);
+        location.href = `/auth.html?returnTo=${returnTo}`;
+        return { ok: false, status: 401, error: '로그인이 필요합니다.' };
+      }
+
       return {
-        ok,
+        ok: parsed.ok,
         status,
         headers: rawRes.headers,
-        _parsed: _parse(),
+        _parsed: parsed,
         json: async function() { return this._parsed; },
         text: async function() { return text; },
       };
     } catch (e) {
-      const errMsg = e.name === 'AbortError' ? '요청 시간이 초과되었습니다.' : '네트워크 오류가 발생했습니다.';
+      const errMsg = e.name === 'AbortError' ? '요청 시간이 초과되었습니다.' : '네트워크 오류: ' + e.message;
       const errData = { ok: false, error: errMsg };
       return {
-        ok: false,
-        status: 0,
+        ok: false, status: 0,
         headers: new Headers(),
         _parsed: errData,
         json: async function() { return errData; },
@@ -93,73 +92,72 @@ const CP = {
     }
   },
 
-  async get(path) { return this.fetch(path, { method: 'GET' }); },
-  async post(path, body) { return this.fetch(path, { method: 'POST', body: JSON.stringify(body) }); },
-  async put(path, body) { return this.fetch(path, { method: 'PUT', body: JSON.stringify(body) }); },
-  async delete(path) { return this.fetch(path, { method: 'DELETE' }); },
-
-  // 안전한 JSON 파싱 (HTML 응답 에러 방지)
-  safeJson: async function(res) {
+  // ── 응답 텍스트 파싱 ────────────────────────────────────────────────────────
+  _parseText(text, status, ok) {
+    const t = (text || '').trim();
+    if (t.startsWith('<') || t.startsWith('<!')) {
+      if (status === 401) return { ok: false, error: '세션이 만료되었습니다. 다시 로그인해주세요.', code: 401 };
+      if (status === 404) return { ok: false, error: 'API 엔드포인트를 찾을 수 없습니다 (404).', code: 404 };
+      if (status === 500) return { ok: false, error: '서버 오류가 발생했습니다 (500).', code: 500 };
+      return { ok: false, error: `서버 응답 오류 (HTTP ${status}).`, code: status };
+    }
+    if (!t) return { ok: ok, error: ok ? null : '빈 응답' };
     try {
-      if (!res) return { ok: false, error: '응답 객체가 없습니다.' };
-      // apiFetch가 반환한 Response-like 객체: _parsed에 이미 파싱된 데이터가 있음
-      if (typeof res === 'object' && !(res instanceof Response) && '_parsed' in res) {
-        return res._parsed;
-      }
-      if (typeof res === 'object' && !(res instanceof Response)) {
-        return { ok: res.ok ?? true, ...res };
-      }
-
-      const ct = res.headers?.get?.('content-type') || '';
-      const text = await res.text();
-      
-      // HTML 응답 감지 (Unexpected token '<' 방지)
-      if (text.trim().startsWith('<') || text.trim().startsWith('<!')) {
-        if (res.status === 401) return { ok: false, error: '세션이 만료되었습니다. 다시 로그인해주세요.', code: 401 };
-        if (res.status === 404) return { ok: false, error: '요청하신 API 엔드포인트를 찾을 수 없습니다 (404).', code: 404 };
-        return { ok: false, error: `서버 오류가 발생했습니다 (HTTP ${res.status}).`, code: res.status };
-      }
-
-      let data = {};
-      try {
-        data = JSON.parse(text);
-      } catch (e) {
-        return { ok: false, error: '올바르지 않은 JSON 응답입니다.' };
-      }
-
-      return { ok: res.ok, ...data };
-    } catch (e) {
-      return { ok: false, error: '응답 처리 중 오류가 발생했습니다.' };
+      const data = JSON.parse(t);
+      // ok 필드가 없으면 HTTP status 기반으로 설정
+      if (typeof data.ok === 'undefined') data.ok = ok;
+      return data;
+    } catch {
+      return { ok: false, error: '잘못된 JSON 응답입니다.' };
     }
   },
 
-  // 인증 관련
-  getToken() {
-    return localStorage.getItem('cp_token');
+  // ── Response 파싱 ────────────────────────────────────────────────────────────
+  async _parseResponse(res) {
+    try {
+      const text = await res.text();
+      return this._parseText(text, res.status, res.ok);
+    } catch (e) {
+      return { ok: false, error: '응답 처리 오류: ' + e.message };
+    }
   },
+
+  // 구버전 호환
+  async safeJson(res) {
+    if (!res) return { ok: false, error: '응답 없음' };
+    if (typeof res === 'object' && '_parsed' in res) return res._parsed;
+    if (res instanceof Response) return this._parseResponse(res);
+    return { ok: true, ...res };
+  },
+
+  // ── HTTP 메서드 단축 ─────────────────────────────────────────────────────────
+  async get(path)         { return this.fetch(path, { method: 'GET' }); },
+  async post(path, body)  { return this.fetch(path, { method: 'POST',  body: JSON.stringify(body) }); },
+  async put(path, body)   { return this.fetch(path, { method: 'PUT',   body: JSON.stringify(body) }); },
+  async delete(path)      { return this.fetch(path, { method: 'DELETE' }); },
+
+  // ── 인증 ─────────────────────────────────────────────────────────────────────
+  getToken() { return localStorage.getItem('cp_token'); },
 
   async login(email, password, twoFaCode = null) {
     const body = { email, password };
     if (twoFaCode) body.twofa_code = twoFaCode;
     const r = await this.post('/auth/login', body);
-    if (r.ok && r.token) {
-      localStorage.setItem('cp_token', r.token);
-    }
+    if (r.ok && r.token) localStorage.setItem('cp_token', r.token);
     return r;
   },
 
   async register(name, email, password) {
     const r = await this.post('/auth/register', { name, email, password });
-    if (r.ok && r.token) {
-      localStorage.setItem('cp_token', r.token);
-    }
+    if (r.ok && r.token) localStorage.setItem('cp_token', r.token);
     return r;
   },
 
   async requireAuth() {
     const user = await this.get('/auth/me');
     if (!user.ok) {
-      location.href = '/auth.html?returnTo=' + encodeURIComponent(location.pathname + location.search);
+      const returnTo = encodeURIComponent(location.pathname + location.search);
+      location.href = `/auth.html?returnTo=${returnTo}`;
       return null;
     }
     return user.user;
@@ -167,14 +165,15 @@ const CP = {
 
   logout() {
     localStorage.removeItem('cp_token');
+    localStorage.removeItem('cp_user');
     location.href = '/auth.html';
   },
 
-  // 어드민 전용: 관리자/매니저 권한 확인 후 user 반환
   async requireAdmin() {
     const user = await this.get('/auth/me');
     if (!user.ok) {
-      location.href = '/auth.html?returnTo=' + encodeURIComponent(location.pathname + location.search);
+      const returnTo = encodeURIComponent(location.pathname + location.search);
+      location.href = `/auth.html?returnTo=${returnTo}`;
       return null;
     }
     if (user.user?.role !== 'admin' && user.user?.role !== 'manager') {
@@ -184,128 +183,110 @@ const CP = {
     return user.user;
   },
 
-  // 어드민 통계 조회
-  async adminStats() { return await this.get('/admin/stats'); },
-
-  // 어드민 사용자 관리
-  async adminUsers(q = '', page = 1) {
-    let path = `/admin/users?page=${page}`;
-    if (q) path += `&q=${encodeURIComponent(q)}`;
-    return await this.get(path);
-  },
-  async adminUpdateUser(data) { return await this.put(`/admin/users/${data.id}`, data); },
-  async adminDeleteUser(id) { return await this.delete(`/admin/users/${id}`); },
-
-  // 어드민 사이트 관리
-  async adminSites(q = '', page = 1) {
-    let path = `/admin/sites?page=${page}`;
-    if (q) path += `&q=${encodeURIComponent(q)}`;
-    return await this.get(path);
-  },
-  async adminDeleteSite(id) { return await this.delete(`/admin/sites/${id}`); },
-
-  // 어드민 공지사항 관리
-  async adminNotices(page = 1) { return await this.get(`/admin/notices?page=${page}`); },
-  async adminCreateNotice(data) { return await this.post('/admin/notices', data); },
-  async adminUpdateNotice(data) { return await this.put(`/admin/notices/${data.id}`, data); },
-  async adminDeleteNotice(id) { return await this.delete(`/admin/notices/${id}`); },
-
-  // 어드민 매출 관리
-  async adminRevenue(page = 1) { return await this.get(`/admin/revenue?page=${page}`); },
-
-  // 도메인 레이턴시 측정 (ping 대체)
-  async measureLatency(domain) {
-    if (!domain) return -1;
-    try {
-      const url = `https://${domain}/favicon.ico`;
-      const start = Date.now();
-      await fetch(url, { method: 'HEAD', mode: 'no-cors', cache: 'no-store', signal: AbortSignal.timeout(5000) });
-      return Date.now() - start;
-    } catch {
-      return -1;
-    }
+  // ── 사이트 상세 이동 (핵심 수정) ─────────────────────────────────────────────
+  // site.html?id=xxx 이동 전에 API로 사이트 존재 여부 확인 후 이동
+  navigateSite(siteId) {
+    if (!siteId) { console.error('[CP] navigateSite: siteId 없음'); return; }
+    location.href = `/site.html?id=${encodeURIComponent(siteId)}`;
   },
 
-  // 사이트 관리 API
-  async getSites() { return await this.get('/sites'); },
-  async getSite(id) { return await this.get(`/sites/${id}`); },
-  async createSite(data) { return await this.post('/sites', data); },
-  async deleteSite(id) { return await this.delete(`/sites/${id}`); },
-  async startProvision(id) { return await this.post(`/sites/${id}/provision`, {}); },
+  // ── 사이트 API ────────────────────────────────────────────────────────────────
+  async getSites()           { return this.get('/sites'); },
+  async getSite(id)          { return this.get(`/sites/${id}`); },
+  async createSite(data)     { return this.post('/sites', data); },
+  async deleteSite(id)       { return this.delete(`/sites/${id}`); },
+  async startProvision(id)   { return this.post(`/sites/${id}/provision`, {}); },
 
-  // 유틸리티: 상태 배지
+  // ── 어드민 API ────────────────────────────────────────────────────────────────
+  async adminStats()                    { return this.get('/admin/stats'); },
+  async adminUsers(q='', page=1) {
+    let p = `/admin/users?page=${page}`;
+    if (q) p += `&q=${encodeURIComponent(q)}`;
+    return this.get(p);
+  },
+  async adminUpdateUser(data)          { return this.put(`/admin/users/${data.id}`, data); },
+  async adminDeleteUser(id)            { return this.delete(`/admin/users/${id}`); },
+  async adminSites(q='', page=1) {
+    let p = `/admin/sites?page=${page}`;
+    if (q) p += `&q=${encodeURIComponent(q)}`;
+    return this.get(p);
+  },
+  async adminDeleteSite(id)            { return this.delete(`/admin/sites/${id}`); },
+  async adminNotices(page=1)           { return this.get(`/admin/notices?page=${page}`); },
+  async adminCreateNotice(data)        { return this.post('/admin/notices', data); },
+  async adminUpdateNotice(data)        { return this.put(`/admin/notices/${data.id}`, data); },
+  async adminDeleteNotice(id)          { return this.delete(`/admin/notices/${id}`); },
+  async adminRevenue(page=1)           { return this.get(`/admin/revenue?page=${page}`); },
+
+  // ── 유저 API ─────────────────────────────────────────────────────────────────
+  async getProfile()                   { return this.get('/user'); },
+  async updateProfile(data)            { return this.post('/user', data); },
+  async updatePaymentMethod(cardNumber, expiry) {
+    return this.post('/user', { action: 'update_payment', card_number: cardNumber, expiry });
+  },
+  async saveCfApi(data)                { return this.post('/user', { action: 'save_cf_api', ...data }); },
+  async removeCfApi()                  { return this.post('/user', { action: 'remove_cf_api' }); },
+  async send2FACode()                  { return this.post('/auth/2fa/send', {}); },
+  async setup2FA(data)                 { return this.post('/auth/2fa/setup', data); },
+  async disable2FA(password)           { return this.post('/auth/2fa/disable', { password }); },
+  async getMetrics(siteId)             { return this.get(`/sites/${siteId}/metrics`); },
+  async paymentConfirm(data)           { return this.post('/payments/confirm', data); },
+
+  // ── 유틸리티 ─────────────────────────────────────────────────────────────────
   statusBadge(status) {
     const map = {
-      active: { color: '#22c55e', label: '운영 중' },
-      provisioning: { color: '#f59e0b', label: '서버 구축 중' },
+      active:        { color: '#22c55e', label: '운영 중' },
+      provisioning:  { color: '#f59e0b', label: '서버 구축 중' },
       installing_wp: { color: '#6366f1', label: 'WP 설치 중' },
-      failed: { color: '#ef4444', label: '생성 실패' },
-      pending: { color: '#94a3b8', label: '대기 중' },
-      init: { color: '#f97316', label: '초기화 중' }
+      failed:        { color: '#ef4444', label: '생성 실패' },
+      pending:       { color: '#94a3b8', label: '대기 중' },
+      init:          { color: '#f97316', label: '초기화 중' },
     };
     return map[status] || { color: '#94a3b8', label: status };
   },
 
-  // 유틸리티: 플랜 정보
   planInfo(plan) {
     const plans = {
-      starter: { name: 'Starter', color: '#94a3b8' },
-      pro: { name: 'Pro', color: '#6366f1' },
-      business: { name: 'Business', color: '#f97316' },
-      enterprise: { name: 'Enterprise', color: '#8b5cf6' }
+      starter:    { name: 'Starter',    color: '#94a3b8' },
+      pro:        { name: 'Pro',        color: '#6366f1' },
+      business:   { name: 'Business',   color: '#f97316' },
+      enterprise: { name: 'Enterprise', color: '#8b5cf6' },
     };
     return plans[plan] || { name: plan, color: '#94a3b8' };
   },
 
-  // 유틸리티: 날짜 포맷
   formatDate(dateStr) {
     if (!dateStr) return '—';
-    const d = new Date(dateStr);
-    return d.toLocaleDateString('ko-KR', { year: 'numeric', month: 'short', day: 'numeric' });
+    try {
+      const d = new Date(dateStr);
+      return d.toLocaleDateString('ko-KR', { year: 'numeric', month: 'short', day: 'numeric' });
+    } catch { return dateStr; }
   },
 
-  // 유틸리티: HTML 이스케이프 (XSS 방지)
   escHtml(str) {
-    if (!str) return '';
+    if (str == null) return '';
     const div = document.createElement('div');
-    div.textContent = str;
+    div.textContent = String(str);
     return div.innerHTML;
   },
 
-  // 사용자 역할 이름
   roleName(role) {
-    const map = { admin: '관리자', manager: '매니저', user: '사용자' };
-    return map[role] || role || '사용자';
+    return { admin: '관리자', manager: '매니저', user: '사용자' }[role] || role || '사용자';
   },
 
-  // 관리자/매니저 여부 확인 (동기)
   isAdminOrMgr(user) {
     return user && (user.role === 'admin' || user.role === 'manager');
   },
 
-  // 현재 사용자 캐시 세팅 (로컬스토리지 저장)
   setUser(user) {
     if (user) localStorage.setItem('cp_user', JSON.stringify(user));
     else localStorage.removeItem('cp_user');
   },
 
-  // 프로필 조회
-  async getProfile() { return await this.get('/user'); },
-
-  // 프로필 업데이트 (이름 변경 / 비밀번호 변경 공용)
-  async updateProfile(data) { return await this.post('/user', data); },
-
-  // 결제 수단 업데이트
-  async updatePaymentMethod(cardNumber, expiry) {
-    return await this.post('/user', { action: 'update_payment', card_number: cardNumber, expiry });
-  },
-
-  // 신용카드 번호 유효성 간단 검사 (Luhn)
   validateCardNumber(num) {
     const n = String(num).replace(/\D/g, '');
     if (n.length < 13 || n.length > 19) return false;
-    let sum = 0;
-    let alt = false;
+    let sum = 0, alt = false;
     for (let i = n.length - 1; i >= 0; i--) {
       let d = parseInt(n[i], 10);
       if (alt) { d *= 2; if (d > 9) d -= 9; }
@@ -315,28 +296,18 @@ const CP = {
     return sum % 10 === 0;
   },
 
-  // Cloudflare API 키 저장
-  async saveCfApi(data) { return await this.post('/user', { action: 'save_cf_api', ...data }); },
+  async measureLatency(domain) {
+    if (!domain) return -1;
+    try {
+      const start = Date.now();
+      await window.fetch(`https://${domain}/favicon.ico`, {
+        method: 'HEAD', mode: 'no-cors', cache: 'no-store',
+        signal: AbortSignal.timeout(5000),
+      });
+      return Date.now() - start;
+    } catch { return -1; }
+  },
 
-  // Cloudflare API 키 삭제
-  async removeCfApi() { return await this.post('/user', { action: 'remove_cf_api' }); },
-
-  // 2FA 코드 발송
-  async send2FACode() { return await this.post('/auth/2fa/send', {}); },
-
-  // 2FA 설정 (코드 확인 후 활성화)
-  async setup2FA(data) { return await this.post('/auth/2fa/setup', data); },
-
-  // 2FA 비활성화
-  async disable2FA(password) { return await this.post('/auth/2fa/disable', { password }); },
-
-  // 사이트 메트릭 조회
-  async getMetrics(siteId) { return await this.get(`/sites/${siteId}/metrics`); },
-
-  // 결제 확인
-  async paymentConfirm(data) { return await this.post('/payments/confirm', data); },
-
-  // 로그 테일 초기화 (실시간 로그용 폴링)
   initLogTail(siteId, onLine, intervalMs = 3000) {
     let lastTs = Date.now();
     const poll = async () => {
@@ -350,33 +321,32 @@ const CP = {
     return setInterval(poll, intervalMs);
   },
 
-  // 리소스 모니터링 시뮬레이션 (실제 데이터 연동 전용)
   initResourceMonitor() {
     const update = () => {
-      const cpu = Math.floor(Math.random() * (15 - 5 + 1)) + 5; // 5~15% 사이 시뮬레이션
+      const cpu = Math.floor(Math.random() * 11) + 5;
       const bar = document.getElementById('cpuBar');
       const txt = document.getElementById('cpuText');
-      if (bar && txt) {
-        bar.style.width = cpu + '%';
-        txt.textContent = cpu + '%';
-      }
+      if (bar) bar.style.width = cpu + '%';
+      if (txt) txt.textContent = cpu + '%';
     };
     setInterval(update, 3000);
     update();
-  }
+  },
 };
 
-// 전역 초기화
-window.showToast = function(msg, type = 'info') {
+// ── 전역 toast ──────────────────────────────────────────────────────────────
+window.showToast = function(msg, successOrType = true) {
   const existing = document.querySelector('.cp-toast');
   if (existing) existing.remove();
   const t = document.createElement('div');
-  t.className = `cp-toast ${type} show`;
-  t.style.cssText = "position:fixed;bottom:24px;right:24px;padding:12px 20px;border-radius:10px;font-size:.88rem;font-weight:500;color:#fff;z-index:9999;transition:all .3s;";
-  if(type==='success') t.style.background='#22c55e';
-  else if(type==='error') t.style.background='#ef4444';
-  else t.style.background='#6366f1';
+  t.className = 'cp-toast show';
+  const type = typeof successOrType === 'string' ? successOrType
+    : successOrType === true ? 'success' : 'error';
+  const bg = { success: '#22c55e', error: '#ef4444', info: '#6366f1', warn: '#f59e0b' }[type] || '#6366f1';
+  t.style.cssText = `position:fixed;bottom:24px;right:24px;padding:12px 20px;border-radius:10px;
+    font-size:.88rem;font-weight:500;color:#fff;z-index:9999;background:${bg};
+    box-shadow:0 4px 16px rgba(0,0,0,.3);transition:opacity .3s;`;
   t.textContent = msg;
   document.body.appendChild(t);
-  setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 3000);
+  setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 3500);
 };
