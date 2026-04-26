@@ -26,6 +26,58 @@ const CP = {
     }
   },
 
+  // 원시 Response를 반환하되 .json()이 항상 안전하게 동작하는 래퍼
+  // (dns.html, site.html, chat.html 등에서 CP.apiFetch 사용)
+  async apiFetch(path, options = {}) {
+    try {
+      const url = path.startsWith('http') ? path : `${this.apiBase}${path.startsWith('/') ? path : '/' + path}`;
+      const rawRes = await fetch(url, {
+        ...options,
+        headers: { ...this.headers(), ...(options.headers || {}) }
+      });
+
+      // rawRes.text()는 한 번만 읽을 수 있으므로 미리 읽어둔다
+      const text = await rawRes.text();
+      const status = rawRes.status;
+      const ok = rawRes.ok;
+
+      // safeJson 로직 인라인: HTML 응답을 안전하게 처리
+      const _parse = () => {
+        if (text.trim().startsWith('<') || text.trim().startsWith('<!')) {
+          if (status === 401) return { ok: false, error: '세션이 만료되었습니다. 다시 로그인해주세요.', code: 401 };
+          if (status === 404) return { ok: false, error: '요청하신 API 엔드포인트를 찾을 수 없습니다 (404).', code: 404 };
+          return { ok: false, error: `서버 오류가 발생했습니다 (HTTP ${status}).`, code: status };
+        }
+        try {
+          const data = JSON.parse(text);
+          return { ok, ...data };
+        } catch {
+          return { ok: false, error: '올바르지 않은 JSON 응답입니다.' };
+        }
+      };
+
+      // Response-like 객체 반환: .json()과 CP.safeJson() 모두 호환
+      return {
+        ok,
+        status,
+        headers: rawRes.headers,
+        _parsed: _parse(),
+        json: async function() { return this._parsed; },
+        text: async function() { return text; },
+      };
+    } catch (e) {
+      const errData = { ok: false, error: '네트워크 오류가 발생했습니다.' };
+      return {
+        ok: false,
+        status: 0,
+        headers: new Headers(),
+        _parsed: errData,
+        json: async function() { return errData; },
+        text: async function() { return JSON.stringify(errData); },
+      };
+    }
+  },
+
   async get(path) { return this.fetch(path, { method: 'GET' }); },
   async post(path, body) { return this.fetch(path, { method: 'POST', body: JSON.stringify(body) }); },
   async put(path, body) { return this.fetch(path, { method: 'PUT', body: JSON.stringify(body) }); },
@@ -35,6 +87,10 @@ const CP = {
   safeJson: async function(res) {
     try {
       if (!res) return { ok: false, error: '응답 객체가 없습니다.' };
+      // apiFetch가 반환한 Response-like 객체: _parsed에 이미 파싱된 데이터가 있음
+      if (typeof res === 'object' && !(res instanceof Response) && '_parsed' in res) {
+        return res._parsed;
+      }
       if (typeof res === 'object' && !(res instanceof Response)) {
         return { ok: res.ok ?? true, ...res };
       }
