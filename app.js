@@ -1,5 +1,5 @@
 /**
- * CloudPress Core API Library v24.1
+ * CloudPress Core API Library v24.4
  */
 const CP = {
   apiBase: '/api',
@@ -18,7 +18,10 @@ const CP = {
     try {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), timeoutMs);
-      const res = await fetch(`${this.apiBase}${path.startsWith('/') ? path : '/' + path}`, {
+      const url = path.startsWith('http') ? path
+        : (path.startsWith('/api/') || path === '/api') ? path
+        : `${this.apiBase}${path.startsWith('/') ? path : '/' + path}`;
+      const res = await fetch(url, {
         ...options,
         headers: { ...this.headers(), ...options.headers },
         signal: controller.signal,
