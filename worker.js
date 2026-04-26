@@ -468,6 +468,32 @@ async function handleCloudPressApi(env, siteInfo, endpoint, method, request, url
     return jsonR({ success: true, message: '임시글이 저장되었습니다.' });
   }
 
+  // 설정 업데이트 (기본 WordPress 설정)
+  if (endpoint === 'update-settings' && method === 'POST') {
+    let body;
+    try { body = await request.json(); } catch { return jsonR({ success: false, message: '잘못된 요청' }); }
+    const allowed = ['blogname','blogdescription','admin_email','timezone_string','posts_per_page','permalink_structure','WPLANG'];
+    for (const key of allowed) {
+      if (body[key] !== undefined) {
+        await setWpOption(env, siteInfo, key, body[key]);
+      }
+    }
+    return jsonR({ ok: true, success: true, message: '설정이 저장되었습니다.' });
+  }
+
+  // 자동 업데이트 설정
+  if (endpoint === 'auto-update' && method === 'POST') {
+    let body;
+    try { body = await request.json(); } catch { return jsonR({ success: false, message: '잘못된 요청' }); }
+    const mode = body.mode || 'minor';
+    if (!['enabled','minor','disabled'].includes(mode)) return jsonR({ success: false, message: '잘못된 모드' });
+    try {
+      await env.DB.prepare(`UPDATE sites SET wp_auto_update=? WHERE id=?`).bind(mode, siteInfo.id).run().catch(()=>{});
+    } catch {}
+    await setWpOption(env, siteInfo, 'wp_auto_update', mode);
+    return jsonR({ ok: true, success: true, message: `자동 업데이트가 "${mode}" 모드로 설정되었습니다.` });
+  }
+
   // 설정 업데이트 (전체 필드 지원)
   if (endpoint === 'update-settings-full' && method === 'POST') {
     let body;
@@ -481,10 +507,111 @@ async function handleCloudPressApi(env, siteInfo, endpoint, method, request, url
   
   // 테마/플러그인 업로드 (ZIP)
   if (endpoint === 'upload-package' && method === 'POST') {
-    const formData = await request.formData();
+    let formData;
+    try { formData = await request.formData(); } catch { return jsonR({ success: false, message: '파일 파싱 오류' }); }
     const file = formData.get('file');
-    if(!file) return jsonR({ success: false, message: '파일이 없습니다.' });
-    return jsonR({ success: true, message: `패키지 "${file.name}" 업로드 및 설치 완료 (Edge 가상 설치)` });
+    const type = formData.get('type') || 'plugin';
+    if (!file) return jsonR({ success: false, message: '파일이 없습니다.' });
+    const name = file.name.replace(/\.zip$/i, '');
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+
+    if (type === 'plugin') {
+      // 플러그인 목록에 추가
+      let active = JSON.parse(await getWpOption(env, siteInfo, 'active_plugins') || '[]');
+      let allPlugins = JSON.parse(await getWpOption(env, siteInfo, 'installed_plugins') || '[]');
+      if (!allPlugins.find(p => p.slug === slug)) {
+        allPlugins.push({ slug, name, version: '1.0', description: 'ZIP 업로드', active: false });
+        await setWpOption(env, siteInfo, 'installed_plugins', JSON.stringify(allPlugins));
+      }
+    } else {
+      // 테마 목록에 추가
+      let themes = JSON.parse(await getWpOption(env, siteInfo, 'installed_themes') || '[]');
+      if (!themes.find(t => t.slug === slug)) {
+        themes.push({ slug, name, version: '1.0' });
+        await setWpOption(env, siteInfo, 'installed_themes', JSON.stringify(themes));
+      }
+    }
+    return jsonR({ success: true, message: `"${name}" 패키지가 업로드 및 설치되었습니다.` });
+  }
+
+  // 플러그인 설치 (WP.org)
+  if (endpoint === 'install-plugin' && method === 'POST') {
+    let body;
+    try { body = await request.json(); } catch { return jsonR({ success: false, message: '잘못된 요청' }); }
+    const { slug } = body;
+    if (!slug) return jsonR({ success: false, message: 'slug가 필요합니다.' });
+    // WP.org에서 플러그인 정보 가져오기
+    let name = slug, version = '1.0', desc = '';
+    try {
+      const res = await fetch(`https://api.wordpress.org/plugins/info/1.2/?action=plugin_information&request[slug]=${encodeURIComponent(slug)}`);
+      if (res.ok) {
+        const info = await res.json();
+        name = info.name || slug;
+        version = info.version || '1.0';
+        desc = (info.short_description || '').slice(0, 120);
+      }
+    } catch {}
+    let allPlugins = JSON.parse(await getWpOption(env, siteInfo, 'installed_plugins') || '[]');
+    if (!allPlugins.find(p => p.slug === slug)) {
+      allPlugins.push({ slug, name, version, description: desc, active: false });
+      await setWpOption(env, siteInfo, 'installed_plugins', JSON.stringify(allPlugins));
+    }
+    return jsonR({ success: true, message: `"${name}" 플러그인이 설치되었습니다. 플러그인 페이지에서 활성화하세요.` });
+  }
+
+  // 테마 설치 (WP.org)
+  if (endpoint === 'install-theme' && method === 'POST') {
+    let body;
+    try { body = await request.json(); } catch { return jsonR({ success: false, message: '잘못된 요청' }); }
+    const { slug } = body;
+    if (!slug) return jsonR({ success: false, message: 'slug가 필요합니다.' });
+    let name = slug, version = '1.0';
+    try {
+      const res = await fetch(`https://api.wordpress.org/themes/info/1.2/?action=theme_information&request[slug]=${encodeURIComponent(slug)}`);
+      if (res.ok) {
+        const info = await res.json();
+        name = info.name || slug;
+        version = info.version || '1.0';
+      }
+    } catch {}
+    let themes = JSON.parse(await getWpOption(env, siteInfo, 'installed_themes') || '[]');
+    if (!themes.find(t => t.slug === slug)) {
+      themes.push({ slug, name, version });
+      await setWpOption(env, siteInfo, 'installed_themes', JSON.stringify(themes));
+    }
+    return jsonR({ success: true, message: `"${name}" 테마가 설치되었습니다. 테마 페이지에서 활성화하세요.` });
+  }
+
+  // 위젯 관리
+  if (endpoint === 'widgets' && method === 'GET') {
+    const widgetsRaw = await getWpOption(env, siteInfo, 'sidebars_widgets');
+    let widgets = [];
+    try {
+      const parsed = JSON.parse(widgetsRaw || '{}');
+      widgets = (parsed['sidebar-1'] || []).map(w => ({ name: w }));
+    } catch {}
+    return jsonR({ success: true, widgets });
+  }
+
+  if (endpoint === 'widget-action' && method === 'POST') {
+    let body;
+    try { body = await request.json(); } catch { return jsonR({ success: false, message: '잘못된 요청' }); }
+    const widgetsRaw = await getWpOption(env, siteInfo, 'sidebars_widgets');
+    let sidebars = { 'sidebar-1': [], 'footer-1': [], 'wp_inactive_widgets': [] };
+    try { sidebars = JSON.parse(widgetsRaw || JSON.stringify(sidebars)); } catch {}
+    if (!Array.isArray(sidebars['sidebar-1'])) sidebars['sidebar-1'] = [];
+
+    if (body.action === 'add') {
+      sidebars['sidebar-1'].push(body.name);
+      await setWpOption(env, siteInfo, 'sidebars_widgets', JSON.stringify(sidebars));
+      return jsonR({ success: true, message: `위젯이 추가되었습니다.` });
+    }
+    if (body.action === 'remove') {
+      sidebars['sidebar-1'].splice(body.index, 1);
+      await setWpOption(env, siteInfo, 'sidebars_widgets', JSON.stringify(sidebars));
+      return jsonR({ success: true, message: `위젯이 제거되었습니다.` });
+    }
+    return jsonR({ success: false, message: '알 수 없는 위젯 액션' });
   }
 
   // 프로필 업데이트
@@ -571,13 +698,21 @@ async function handleCloudPressApi(env, siteInfo, endpoint, method, request, url
   // 테마 목록 (D1에서 동적 관리)
   if (endpoint === 'themes' && method === 'GET') {
     const current = await getWpOption(env, siteInfo, 'template') || 'twentytwentyfour';
-    const rows = await env.DB.prepare("SELECT * FROM wp_options WHERE option_name LIKE 'theme_%'").all().catch(()=>({results:[]}));
     const baseThemes = [
       { slug: 'twentytwentyfour', name: 'Twenty Twenty-Four', version: '1.2' },
-      { slug: 'astra', name: 'Astra (Edge Optimized)', version: '4.6' },
-      { slug: 'generatepress', name: 'GeneratePress', version: '3.4' }
+      { slug: 'twentytwentythree', name: 'Twenty Twenty-Three', version: '1.3' },
+      { slug: 'astra', name: 'Astra', version: '4.6' },
+      { slug: 'generatepress', name: 'GeneratePress', version: '3.4' },
     ];
-    const themes = baseThemes.map(t => ({...t, active: t.slug === current}));
+    let installed = [];
+    try {
+      installed = JSON.parse(await getWpOption(env, siteInfo, 'installed_themes') || '[]');
+    } catch {}
+    const installedSlugs = new Set(installed.map(t => t.slug));
+    for (const bt of baseThemes) {
+      if (!installedSlugs.has(bt.slug)) installed.push(bt);
+    }
+    const themes = installed.map(t => ({ ...t, active: t.slug === current }));
     return jsonR({ success: true, themes, active: current });
   }
 
@@ -605,27 +740,56 @@ async function handleCloudPressApi(env, siteInfo, endpoint, method, request, url
 
   // 플러그인 목록
   if (endpoint === 'plugins' && method === 'GET') {
-    // WordPress.org API 시뮬레이션 (실시간 크롤링 대체)
-    const plugins = [
-      { slug: 'akismet', name: 'Akismet Anti-Spam', version: '5.3', active: true, description: '스팸 댓글 차단' },
-      { slug: 'wp-rocket', name: 'WP Rocket (Edge)', version: '3.15', active: false, description: '엣지 캐싱 가속' },
-      { slug: 'contact-form-7', name: 'Contact Form 7', version: '5.8', active: true, description: '문의 폼 관리' },
-      { slug: 'supabase-storage', name: 'Supabase Media Sync', version: '1.0', active: true, description: 'Supabase 버킷 연동' }
+    const basePlugins = [
+      { slug: 'akismet', name: 'Akismet Anti-Spam', version: '5.3', description: '스팸 댓글 차단' },
+      { slug: 'contact-form-7', name: 'Contact Form 7', version: '5.8', description: '문의 폼 관리' },
     ];
+    let installed = [];
+    try {
+      installed = JSON.parse(await getWpOption(env, siteInfo, 'installed_plugins') || '[]');
+    } catch {}
+    let active = [];
+    try {
+      active = JSON.parse(await getWpOption(env, siteInfo, 'active_plugins') || '[]');
+    } catch {}
+    // basePlugins 중 installed에 없는 것은 추가
+    const installedSlugs = new Set(installed.map(p => p.slug));
+    for (const bp of basePlugins) {
+      if (!installedSlugs.has(bp.slug)) installed.push(bp);
+    }
+    const plugins = installed.map(p => ({ ...p, active: active.includes(p.slug) }));
     return jsonR({ success: true, plugins });
   }
 
-  // 플러그인 활성화/비활성화
+  // 플러그인 활성화/비활성화/삭제
   if (endpoint === 'plugin-action' && method === 'POST') {
     let body;
     try { body = await request.json(); } catch { return jsonR({ success: false, message: '잘못된 데이터' }); }
     
     const optionName = 'active_plugins';
-    let active = JSON.parse(await getWpOption(env, siteInfo, optionName) || '[]');
-    if (body.action === 'activate') { if(!active.includes(body.slug)) active.push(body.slug); }
-    else { active = active.filter(s => s !== body.slug); }
-    await setWpOption(env, siteInfo, optionName, JSON.stringify(active));
-    return jsonR({ success: true, message: `플러그인이 ${body.action === 'activate' ? '활성화' : '비활성화'}되었습니다.` });
+    let active = [];
+    try { active = JSON.parse(await getWpOption(env, siteInfo, optionName) || '[]'); } catch {}
+
+    if (body.action === 'activate') {
+      if (!active.includes(body.slug)) active.push(body.slug);
+      await setWpOption(env, siteInfo, optionName, JSON.stringify(active));
+      return jsonR({ success: true, message: `플러그인이 활성화되었습니다.` });
+    }
+    if (body.action === 'deactivate') {
+      active = active.filter(s => s !== body.slug);
+      await setWpOption(env, siteInfo, optionName, JSON.stringify(active));
+      return jsonR({ success: true, message: `플러그인이 비활성화되었습니다.` });
+    }
+    if (body.action === 'delete') {
+      active = active.filter(s => s !== body.slug);
+      await setWpOption(env, siteInfo, optionName, JSON.stringify(active));
+      let allPlugins = [];
+      try { allPlugins = JSON.parse(await getWpOption(env, siteInfo, 'installed_plugins') || '[]'); } catch {}
+      allPlugins = allPlugins.filter(p => p.slug !== body.slug);
+      await setWpOption(env, siteInfo, 'installed_plugins', JSON.stringify(allPlugins));
+      return jsonR({ success: true, message: `플러그인이 삭제되었습니다.` });
+    }
+    return jsonR({ success: false, message: '알 수 없는 액션' });
   }
 
   // 사용자 목록
@@ -851,21 +1015,23 @@ function renderWpAdmin(siteInfo, session, page = 'dashboard', env = {}) {
   const autoUpdate = siteInfo.wp_auto_update || (env && env.WP_AUTO_UPDATE) || 'minor';
 
   const navItems = [
-    { id:'dashboard',  label:'대시보드', icon:'' },
-    { id:'posts',      label:'글',       icon:'' },
-    { id:'pages',      label:'페이지',   icon:'' },
-    { id:'media',      label:'미디어',   icon:'' },
-    { id:'comments',   label:'댓글',     icon:'' },
-    { id:'themes',     label:'외모 (테마)', icon:'' },
-    { id:'widgets',    label:'위젯',     icon:'' },
-    { id:'plugins',    label:'플러그인',  icon:'' },
-    { id:'users',      label:'사용자',   icon:'' },
-    { id:'tools',      label:'도구',     icon:'' },
-    { id:'settings',   label:'설정',     icon:'' },
-    { id:'php',        label:'PHP 설정', icon:'' },
-    { id:'updates',    label:'업데이트', icon:'' },
-    { id:'health',     label:'사이트 상태', icon:'' },
-    { id:'profile',    label:'내 프로필', icon:'' },
+    { id:'dashboard',  label:'대시보드',    icon:'🏠' },
+    { id:'posts',      label:'글',          icon:'📝' },
+    { id:'new-post',   label:'— 새 글',     icon:''   },
+    { id:'pages',      label:'페이지',      icon:'📄' },
+    { id:'new-page',   label:'— 새 페이지', icon:''   },
+    { id:'media',      label:'미디어',      icon:'🖼️' },
+    { id:'comments',   label:'댓글',        icon:'💬' },
+    { id:'themes',     label:'외모 (테마)', icon:'🎨' },
+    { id:'widgets',    label:'— 위젯',      icon:''   },
+    { id:'plugins',    label:'플러그인',    icon:'🔌' },
+    { id:'users',      label:'사용자',      icon:'👥' },
+    { id:'tools',      label:'도구',        icon:'🔧' },
+    { id:'settings',   label:'설정',        icon:'⚙️' },
+    { id:'php',        label:'PHP 설정',    icon:'🐘' },
+    { id:'updates',    label:'업데이트',    icon:'🔄' },
+    { id:'health',     label:'사이트 상태', icon:'🏥' },
+    { id:'profile',    label:'내 프로필',   icon:'👤' },
   ];
   const navHtml = navItems.map(n =>
     `<li class="${page===n.id?'active':''}"><a href="/wp-admin/?page=${n.id}"><span>${n.icon}</span>${n.label}</a></li>`
@@ -1160,11 +1326,89 @@ function getAdminPageHtml(page, siteInfo, session, phpVersion, wpVersion, autoUp
 
     case 'themes': return `
 <h1 class="wp-heading-inline">테마</h1>
+<a href="/wp-admin/?page=add-theme" class="page-title-action">새 테마 추가</a>
 <div id="themes-list" style="margin-top:15px;display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:20px"><div style="padding:20px;color:var(--muted)">불러오는 중...</div></div>`;
+
+    case 'add-theme': return `
+<h1 class="wp-heading-inline">테마 추가</h1>
+<a href="/wp-admin/?page=themes" class="page-title-action">← 테마 목록</a>
+<div style="margin-top:20px">
+  <div class="wp-card" style="margin-bottom:20px">
+    <div class="wp-card-header"><h2>🔍 WordPress.org 테마 검색</h2></div>
+    <div class="wp-card-body">
+      <div style="display:flex;gap:8px;margin-bottom:16px">
+        <input type="text" id="theme-search" class="form-input" placeholder="테마 이름 검색..." style="max-width:320px" onkeydown="if(event.key==='Enter')searchWPThemes()">
+        <button class="btn-primary" onclick="searchWPThemes()">검색</button>
+      </div>
+      <div id="theme-search-results"></div>
+    </div>
+  </div>
+  <div class="wp-card">
+    <div class="wp-card-header"><h2>📦 ZIP 파일로 테마 업로드</h2></div>
+    <div class="wp-card-body">
+      <p style="font-size:13px;color:var(--muted);margin-bottom:14px">WordPress 테마 ZIP 파일을 직접 업로드하여 설치할 수 있습니다.</p>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <input type="file" id="theme-zip" accept=".zip" style="border:1px solid var(--border);border-radius:4px;padding:6px;font-size:13px">
+        <button id="upload-theme-btn" class="btn-primary" onclick="uploadTheme()">ZIP 업로드 및 설치</button>
+      </div>
+    </div>
+  </div>
+</div>`;
 
     case 'plugins': return `
 <h1 class="wp-heading-inline">플러그인</h1>
+<a href="/wp-admin/?page=add-plugin" class="page-title-action">새 플러그인 추가</a>
 <div id="plugins-list" style="margin-top:15px"><div style="padding:20px;color:var(--muted)">불러오는 중...</div></div>`;
+
+    case 'add-plugin': return `
+<h1 class="wp-heading-inline">플러그인 추가</h1>
+<a href="/wp-admin/?page=plugins" class="page-title-action">← 플러그인 목록</a>
+<div style="margin-top:20px">
+  <div class="wp-card" style="margin-bottom:20px">
+    <div class="wp-card-header"><h2>🔍 WordPress.org 플러그인 검색</h2></div>
+    <div class="wp-card-body">
+      <div style="display:flex;gap:8px;margin-bottom:16px">
+        <input type="text" id="plugin-search" class="form-input" placeholder="플러그인 이름 검색..." style="max-width:320px" onkeydown="if(event.key==='Enter')searchWPOrg('plugins')">
+        <button class="btn-primary" onclick="searchWPOrg('plugins')">검색</button>
+      </div>
+      <div id="search-results" style="display:flex;flex-direction:column;gap:12px"></div>
+    </div>
+  </div>
+  <div class="wp-card">
+    <div class="wp-card-header"><h2>📦 ZIP 파일로 플러그인 업로드</h2></div>
+    <div class="wp-card-body">
+      <p style="font-size:13px;color:var(--muted);margin-bottom:14px">WordPress 플러그인 ZIP 파일을 직접 업로드하여 설치할 수 있습니다.</p>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <input type="file" id="plugin-zip" accept=".zip" style="border:1px solid var(--border);border-radius:4px;padding:6px;font-size:13px">
+        <button id="upload-plugin-btn" class="btn-primary" onclick="uploadPlugin()">ZIP 업로드 및 설치</button>
+      </div>
+    </div>
+  </div>
+</div>`;
+
+    case 'widgets': return `
+<h1 class="wp-heading-inline">위젯</h1>
+<div style="margin-top:20px">
+  <div class="notice notice-info"><p>WordPress 위젯 영역입니다. 활성 테마의 위젯 영역에 위젯을 추가하고 관리합니다.</p></div>
+  <div class="grid-2" style="margin-top:20px">
+    <div class="wp-card">
+      <div class="wp-card-header"><h2>사용 가능한 위젯</h2></div>
+      <div class="wp-card-body">
+        ${['검색','최근 글','최근 댓글','보관함','카테고리','태그','텍스트','HTML','이미지'].map(w=>`
+        <div style="background:#f6f7f7;border:1px solid var(--border);border-radius:4px;padding:10px 14px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
+          <div style="font-weight:600;font-size:13px">${esc(w)}</div>
+          <button class="btn btn-sm" onclick="addWidget('${esc(w)}')">추가 ▶</button>
+        </div>`).join('')}
+      </div>
+    </div>
+    <div class="wp-card">
+      <div class="wp-card-header"><h2>사이드바 (sidebar-1)</h2></div>
+      <div class="wp-card-body" id="sidebar-widgets">
+        <p style="font-size:13px;color:var(--muted)">불러오는 중...</p>
+      </div>
+    </div>
+  </div>
+</div>`;
 
     case 'users': return `
 <h1 class="wp-heading-inline">사용자</h1>
@@ -1517,18 +1761,54 @@ async function commentAction(id, action) {
   const d = await apiFetch('${API}/themes');
   const el = document.getElementById('themes-list');
   if (!d.success) { el.innerHTML = '<p style="color:var(--muted)">테마 목록을 불러올 수 없습니다.</p>'; return; }
-  el.innerHTML = d.themes.map(t => \`<div style="background:#fff;border:1px solid \${t.active?'var(--blue)':'var(--border)'};border-radius:4px;padding:20px;position:relative">
+  el.innerHTML = d.themes.map(t => \`<div style="background:#fff;border:2px solid \${t.active?'var(--blue)':'var(--border)'};border-radius:4px;padding:20px;position:relative">
     \${t.active?'<div style="position:absolute;top:10px;right:10px;background:var(--blue);color:#fff;padding:2px 8px;border-radius:10px;font-size:.72rem;font-weight:700">활성</div>':''}
-    <h3 style="font-size:14px;margin-bottom:6px">\${t.name}</h3>
+    <h3 style="font-size:14px;margin-bottom:4px">\${t.name}</h3>
     <p style="font-size:12px;color:var(--muted);margin-bottom:12px">버전 \${t.version}</p>
-    \${!t.active?'<button class="btn-primary btn-sm" onclick="activateTheme(\\''+t.slug+'\\')">활성화</button>':'<span style="font-size:13px;color:var(--ok)">✅ 현재 사용 중</span>'}
+    \${!t.active
+      ?'<button class="btn-primary btn-sm" onclick="activateTheme(\\'' + t.slug + '\\')">활성화</button>'
+      :'<span style="font-size:13px;color:var(--ok)">✅ 현재 사용 중</span>'}
   </div>\`).join('');
 })();
 async function activateTheme(slug) {
   if (!confirm(slug+' 테마를 활성화하시겠습니까?')) return;
   const d = await apiFetch('${API}/activate-theme', { method:'POST', body: JSON.stringify({slug}) });
-  if (d.success) { showToast(d.message,'success'); setTimeout(()=>location.reload(),800); }
+  if (d.success) { showToast(d.message,'success'); setTimeout(()=>location.reload(),600); }
   else showToast(d.message||'오류','error');
+}`;
+
+    case 'widgets': return `
+(async () => {
+  const d = await apiFetch('${API}/widgets');
+  const el = document.getElementById('sidebar-widgets');
+  if (!d || !d.success) {
+    el.innerHTML = '<p style="font-size:13px;color:var(--muted)">등록된 위젯이 없습니다. 왼쪽에서 위젯을 추가하세요.</p>';
+    return;
+  }
+  renderSidebarWidgets(d.widgets || []);
+})();
+function renderSidebarWidgets(widgets) {
+  const el = document.getElementById('sidebar-widgets');
+  if (!widgets.length) {
+    el.innerHTML = '<p style="font-size:13px;color:var(--muted)">등록된 위젯이 없습니다. 왼쪽에서 위젯을 추가하세요.</p>';
+    return;
+  }
+  el.innerHTML = widgets.map((w,i) => \`
+    <div style="background:#f6f7f7;border:1px solid var(--border);border-radius:4px;padding:10px 14px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
+      <div style="font-weight:600;font-size:13px">\${w.name||w}</div>
+      <button class="btn btn-sm btn-danger" style="color:var(--err)" onclick="removeWidget(\${i})">제거</button>
+    </div>
+  \`).join('');
+}
+async function addWidget(name) {
+  const d = await apiFetch('${API}/widget-action', { method:'POST', body: JSON.stringify({action:'add', name}) });
+  if (d.success) { showToast(name+' 위젯이 추가되었습니다.','success'); setTimeout(()=>location.reload(),600); }
+  else showToast(d.message||'추가 실패','error');
+}
+async function removeWidget(idx) {
+  const d = await apiFetch('${API}/widget-action', { method:'POST', body: JSON.stringify({action:'remove', index:idx}) });
+  if (d.success) { showToast('위젯이 제거되었습니다.','success'); setTimeout(()=>location.reload(),600); }
+  else showToast(d.message||'제거 실패','error');
 }`;
 
     case 'plugins': return `
@@ -1549,41 +1829,137 @@ async function pluginAction(slug, activate) {
   if (d.success) { showToast(d.message,'success'); setTimeout(()=>location.reload(),800); }
   else showToast(d.message||'오류','error');
 }`;
-    case 'add-theme': case 'add-plugin': return `
-async function searchWP(type) {
-  const q = document.getElementById(type === 'themes' ? 'theme-search' : 'plugin-search').value;
-  const res = await apiFetch('${API}/search-wp-org?type=' + type + '&s=' + q);
-  const list = document.getElementById('search-results');
-  if(res.success) {
-    list.innerHTML = res.results.map(item => \`
-      <div style="border:1px solid #ddd; padding:10px; border-radius:4px; text-align:center">
-        <img src="\${item.screenshot_url || item.icons?.default || 'https://s.w.org/plugins/geopattern-icon/default.svg'}" style="width:100%; border-radius:4px;">
-        <div style="font-weight:700; margin:10px 0; font-size:12px">\${item.name}</div>
-        <button class="btn-primary btn-sm" onclick="installPkg('\${type}', '\${item.slug}')">지금 설치</button>
-      </div>
-    \`).join('');
-  }
+    case 'plugins': return `
+(async () => {
+  const d = await apiFetch('${API}/plugins');
+  const el = document.getElementById('plugins-list');
+  if (!d.success) { el.innerHTML = '<p style="color:var(--muted)">플러그인 목록을 불러올 수 없습니다.</p>'; return; }
+  const rows = d.plugins.map(p => \`<tr>
+    <td><strong>\${p.name}</strong><br><span style="font-size:12px;color:var(--muted)">\${p.description||''}</span></td>
+    <td>\${p.version}</td>
+    <td>\${p.active?'<span style="color:var(--ok)">활성화됨</span>':'<span style="color:var(--muted)">비활성화</span>'}</td>
+    <td>
+      <button class="btn btn-sm" onclick="pluginAction('\${p.slug}',\${p.active?'false':'true'})">\${p.active?'비활성화':'활성화'}</button>
+      \${!p.active?'<button class="btn btn-sm btn-danger" style="margin-left:4px" onclick="if(confirm(\\'삭제?\\'))deletePlugin(\\'' + p.slug + '\\')">삭제</button>':''}
+    </td>
+  </tr>\`).join('');
+  el.innerHTML = \`<table class="wp-table"><thead><tr><th>플러그인</th><th>버전</th><th>상태</th><th>작업</th></tr></thead><tbody>\${rows}</tbody></table>\`;
+})();
+async function pluginAction(slug, activate) {
+  const d = await apiFetch('${API}/plugin-action', { method:'POST', body: JSON.stringify({slug, action: activate==='true'||activate===true?'activate':'deactivate'}) });
+  if (d.success) { showToast(d.message,'success'); setTimeout(()=>location.reload(),600); }
+  else showToast(d.message||'오류','error');
 }
-async function uploadPkg(type) {
-  const file = document.getElementById(type==='themes'?'theme-zip':'plugin-zip').files[0];
-  const formData = new FormData();
-  formData.append('file', file);
-  const res = await fetch('${API}/upload-package', { method:'POST', body:formData });
-  const data = await res.json();
-  if(data.success) { showToast(data.message, 'success'); }
-}
-async function installPkg(type, slug) {
-  showToast('설치 중...', 'info');
-  // 실제 ZIP 다운로드 및 압축해제 시뮬레이션
-  setTimeout(() => {
-    showToast('설치가 완료되었습니다.', 'success');
-  }, 2000);
+async function deletePlugin(slug) {
+  const d = await apiFetch('${API}/plugin-action', { method:'POST', body: JSON.stringify({slug, action:'delete'}) });
+  if (d.success) { showToast(d.message,'success'); setTimeout(()=>location.reload(),600); }
+  else showToast(d.message||'삭제 오류','error');
 }`;
 
-    case 'plugins': return `
-    // 기존 플러그인 로드 코드...
-    document.querySelector('.wp-heading-inline').insertAdjacentHTML('afterend', '<a href="/wp-admin/?page=add-plugin" class="page-title-action">새로 추가</a>');
-    ` + getAdminPageScript('plugins_base');
+    case 'add-plugin': return `
+(async () => {
+  await searchWPOrg('plugins');
+})();
+async function searchWPOrg(type, q) {
+  const query = q !== undefined ? q : (document.getElementById('plugin-search') ? document.getElementById('plugin-search').value : '');
+  const el = document.getElementById('search-results');
+  el.innerHTML = '<p style="padding:20px;color:var(--muted)">검색 중...</p>';
+  const res = await apiFetch('${API}/search-wp-org?type='+type+'&s='+encodeURIComponent(query));
+  if (!res.success || !res.results || !res.results.length) {
+    el.innerHTML = '<p style="padding:20px;color:var(--muted)">검색 결과가 없습니다.</p>';
+    return;
+  }
+  el.innerHTML = res.results.map(item => \`
+    <div style="background:#fff;border:1px solid var(--border);border-radius:4px;padding:16px;display:flex;gap:14px;align-items:flex-start">
+      <img src="\${item.icons&&item.icons['1x']?item.icons['1x']:(item.icons&&item.icons.default?item.icons.default:'https://s.w.org/plugins/geopattern-icon/'+item.slug+'.svg')}" style="width:80px;height:80px;border-radius:4px;object-fit:cover;flex-shrink:0" onerror="this.src='https://s.w.org/plugins/geopattern-icon/default.svg'">
+      <div style="flex:1">
+        <div style="font-weight:700;font-size:14px;margin-bottom:4px">\${item.name}</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:4px">v\${item.version||'?'} | 다운로드 \${item.downloaded?Number(item.downloaded).toLocaleString():'?'}회</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.5">\${(item.short_description||'').slice(0,120)}\${(item.short_description||'').length>120?'...':''}</div>
+        <button class="btn-primary btn-sm" onclick="installPlugin('\${item.slug}',this)">설치</button>
+      </div>
+    </div>
+  \`).join('');
+}
+async function installPlugin(slug, btn) {
+  if (btn) { btn.disabled=true; btn.textContent='설치 중...'; }
+  const d = await apiFetch('${API}/install-plugin', { method:'POST', body: JSON.stringify({slug}) });
+  if (d.success) {
+    showToast(d.message||'설치 완료', 'success');
+    if (btn) { btn.textContent='✅ 설치됨'; btn.style.background='var(--ok)'; }
+  } else {
+    showToast(d.message||'설치 실패','error');
+    if (btn) { btn.disabled=false; btn.textContent='설치'; }
+  }
+}
+async function uploadPlugin() {
+  const file = document.getElementById('plugin-zip').files[0];
+  if (!file) { showToast('ZIP 파일을 선택해주세요.','error'); return; }
+  const btn = document.getElementById('upload-plugin-btn');
+  btn.disabled=true; btn.textContent='업로드 중...';
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('type', 'plugin');
+  try {
+    const res = await fetch('${API}/upload-package', { method:'POST', body: formData });
+    const data = await res.json();
+    if (data.success) { showToast(data.message||'업로드 완료','success'); setTimeout(()=>location.href='/wp-admin/?page=plugins',1200); }
+    else showToast(data.message||'업로드 실패','error');
+  } catch(e) { showToast('오류: '+e.message,'error'); }
+  btn.disabled=false; btn.textContent='ZIP 업로드';
+}`;
+
+    case 'add-theme': return `
+(async () => {
+  await searchWPThemes('');
+})();
+async function searchWPThemes(q) {
+  const el = document.getElementById('theme-search-results');
+  el.innerHTML = '<p style="padding:20px;color:var(--muted)">불러오는 중...</p>';
+  const query = q !== undefined ? q : (document.getElementById('theme-search') ? document.getElementById('theme-search').value : '');
+  const res = await apiFetch('${API}/search-wp-org?type=themes&s='+encodeURIComponent(query));
+  if (!res.success || !res.results || !res.results.length) {
+    el.innerHTML = '<p style="padding:20px;color:var(--muted)">검색 결과가 없습니다.</p>';
+    return;
+  }
+  el.innerHTML = \`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px">\` + res.results.map(item => \`
+    <div style="background:#fff;border:1px solid var(--border);border-radius:4px;overflow:hidden;position:relative">
+      <img src="\${item.screenshot_url||'https://via.placeholder.com/300x200?text='+item.slug}" style="width:100%;height:150px;object-fit:cover">
+      <div style="padding:12px">
+        <div style="font-weight:700;font-size:13px;margin-bottom:4px">\${item.name}</div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:8px">v\${item.version||'?'}</div>
+        <button class="btn-primary btn-sm" style="width:100%" onclick="installTheme('\${item.slug}',this)">설치</button>
+      </div>
+    </div>
+  \`).join('') + '</div>';
+}
+async function installTheme(slug, btn) {
+  if (btn) { btn.disabled=true; btn.textContent='설치 중...'; }
+  const d = await apiFetch('${API}/install-theme', { method:'POST', body: JSON.stringify({slug}) });
+  if (d.success) {
+    showToast(d.message||'설치 완료','success');
+    if (btn) { btn.textContent='✅ 설치됨'; btn.style.background='var(--ok)'; }
+  } else {
+    showToast(d.message||'설치 실패','error');
+    if (btn) { btn.disabled=false; btn.textContent='설치'; }
+  }
+}
+async function uploadTheme() {
+  const file = document.getElementById('theme-zip').files[0];
+  if (!file) { showToast('ZIP 파일을 선택해주세요.','error'); return; }
+  const btn = document.getElementById('upload-theme-btn');
+  btn.disabled=true; btn.textContent='업로드 중...';
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('type', 'theme');
+  try {
+    const res = await fetch('${API}/upload-package', { method:'POST', body: formData });
+    const data = await res.json();
+    if (data.success) { showToast(data.message||'업로드 완료','success'); setTimeout(()=>location.href='/wp-admin/?page=themes',1200); }
+    else showToast(data.message||'업로드 실패','error');
+  } catch(e) { showToast('오류: '+e.message,'error'); }
+  btn.disabled=false; btn.textContent='ZIP 업로드';
+}`;
 
     case 'users': return `
 (async () => {
@@ -1857,8 +2233,7 @@ async function serveStaticFromKV(env, siteInfo, pathname) {
 }
 
 // ── 메인 fetch 핸들러 ─────────────────────────────────────────────────────────
-export default {
-  async fetch(request, env, ctx) {
+async function handleRequest(request, env, ctx) {
     const url      = new URL(request.url);
     const pathname = url.pathname;
     const method   = request.method;
@@ -2003,6 +2378,20 @@ h1{color:#d63638;margin-bottom:12px}p{color:#646970;line-height:1.6}</style>
 
     // 12. 프론트엔드 WordPress 페이지 렌더링
     return renderFrontend(env, siteInfo, request, url);
+}
+
+// ── export default ─────────────────────────────────────────────────────────────
+export default {
+  async fetch(request, env, ctx) {
+    try {
+      return await handleRequest(request, env, ctx);
+    } catch (e) {
+      console.error('[CloudPress] Unhandled error:', e?.message || e);
+      return new Response(JSON.stringify({ error: 'Internal Server Error', message: String(e?.message || e) }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      });
+    }
   },
 
   // ── 스케줄된 Cron (자동 업데이트) ─────────────────────────────────────────
