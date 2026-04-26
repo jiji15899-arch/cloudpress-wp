@@ -1,7 +1,15 @@
-
 -- 자동 업데이트 마지막 실행 시각
 ALTER TABLE sites ADD COLUMN wp_auto_update_at TEXT;
-ALTER TABLE sites ADD COLUMN php_version TEXT DEFAULT '8.2'; -- PHP 버전 추가
+
+-- 신규 기능 대응 컬럼 추가 (Task 1, 4, 7, 10, 11 관련)
+ALTER TABLE sites ADD COLUMN region TEXT DEFAULT 'icn';
+ALTER TABLE sites ADD COLUMN edge_ip TEXT;
+ALTER TABLE sites ADD COLUMN wp_username TEXT;
+ALTER TABLE sites ADD COLUMN wp_password TEXT;
+ALTER TABLE sites ADD COLUMN wp_version TEXT DEFAULT 'latest';
+ALTER TABLE sites ADD COLUMN php_version TEXT DEFAULT '8.3';
+ALTER TABLE sites ADD COLUMN wp_auto_update TEXT DEFAULT 'minor';
+ALTER TABLE sites ADD COLUMN alias_domains TEXT DEFAULT '[]';
 
 -- 설정: WordPress 자동 업데이트 활성화 여부
 INSERT OR IGNORE INTO settings (key, value) VALUES ('wp_auto_update_enabled', 'true');
