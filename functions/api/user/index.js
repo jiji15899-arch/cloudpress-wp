@@ -86,6 +86,9 @@ export async function onRequestGet({ request, env }) {
   }
 }
 
+// POST와 PUT 모두 동일하게 처리 (app.js의 updateProfile/saveCfApi 등은 POST로 호출)
+export const onRequestPost = ({ request, env }) => onRequestPut({ request, env });
+
 export async function onRequestPut({ request, env }) {
   try {
     const user = await getUser(env, request);
