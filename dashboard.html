@@ -133,6 +133,12 @@ async function init(){
     document.getElementById('sPlan').textContent=CP.planInfo(user.plan).name;
     if(user.role==='admin'||user.role==='manager'){const am=document.getElementById('adminMenu');if(am)am.style.display='';}
 
+    // Cloudflare API 키 체크 (에러 메시지 대응)
+    if (user.has_cf_api === false) {
+      const warn = document.getElementById('cfApiWarn');
+      if (warn) warn.style.display = 'flex';
+    }
+
     // 실시간 리소스 모니터링 시작
     CP.initResourceMonitor();
 
@@ -156,20 +162,21 @@ async function init(){
 }
 
 async function loadSites(){
+  const el=document.getElementById('sitesList');
   try {
     const d=await CP.getSites();
-    if(!d.ok){
-      const el=document.getElementById('sitesList');
-      el.innerHTML=`<div class="empty-state" style="color:var(--error)"><p style="font-weight:600">사이트 로딩 실패</p><p style="font-size:.83rem">${CP.escHtml(d.error)}</p><button class="btn btn-primary btn-sm" onclick="loadSites()">다시 시도</button></div>`;
+    if(!d || !d.ok){
+      const errorMsg = d?.error || '서버 응답이 올바르지 않습니다.';
+      el.innerHTML=`<div class="empty-state" style="color:var(--error)"><p style="font-weight:600">사이트 로딩 실패</p><p style="font-size:.83rem; margin-bottom:12px;">${CP.escHtml(errorMsg)}</p><button class="btn btn-primary btn-sm" onclick="loadSites()">다시 시도</button></div>`;
+      if (errorMsg.includes('Cloudflare API')) {
+        document.getElementById('cfApiWarn').style.display = 'flex';
+      }
       return;
     }
-
     const sites=d.sites||[];
     document.getElementById('sSites').textContent=sites.length;
     const activeEl = document.getElementById('sActive');
     if(activeEl) activeEl.textContent = sites.filter(s=>s.status==='active').length;
-
-    const el=document.getElementById('sitesList');
     if(!sites.length){
       el.innerHTML=`<div class="empty-state"><div style="width:56px;height:56px;background:var(--surface2);border-radius:14px;display:flex;align-items:center;justify-content:center;margin:0 auto 14px"><svg width="26" height="26" viewBox="0 0 24 24" fill="none"><rect x="2" y="3" width="20" height="14" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M8 21h8M12 17v4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></div><p style="font-weight:600;margin-bottom:6px">사이트 없음</p><p style="font-size:.83rem;margin-bottom:18px">지금 바로 무료 CloudPress CMS 사이트를 구축하세요.</p><a href="/create.html" class="btn btn-primary btn-sm">첫 사이트 만들기</a></div>`;
       return;
@@ -197,7 +204,6 @@ async function loadSites(){
     sites.filter(s=>['provisioning','installing_wp','pending','init','starting'].includes(s.status)).forEach(s=>pollStatus(s.id));
   } catch(e) {
     console.error('사이트 로딩 오류:', e);
-    const el=document.getElementById('sitesList');
     el.innerHTML=`<div class="empty-state" style="color:var(--error)"><p style="font-weight:600;margin-bottom:6px;color:var(--error)">오류 발생</p><p style="font-size:.83rem;margin-bottom:18px">사이트 목록을 불러올 수 없습니다. 잠시 후 다시 시도해주세요.</p><button class="btn btn-primary btn-sm" onclick="loadSites()">다시 시도</button></div>`;
     showToast('사이트 로딩 중 오류 발생','error');
   }
