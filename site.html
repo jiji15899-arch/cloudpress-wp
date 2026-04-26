@@ -226,60 +226,37 @@ function switchTab(tabId) {
 }
 
 /* 실시간 로그 스트리밍 기능 */
-let logSocket = null;
-let reconnectAttempts = 0;
-let reconnectTimeout = null;
+let logInterval = null;
 
-async function startLogStreaming() {
+function startLogStreaming() {
   const consoleEl = document.getElementById('logConsole');
   if (!consoleEl) return;
-  
-  if (reconnectTimeout) clearTimeout(reconnectTimeout);
 
-  const res = await CP.initLogTail(currentSite.id);
-  if (!res.ok) {
-    consoleEl.innerHTML += `<div class="log-entry error">로그 세션 연결 실패: ${res.error}</div>`;
-    // API 실패 시에도 백오프 재시도
-    retryConnection();
-    return;
+  if (logInterval) {
+    clearInterval(logInterval);
+    logInterval = null;
   }
 
-  logSocket = new WebSocket(res.url, ['cloudflare-worker-tail']);
-  logSocket.onopen = () => {
-    reconnectAttempts = 0; // 연결 성공 시 시도 횟수 초기화
-    consoleEl.innerHTML += `<div class="log-entry info">WebSocket 연결 성공. 실시간 스트리밍 중...</div>`;
-  };
-  logSocket.onmessage = (event) => {
-    try {
-      const data = JSON.parse(event.data);
-      const entry = document.createElement('div');
-      entry.className = `log-entry ${data.level === 'error' ? 'error' : 'info'}`;
-      const time = new Date(data.timestamp).toLocaleTimeString();
-      const msg = data.logs?.map(l => l.message).join(' ') || `${data.event?.request?.method || 'GET'} ${data.event?.request?.url || ''}`;
-      entry.innerHTML = `<span class="log-time">${time}</span> ${esc(msg)}`;
-      consoleEl.appendChild(entry);
-      if (consoleEl.childNodes.length > 100) consoleEl.removeChild(consoleEl.firstChild);
-      consoleEl.scrollTop = consoleEl.scrollHeight;
-    } catch(e) {}
-  };
-  logSocket.onclose = (e) => {
-    consoleEl.innerHTML += `<div class="log-entry">연결이 종료되었습니다. 재연결을 시도합니다...</div>`;
-    retryConnection();
-  };
-  logSocket.onerror = () => {
-    logSocket.close();
-  };
-}
+  consoleEl.innerHTML += `<div class="log-entry info">로그 스트리밍을 시작합니다...</div>`;
 
-function retryConnection() {
-  const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000); // 최대 30초 백오프
-  reconnectAttempts++;
-  reconnectTimeout = setTimeout(startLogStreaming, delay);
+  logInterval = CP.initLogTail(currentSite.id, (line) => {
+    const entry = document.createElement('div');
+    entry.className = 'log-entry info';
+    const time = new Date().toLocaleTimeString();
+    entry.innerHTML = `<span class="log-time">${time}</span> ${esc(typeof line === 'string' ? line : JSON.stringify(line))}`;
+    consoleEl.appendChild(entry);
+    if (consoleEl.childNodes.length > 100) consoleEl.removeChild(consoleEl.firstChild);
+    consoleEl.scrollTop = consoleEl.scrollHeight;
+  }, 3000);
 }
 
 function stopLogStreaming() {
-  if (reconnectTimeout) clearTimeout(reconnectTimeout);
-  if (logSocket) logSocket.close();
+  if (logInterval) {
+    clearInterval(logInterval);
+    logInterval = null;
+    const consoleEl = document.getElementById('logConsole');
+    if (consoleEl) consoleEl.innerHTML += `<div class="log-entry">스트리밍이 중지되었습니다.</div>`;
+  }
 }
 
 function initResourceChart() {
@@ -461,8 +438,8 @@ async function loadSite(){
       <div class="info-row">
         <div class="info-label">아이디 (Username)</div>
         <div class="info-val" style="display:flex;align-items:center;">
-          <code style="background:rgba(34,113,177,.08);padding:2px 8px;border-radius:4px;font-size:.9rem;user-select:all">${esc(site.wp_username||'admin')}</code>
-          <button onclick="navigator.clipboard.writeText('${esc(site.wp_username||'admin')}');this.textContent='✅';setTimeout(()=>this.textContent='복사',1200)" style="margin-left:6px;padding:2px 8px;background:none;border:1px solid var(--border);border-radius:4px;cursor:pointer;font-size:.75rem;color:var(--muted)">복사</button>
+          <code style="background:rgba(34,113,177,.08);padding:2px 8px;border-radius:4px;font-size:.9rem;user-select:all">${esc(site.wp_admin_username||'admin')}</code>
+          <button onclick="navigator.clipboard.writeText('${esc(site.wp_admin_username||'admin')}');this.textContent='✅';setTimeout(()=>this.textContent='복사',1200)" style="margin-left:6px;padding:2px 8px;background:none;border:1px solid var(--border);border-radius:4px;cursor:pointer;font-size:.75rem;color:var(--muted)">복사</button>
         </div>
       </div>
       <div class="info-row">
@@ -473,7 +450,7 @@ async function loadSite(){
         </div>
       </div>
       <div style="background:rgba(34,113,177,.07);border:1px solid rgba(34,113,177,.18);border-radius:8px;padding:14px;font-size:.82rem;color:var(--muted);margin-top:12px;line-height:1.6">
-        🔑 위 아이디/비밀번호로 <a href="${esc(site.wp_admin_url||siteUrl+'/wp-admin/')}" target="_blank" style="color:var(--accent)">WordPress 관리자</a>에 로그인하세요.<br>
+        🔑 위 아이디/비밀번호로 <a href="${esc(site.wp_admin_url||(siteUrl?siteUrl+'/wp-admin/':'#'))}" target="_blank" style="color:var(--accent)">WordPress 관리자</a>에 로그인하세요.<br>
         보안을 위해 로그인 후 <strong>비밀번호를 즉시 변경</strong>하시길 강력히 권장합니다.
       </div>`:`
       <div style="color:var(--muted);font-size:.85rem;padding:12px 0">
